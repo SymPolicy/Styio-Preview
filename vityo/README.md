@@ -1,2 +1,2 @@
 # Styio-View
-「styio-view」is an editor specifically designed for 「styio」
+「styio-view」is an editor for 「styio」
