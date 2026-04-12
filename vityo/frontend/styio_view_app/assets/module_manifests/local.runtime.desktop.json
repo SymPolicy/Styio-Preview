@@ -1,0 +1,16 @@
+{
+  "moduleId": "local.runtime.desktop",
+  "displayName": "Local Runtime",
+  "version": "0.1.0",
+  "kind": "optional",
+  "slot": "localRuntime",
+  "description": "Local compile and run slot for desktop and Android targets.",
+  "enabledByDefault": true,
+  "entrypoint": "lib/src/platform/native_module_loader.dart",
+  "distributionPolicyRef": "self-hosted-runtime",
+  "capabilityFlags": {
+    "localCompile": true,
+    "localRun": true,
+    "ffiBridge": true
+  }
+}

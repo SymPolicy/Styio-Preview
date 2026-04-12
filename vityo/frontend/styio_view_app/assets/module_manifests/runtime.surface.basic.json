@@ -1,0 +1,15 @@
+{
+  "moduleId": "runtime.surface.basic",
+  "displayName": "Runtime Surface",
+  "version": "0.1.0",
+  "kind": "optional",
+  "slot": "runtimeSurface",
+  "description": "Bottom runtime surface host for thread lanes, logs, and graph panels.",
+  "enabledByDefault": true,
+  "entrypoint": "lib/src/runtime/runtime_surface.dart",
+  "distributionPolicyRef": "cross-platform-ui",
+  "capabilityFlags": {
+    "runtimeTabs": true,
+    "eventConsole": true
+  }
+}

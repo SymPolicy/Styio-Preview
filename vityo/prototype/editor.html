@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Styio Editor</title>
+    <link rel="stylesheet" href="./editor.css?v=20260413-sidebar3" />
+  </head>
+  <body>
+    <div class="workspace-shell" id="workspaceShell">
+      <section class="main-editor-card">
+        <div class="editor-card-head">
+          <div>
+            <h1 id="currentFileTitle">Styio Editor</h1>
+          </div>
+          <button class="icon-button" id="toggleSidebar" aria-expanded="false" aria-controls="sideDrawer" aria-label="Open sidebar" title="Open sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <path d="M15 3v18"></path>
+              <path d="m10 15-3-3 3-3"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="editor-tabs" id="fileTabs"></div>
+
+        <div class="editor-frame">
+          <div class="editor-gutter" id="lineGutter"></div>
+
+          <div class="code-stage" id="codeStage">
+            <div class="block-layer" id="blockLayer"></div>
+            <div class="render-layer" id="renderLayer"></div>
+            <div class="caret-layer" id="caretLayer">
+              <div class="caret-indicator" id="caretIndicator"></div>
+            </div>
+            <textarea
+              id="editorInput"
+              class="editor-input"
+              spellcheck="false"
+              autocapitalize="none"
+              autocomplete="off"
+              autocorrect="off"
+              wrap="off"
+            ></textarea>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-drawer" id="sideDrawer">
+        <div class="drawer-header">
+          <div class="drawer-tabs">
+            <button class="drawer-tab is-active drawer-tab-icon-only" data-drawer-tab="files" aria-label="File tree" title="File tree">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"></path>
+                <path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"></path>
+                <path d="M3 5a2 2 0 0 0 2 2h3"></path>
+                <path d="M3 3v13a2 2 0 0 0 2 2h3"></path>
+              </svg>
+            </button>
+            <button class="drawer-tab drawer-tab-icon-only" data-drawer-tab="settings" aria-label="Settings" title="Settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 17H5"></path>
+                <path d="M19 7h-9"></path>
+                <circle cx="17" cy="17" r="3"></circle>
+                <circle cx="7" cy="7" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <button class="icon-button icon-button-vertical-flip" id="closeSidebar" aria-label="Close sidebar" title="Close sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <path d="M15 3v18"></path>
+              <path d="m8 9 3 3-3 3"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="drawer-panel is-active" id="drawerPanelFiles">
+          <div class="workspace-tools">
+            <div class="workspace-tool-card">
+              <div>
+                <p class="setting-title" id="workspaceTitle">Workspace</p>
+                <p class="setting-copy" id="workspacePathHint" hidden></p>
+              </div>
+              <div class="workspace-tool-row">
+                <label class="glyph-color-field workspace-path-field">
+                  <input
+                    class="glyph-color-value workspace-path-input"
+                    id="workspacePathInput"
+                    type="text"
+                    spellcheck="false"
+                    autocapitalize="none"
+                    autocomplete="off"
+                    autocorrect="off"
+                    aria-label="Workspace path"
+                  />
+                </label>
+                <button class="action ghost workspace-tool-button" id="workspacePathApply">Open</button>
+              </div>
+            </div>
+
+            <div class="workspace-action-row" aria-label="Workspace actions">
+              <button class="workspace-action-button" id="createFolderButton" type="button" aria-label="Create folder" title="Create folder">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 10v6"></path>
+                  <path d="M9 13h6"></path>
+                  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+                </svg>
+              </button>
+              <button class="workspace-action-button" id="quickCreateFileButton" type="button" aria-label="Create file" title="Create file">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
+                  <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
+                  <path d="M9 15h6"></path>
+                  <path d="M12 18v-6"></path>
+                </svg>
+              </button>
+              <button class="workspace-action-button workspace-action-button-delete" id="bulkDeleteButton" type="button" aria-label="Select files to delete" title="Select files to delete">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                  <path d="M3 6h18"></path>
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+              <button class="workspace-action-button" id="refreshWorkspaceButton" type="button" aria-label="Refresh workspace" title="Refresh workspace">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                  <path d="M21 3v5h-5"></path>
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                  <path d="M8 16H3v5"></path>
+                </svg>
+              </button>
+              <button class="workspace-action-button" id="workspaceMoreButton" type="button" aria-label="More workspace actions" title="More workspace actions">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="1"></circle>
+                  <circle cx="19" cy="12" r="1"></circle>
+                  <circle cx="5" cy="12" r="1"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="file-tree" id="fileTree"></div>
+        </div>
+
+        <div class="drawer-panel" id="drawerPanelSettings">
+          <div class="setting-group">
+            <div class="setting-row">
+              <div>
+                <p class="setting-title" id="languageTitle">Language</p>
+              </div>
+              <div class="palette-control palette-control-compact">
+                <button class="pill palette-button" id="languageModeButton" type="button" aria-expanded="false">中文</button>
+                <div class="palette-option-list palette-option-list-compact" id="languageModeOptions"></div>
+              </div>
+            </div>
+
+            <div class="setting-row setting-row-stack">
+              <div>
+                <p class="setting-title" id="autoSaveTitle">Auto Save</p>
+              </div>
+              <div class="autosave-controls">
+                <div class="palette-control">
+                  <button class="pill palette-button" id="autoSaveModeButton" type="button" aria-expanded="false">Off</button>
+                  <div class="palette-option-list palette-option-list-compact" id="autoSaveModeOptions"></div>
+                </div>
+                <label class="glyph-color-field autosave-delay-field" id="autoSaveDelayField" hidden>
+                  <span class="autosave-delay-label" id="autoSaveDelayLabel">Delay</span>
+                  <input
+                    class="glyph-color-value autosave-delay-input"
+                    id="autoSaveDelayInput"
+                    type="number"
+                    min="250"
+                    step="250"
+                    inputmode="numeric"
+                    value="1000"
+                    aria-label="Auto save delay in milliseconds"
+                  />
+                  <span class="autosave-delay-suffix">ms</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <p class="setting-title" id="glyphCompositionTitle">Glyph Composition</p>
+              </div>
+              <button
+                class="toggle-icon-button"
+                id="toggleGlyphs"
+                aria-pressed="true"
+                aria-label="Toggle glyph rendering"
+                title="Toggle glyph rendering"
+              >
+                <span class="toggle-track">
+                  <span class="toggle-thumb">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M8 7h3"></path>
+                      <path d="M8 12h8"></path>
+                      <path d="M8 17h5"></path>
+                      <path d="M17 8l3 4-3 4"></path>
+                    </svg>
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            <details class="setting-disclosure" id="highlightDisclosure">
+              <summary class="setting-disclosure-summary">
+                <div>
+                  <p class="setting-title" id="glyphHighlightTitle">Glyph Highlight</p>
+                </div>
+                <div class="setting-disclosure-actions">
+                  <span class="disclosure-chevron" aria-hidden="true"></span>
+                </div>
+              </summary>
+
+              <div class="disclosure-body">
+                <div class="palette-control">
+                  <button class="pill palette-button" id="highlightPaletteButton" type="button" aria-expanded="false">
+                    PALETTE: Styio
+                  </button>
+                  <div class="palette-option-list palette-option-list-compact" id="highlightPaletteOptions"></div>
+                </div>
+
+                <div class="palette-control">
+                  <button class="pill palette-button" id="blockSurfaceButton" type="button" aria-expanded="false">
+                    BLOCK: Graphite
+                  </button>
+                  <div class="palette-option-list palette-option-list-compact" id="blockSurfaceOptions"></div>
+                </div>
+
+                <div class="palette-control">
+                  <button class="pill palette-button" id="lineHighlightButton" type="button" aria-expanded="false">
+                    LINE: Graphite
+                  </button>
+                  <div class="palette-option-list palette-option-list-compact" id="lineHighlightOptions"></div>
+                </div>
+
+                <div class="setting-stack">
+                  <div class="stack-head">
+                    <p class="setting-subtitle" id="symbolColorsTitle">Symbol Colors</p>
+                  </div>
+                  <div class="glyph-color-list" id="glyphColorList"></div>
+                </div>
+              </div>
+            </details>
+
+            <div class="setting-row">
+              <div>
+                <p class="setting-title" id="tabIndentationTitle">Tab Indentation</p>
+              </div>
+              <div class="segment-control" id="indentControl" role="group" aria-label="Indentation width">
+                <button class="segment-button is-active" type="button" data-indent-size="2">2</button>
+                <button class="segment-button" type="button" data-indent-size="4">4</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="status-grid">
+            <span class="pill" id="saveState" data-save-state="volatile">disk: loading</span>
+            <span class="pill" id="autoSaveState">autosave: loading</span>
+            <span class="pill" id="glyphState">glyphs: loading</span>
+            <span class="pill" id="indentState">indent: loading</span>
+            <span class="pill" id="unitState">unit: loading</span>
+            <span class="pill" id="cursorState">selection: line 01</span>
+            <span class="pill" id="issueState">diagnostics: loading</span>
+            <span class="pill" id="renderState">projection: loading</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="workspace-callout" id="workspaceCallout" hidden>
+      <div class="workspace-callout-copy">
+        <p class="setting-title" id="workspaceCalloutTitle">Using Browser Storage</p>
+        <p class="setting-copy" id="workspaceCalloutBody">
+          Files and editor settings are currently staying in browser cache until you choose a real workspace folder.
+        </p>
+      </div>
+      <button class="action" id="workspaceCalloutOpen" type="button">Open Workspace</button>
+    </div>
+
+    <div class="app-dialog-overlay" id="appDialogOverlay" hidden>
+      <div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+        <div class="app-dialog-head">
+          <div>
+            <p class="setting-title" id="appDialogTitle">Dialog</p>
+            <p class="setting-copy app-dialog-message" id="appDialogMessage"></p>
+          </div>
+          <button class="icon-button subtle" id="appDialogClose" aria-label="Close dialog" title="Close dialog" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <label class="glyph-color-field app-dialog-input-field" id="appDialogInputField" hidden>
+          <input class="glyph-color-value app-dialog-input" id="appDialogInput" type="text" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
+        </label>
+
+        <div class="app-dialog-list" id="appDialogList" hidden></div>
+
+        <div class="app-dialog-actions">
+          <button class="action ghost" id="appDialogCancel" type="button">Cancel</button>
+          <button class="action" id="appDialogConfirm" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="workspace-picker-overlay" id="workspacePickerOverlay" hidden>
+      <div class="workspace-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="workspacePickerTitle">
+        <div class="workspace-picker-head">
+          <div>
+            <p class="setting-title" id="workspacePickerTitle">Open Workspace</p>
+            <p class="setting-copy" id="workspacePickerCaption">Choose a local folder to use as the current workspace root.</p>
+          </div>
+          <button class="icon-button subtle" id="workspacePickerClose" aria-label="Close workspace picker" title="Close workspace picker">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 7l10 10"></path>
+              <path d="M17 7L7 17"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="workspace-picker-toolbar">
+          <button class="icon-button subtle workspace-picker-up" id="workspacePickerUp" type="button" aria-label="Go to parent folder" title="Go to parent folder">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 6v12"></path>
+              <path d="M7 11l5-5 5 5"></path>
+            </svg>
+          </button>
+          <input
+            class="workspace-picker-current"
+            id="workspacePickerCurrent"
+            type="text"
+            spellcheck="false"
+            autocapitalize="none"
+            autocomplete="off"
+            autocorrect="off"
+            aria-label="Workspace path"
+          />
+        </div>
+
+        <div class="workspace-picker-breadcrumbs" id="workspacePickerBreadcrumbs"></div>
+        <div class="workspace-picker-list" id="workspacePickerList"></div>
+
+        <div class="workspace-picker-actions">
+          <button class="action" id="workspacePickerConfirm" type="button">Use This Folder</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./editor.js?v=20260413-sidebar3"></script>
+  </body>
+</html>

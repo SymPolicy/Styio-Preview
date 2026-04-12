@@ -1,0 +1,11 @@
+{
+  "moduleId": "debug.console",
+  "platforms": {
+    "web": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "hosted-web", "note": "Web keeps shell diagnostics visible." },
+    "windows": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Desktop debug console is mounted by default." },
+    "linux": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Desktop debug console is mounted by default." },
+    "android": { "supported": true, "visible": true, "installable": true, "mountedByDefault": false, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Android may keep the console unmounted to reduce clutter." },
+    "macos": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Desktop debug console is mounted by default." },
+    "ios": { "supported": true, "visible": true, "installable": true, "mountedByDefault": false, "iosSafe": true, "distributionChannel": "app-store", "note": "iOS keeps console available but not mounted by default." }
+  }
+}

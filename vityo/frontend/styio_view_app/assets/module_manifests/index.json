@@ -1,0 +1,36 @@
+{
+  "modules": [
+    {
+      "manifest": "assets/module_manifests/core.shell.json",
+      "matrix": "assets/capability_matrices/core.shell.json"
+    },
+    {
+      "manifest": "assets/module_manifests/editor.core.json",
+      "matrix": "assets/capability_matrices/editor.core.json"
+    },
+    {
+      "manifest": "assets/module_manifests/theme.core.json",
+      "matrix": "assets/capability_matrices/theme.core.json"
+    },
+    {
+      "manifest": "assets/module_manifests/runtime.surface.basic.json",
+      "matrix": "assets/capability_matrices/runtime.surface.basic.json"
+    },
+    {
+      "manifest": "assets/module_manifests/agent.surface.basic.json",
+      "matrix": "assets/capability_matrices/agent.surface.basic.json"
+    },
+    {
+      "manifest": "assets/module_manifests/debug.console.json",
+      "matrix": "assets/capability_matrices/debug.console.json"
+    },
+    {
+      "manifest": "assets/module_manifests/local.runtime.desktop.json",
+      "matrix": "assets/capability_matrices/local.runtime.desktop.json"
+    },
+    {
+      "manifest": "assets/module_manifests/cloud.runtime.shared.json",
+      "matrix": "assets/capability_matrices/cloud.runtime.shared.json"
+    }
+  ]
+}

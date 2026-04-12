@@ -1,0 +1,11 @@
+{
+  "moduleId": "cloud.runtime.shared",
+  "platforms": {
+    "web": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "hosted-web", "note": "Web always uses hosted workspace." },
+    "windows": { "supported": true, "visible": true, "installable": true, "mountedByDefault": false, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Desktop can optionally add cloud runtime." },
+    "linux": { "supported": true, "visible": true, "installable": true, "mountedByDefault": false, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Desktop can optionally add cloud runtime." },
+    "android": { "supported": true, "visible": true, "installable": true, "mountedByDefault": false, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Android can optionally add cloud runtime." },
+    "macos": { "supported": true, "visible": true, "installable": true, "mountedByDefault": false, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Desktop can optionally add cloud runtime." },
+    "ios": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "app-store", "note": "iOS uses cloud runtime as the primary path." }
+  }
+}

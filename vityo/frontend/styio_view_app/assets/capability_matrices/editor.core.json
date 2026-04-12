@@ -1,0 +1,11 @@
+{
+  "moduleId": "editor.core",
+  "platforms": {
+    "web": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "hosted-web", "note": "Shared editor host." },
+    "windows": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Shared editor host." },
+    "linux": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Shared editor host." },
+    "android": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Shared editor host." },
+    "macos": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Shared editor host." },
+    "ios": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "app-store", "note": "Shared editor host." }
+  }
+}
