@@ -400,6 +400,10 @@ h1 {
   stroke-linejoin: round;
 }
 
+.icon-button-vertical-flip svg {
+  transform: scaleX(-1);
+}
+
 .icon-button.subtle {
   width: 36px;
   height: 36px;
@@ -464,15 +468,21 @@ h1 {
   display: inline-flex;
   align-items: center;
   padding: 4px;
+  min-width: 62px;
+  height: 34px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.025);
 }
 
 .segment-button {
-  min-width: 42px;
-  padding: 7px 12px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
   border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
   color: var(--muted);
   background: transparent;
 }
@@ -832,9 +842,15 @@ body.sidebar-open .side-drawer {
   pointer-events: auto;
 }
 
+body.sidebar-open #toggleSidebar {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .drawer-header {
   flex: 0 0 auto;
   margin-bottom: 14px;
+  justify-content: space-between;
 }
 
 .drawer-tabs {
@@ -975,6 +991,16 @@ body.sidebar-open .side-drawer {
 
 .workspace-action-button.workspace-action-button-delete.has-selection:hover {
   background: #ec5f5f;
+}
+
+.workspace-action-button.is-cancel-mode {
+  color: #201713;
+  border-color: transparent;
+  background: var(--accent-3);
+}
+
+.workspace-action-button.is-cancel-mode:hover {
+  background: #f7d588;
 }
 
 .workspace-action-button svg {
@@ -1666,24 +1692,45 @@ body.sidebar-open .side-drawer {
 .palette-control {
   display: grid;
   gap: 10px;
+  min-width: 172px;
+}
+
+.palette-control-compact {
+  min-width: 118px;
 }
 
 .palette-button {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   width: 100%;
+  min-height: 34px;
+  min-width: 0;
+  position: relative;
+  padding-right: 34px;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .palette-button::after {
   content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
   width: 8px;
   height: 8px;
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg);
+  transform: translateY(-58%) rotate(45deg);
   transition: transform 180ms ease;
 }
 
@@ -1694,14 +1741,14 @@ body.sidebar-open .side-drawer {
 }
 
 .palette-button[aria-expanded="true"]::after {
-  transform: rotate(225deg);
+  transform: translateY(-34%) rotate(225deg);
 }
 
 .palette-option-list {
   display: none;
-  max-height: 208px;
+  max-height: 132px;
   overflow-y: auto;
-  gap: 8px;
+  gap: 6px;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: var(--radius-ui);
@@ -1717,12 +1764,22 @@ body.sidebar-open .side-drawer {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  min-height: 40px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  min-height: 32px;
+  padding: 8px 10px;
+  border-radius: 10px;
   border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.palette-option:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .palette-option.is-active {
@@ -1730,6 +1787,10 @@ body.sidebar-open .side-drawer {
   background: linear-gradient(135deg, var(--accent), var(--accent-3));
   border-color: transparent;
   font-weight: 700;
+}
+
+.palette-option-list-compact {
+  max-height: 112px;
 }
 
 .setting-stack {

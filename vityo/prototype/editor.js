@@ -1,7 +1,9 @@
 const workspaceApiBase = "/api/workspace";
 const primaryFile = "main.styio";
-const defaultCreateFilePath = "src/new_file.styio";
-const defaultCreateFolderPath = "src/new_folder";
+const defaultCreateLeafNames = {
+  file: "new_file.styio",
+  folder: "new_folder",
+};
 const fallbackSources = {
   "main.styio": `pipeline mainFlow
 let staged := source |> normalize
@@ -24,6 +26,7 @@ const drawerTabs = Array.from(document.querySelectorAll("[data-drawer-tab]"));
 const fileTabs = document.getElementById("fileTabs");
 const fileTree = document.getElementById("fileTree");
 const saveState = document.getElementById("saveState");
+const autoSaveState = document.getElementById("autoSaveState");
 const glyphState = document.getElementById("glyphState");
 const indentState = document.getElementById("indentState");
 const unitState = document.getElementById("unitState");
@@ -31,6 +34,7 @@ const cursorState = document.getElementById("cursorState");
 const issueState = document.getElementById("issueState");
 const renderState = document.getElementById("renderState");
 const workspacePathHint = document.getElementById("workspacePathHint");
+const workspaceTitle = document.getElementById("workspaceTitle");
 const workspacePathInput = document.getElementById("workspacePathInput");
 const workspacePathApply = document.getElementById("workspacePathApply");
 const createFolderButton = document.getElementById("createFolderButton");
@@ -39,6 +43,8 @@ const refreshWorkspaceButton = document.getElementById("refreshWorkspaceButton")
 const bulkDeleteButton = document.getElementById("bulkDeleteButton");
 const workspaceMoreButton = document.getElementById("workspaceMoreButton");
 const workspaceCallout = document.getElementById("workspaceCallout");
+const workspaceCalloutTitle = document.getElementById("workspaceCalloutTitle");
+const workspaceCalloutBody = document.getElementById("workspaceCalloutBody");
 const workspaceCalloutOpen = document.getElementById("workspaceCalloutOpen");
 const workspacePickerOverlay = document.getElementById("workspacePickerOverlay");
 const workspacePickerClose = document.getElementById("workspacePickerClose");
@@ -58,14 +64,27 @@ const appDialogList = document.getElementById("appDialogList");
 const appDialogCancel = document.getElementById("appDialogCancel");
 const appDialogConfirm = document.getElementById("appDialogConfirm");
 const toggleGlyphs = document.getElementById("toggleGlyphs");
+const languageTitle = document.getElementById("languageTitle");
 const indentControl = document.getElementById("indentControl");
 const saveFile = document.getElementById("saveFile");
+const autoSaveTitle = document.getElementById("autoSaveTitle");
+const languageModeButton = document.getElementById("languageModeButton");
+const languageModeOptions = document.getElementById("languageModeOptions");
+const autoSaveModeButton = document.getElementById("autoSaveModeButton");
+const autoSaveModeOptions = document.getElementById("autoSaveModeOptions");
+const autoSaveDelayField = document.getElementById("autoSaveDelayField");
+const autoSaveDelayInput = document.getElementById("autoSaveDelayInput");
+const autoSaveDelayLabel = document.getElementById("autoSaveDelayLabel");
+const glyphCompositionTitle = document.getElementById("glyphCompositionTitle");
 const highlightPaletteButton = document.getElementById("highlightPaletteButton");
 const highlightPaletteOptions = document.getElementById("highlightPaletteOptions");
 const blockSurfaceButton = document.getElementById("blockSurfaceButton");
 const blockSurfaceOptions = document.getElementById("blockSurfaceOptions");
 const lineHighlightButton = document.getElementById("lineHighlightButton");
 const lineHighlightOptions = document.getElementById("lineHighlightOptions");
+const glyphHighlightTitle = document.getElementById("glyphHighlightTitle");
+const symbolColorsTitle = document.getElementById("symbolColorsTitle");
+const tabIndentationTitle = document.getElementById("tabIndentationTitle");
 const glyphColorList = document.getElementById("glyphColorList");
 const lineGutter = document.getElementById("lineGutter");
 const codeStage = document.getElementById("codeStage");
@@ -91,6 +110,12 @@ let latestAnalysis = null;
 let sidebarOpen = false;
 let activeDrawerTab = "files";
 let indentSize = 2;
+let activeLanguageKey = "zhCn";
+let languageMenuOpen = false;
+let autoSaveMode = "afterDelay";
+let autoSaveDelay = 1000;
+let autoSaveMenuOpen = false;
+let autoSaveTimer = null;
 let openGlyphColorMenu = null;
 let paletteMenuOpen = false;
 let blockSurfaceMenuOpen = false;
@@ -107,9 +132,182 @@ let openFileActionMenu = null;
 let pendingDeleteFile = null;
 let bulkDeleteMode = false;
 let selectedTreePaths = new Set();
-let activeTreePath = primaryFile;
+let activeTreePath = "";
+let expandedTreePaths = new Set();
 let activeDialogResolver = null;
 const glyphHighlightStorageKey = "styio-view:glyph-highlights";
+const autoSaveStorageKey = "styio-view:auto-save";
+const languageStorageKey = "styio-view:language";
+const refreshWorkspaceSvg = `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+    <path d="M21 3v5h-5"></path>
+    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+    <path d="M8 16H3v5"></path>
+  </svg>
+`;
+const cancelSelectionSvg = `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M18 6 6 18"></path>
+    <path d="m6 6 12 12"></path>
+  </svg>
+`;
+function sidebarToggleSvg(isOpen) {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+      <path d="M15 3v18"></path>
+      ${
+        isOpen
+          ? '<path d="m8 9 3 3-3 3"></path>'
+          : '<path d="m10 15-3-3 3-3"></path>'
+      }
+    </svg>
+  `;
+}
+const autoSaveModeOptionsList = [
+  { key: "off", label: "Off" },
+  { key: "afterDelay", label: "After Delay" },
+  { key: "onFocusChange", label: "On Focus Change" },
+  { key: "onWindowChange", label: "On Window Change" },
+];
+const languageOptionsList = [
+  { key: "zhCn", label: "中文" },
+  { key: "en", label: "English" },
+];
+const translations = {
+  zhCn: {
+    documentTitle: "Styio 编辑器",
+    appTitle: "Styio Editor",
+    openSidebar: "打开侧边栏",
+    closeSidebar: "关闭侧边栏",
+    fileTree: "文件树",
+    settings: "设置",
+    workspace: "工作区",
+    workspacePath: "工作区路径",
+    open: "打开",
+    workspaceActions: "工作区操作",
+    createFolder: "创建文件夹",
+    createFile: "创建文件",
+    selectFilesToDelete: "选择要删除的文件",
+    refreshWorkspace: "刷新工作区",
+    moreWorkspaceActions: "更多工作区操作",
+    language: "语言",
+    autoSave: "自动保存",
+    delay: "延迟",
+    glyphComposition: "符号组合渲染",
+    glyphHighlight: "符号高亮",
+    symbolColors: "符号颜色",
+    tabIndentation: "Tab 缩进",
+    usingBrowserStorage: "使用浏览器存储",
+    usingBrowserStorageBody: "在你选择真实工作区文件夹之前，文件和编辑器设置会暂存在浏览器缓存中。",
+    openWorkspace: "打开工作区",
+    dialog: "对话框",
+    closeDialog: "关闭对话框",
+    closeWorkspacePicker: "关闭工作区选择器",
+    openWorkspaceTitle: "打开工作区",
+    chooseWorkspaceRoot: "选择一个本地文件夹作为当前工作区根目录。",
+    goToParentFolder: "返回上级文件夹",
+    useThisFolder: "使用此文件夹",
+    noFilesInWorkspace: "当前工作区还没有文件。",
+    previewFile: "预览文件",
+    dirty: "未保存",
+    deleteSinglePrompt: "删除这个工作区里的选中项？",
+    deleteMultiplePrompt: "删除这个工作区里的 {count} 个选中项？",
+    delete: "删除",
+    cancel: "取消",
+    confirm: "确认",
+    renameFile: "重命名文件",
+    rename: "重命名",
+    renameFileMessage: "输入新的相对路径。",
+    createFileTitle: "创建文件",
+    createFileMessage: "输入当前工作区下的相对文件路径。",
+    createFolderTitle: "创建文件夹",
+    createFolderMessage: "输入当前工作区下的相对文件夹路径。",
+    noDirectoriesFound: "当前位置没有找到目录。",
+    loadingFolders: "正在加载文件夹…",
+    deleteActiveEntry: "删除 {name}",
+    deleteSelectedItems: "删除 {count} 个选中项",
+    exitDeleteSelection: "退出多选删除",
+    cancelMultiSelect: "取消多选",
+    enableGlyphRendering: "启用符号渲染",
+    disableGlyphRendering: "关闭符号渲染",
+    lineSelection: "选区",
+    diagnostics: "诊断",
+    projection: "投影",
+    diskLoading: "磁盘：加载中",
+    autosaveLoading: "自动保存：加载中",
+    glyphsLoading: "符号：加载中",
+    indentLoading: "缩进：加载中",
+    unitLoading: "单元：加载中",
+  },
+  en: {
+    documentTitle: "Styio Editor",
+    appTitle: "Styio Editor",
+    openSidebar: "Open sidebar",
+    closeSidebar: "Close sidebar",
+    fileTree: "File tree",
+    settings: "Settings",
+    workspace: "Workspace",
+    workspacePath: "Workspace path",
+    open: "Open",
+    workspaceActions: "Workspace actions",
+    createFolder: "Create folder",
+    createFile: "Create file",
+    selectFilesToDelete: "Select files to delete",
+    refreshWorkspace: "Refresh workspace",
+    moreWorkspaceActions: "More workspace actions",
+    language: "Language",
+    autoSave: "Auto Save",
+    delay: "Delay",
+    glyphComposition: "Glyph Composition",
+    glyphHighlight: "Glyph Highlight",
+    symbolColors: "Symbol Colors",
+    tabIndentation: "Tab Indentation",
+    usingBrowserStorage: "Using Browser Storage",
+    usingBrowserStorageBody:
+      "Files and editor settings are currently staying in browser cache until you choose a real workspace folder.",
+    openWorkspace: "Open Workspace",
+    dialog: "Dialog",
+    closeDialog: "Close dialog",
+    closeWorkspacePicker: "Close workspace picker",
+    openWorkspaceTitle: "Open Workspace",
+    chooseWorkspaceRoot: "Choose a local folder to use as the current workspace root.",
+    goToParentFolder: "Go to parent folder",
+    useThisFolder: "Use This Folder",
+    noFilesInWorkspace: "No files in this workspace yet.",
+    previewFile: "Preview file",
+    dirty: "dirty",
+    deleteSinglePrompt: "Delete the selected item from this workspace?",
+    deleteMultiplePrompt: "Delete {count} selected items from this workspace?",
+    delete: "Delete",
+    cancel: "Cancel",
+    confirm: "Confirm",
+    renameFile: "Rename File",
+    rename: "Rename",
+    renameFileMessage: "Enter the new relative path.",
+    createFileTitle: "Create File",
+    createFileMessage: "Enter a relative path under the current workspace.",
+    createFolderTitle: "Create Folder",
+    createFolderMessage: "Enter a relative folder path under the current workspace.",
+    noDirectoriesFound: "No directories found in this location.",
+    loadingFolders: "Loading folders…",
+    deleteActiveEntry: "Delete {name}",
+    deleteSelectedItems: "Delete {count} selected item{suffix}",
+    exitDeleteSelection: "Exit delete selection",
+    cancelMultiSelect: "Cancel multi-select",
+    enableGlyphRendering: "Enable glyph rendering",
+    disableGlyphRendering: "Disable glyph rendering",
+    lineSelection: "selection",
+    diagnostics: "diagnostics",
+    projection: "projection",
+    diskLoading: "disk: loading",
+    autosaveLoading: "autosave: loading",
+    glyphsLoading: "glyphs: loading",
+    indentLoading: "indent: loading",
+    unitLoading: "unit: loading",
+  },
+};
 
 const operatorGlyphs = {
   "#": { tokenClass: "token-hash", visual: "#" },
@@ -437,6 +635,90 @@ document.body.appendChild(measureLine);
 
 function getCssNumber(name) {
   return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+}
+
+function t(key, params = {}) {
+  const table = translations[activeLanguageKey] ?? translations.en;
+  let value = table[key] ?? translations.en[key] ?? key;
+  Object.entries(params).forEach(([name, replacement]) => {
+    value = value.replaceAll(`{${name}}`, String(replacement));
+  });
+  return value;
+}
+
+function persistLanguageState() {
+  try {
+    window.localStorage.setItem(languageStorageKey, activeLanguageKey);
+  } catch (error) {
+    console.warn("failed to persist language state", error);
+  }
+}
+
+function loadLanguageState() {
+  try {
+    const raw = window.localStorage.getItem(languageStorageKey);
+    if (languageOptionsList.some((option) => option.key === raw)) {
+      activeLanguageKey = raw;
+    }
+  } catch (error) {
+    console.warn("failed to restore language state", error);
+  }
+}
+
+function applyLanguageUi() {
+  document.documentElement.lang = activeLanguageKey === "zhCn" ? "zh-CN" : "en";
+  document.title = t("documentTitle");
+  currentFileTitle.textContent = t("appTitle");
+
+  toggleSidebar.setAttribute("aria-label", t("openSidebar"));
+  toggleSidebar.setAttribute("title", t("openSidebar"));
+  closeSidebar.setAttribute("aria-label", t("closeSidebar"));
+  closeSidebar.setAttribute("title", t("closeSidebar"));
+
+  document.querySelector('[data-drawer-tab="files"]')?.setAttribute("aria-label", t("fileTree"));
+  document.querySelector('[data-drawer-tab="files"]')?.setAttribute("title", t("fileTree"));
+  document.querySelector('[data-drawer-tab="settings"]')?.setAttribute("aria-label", t("settings"));
+  document.querySelector('[data-drawer-tab="settings"]')?.setAttribute("title", t("settings"));
+
+  workspaceTitle.textContent = t("workspace");
+  workspacePathInput.setAttribute("aria-label", t("workspacePath"));
+  workspacePathApply.textContent = t("open");
+  document.querySelector(".workspace-action-row")?.setAttribute("aria-label", t("workspaceActions"));
+  createFolderButton.setAttribute("aria-label", t("createFolder"));
+  createFolderButton.setAttribute("title", t("createFolder"));
+  quickCreateFileButton.setAttribute("aria-label", t("createFile"));
+  quickCreateFileButton.setAttribute("title", t("createFile"));
+  workspaceMoreButton.setAttribute("aria-label", t("moreWorkspaceActions"));
+  workspaceMoreButton.setAttribute("title", t("moreWorkspaceActions"));
+
+  languageTitle.textContent = t("language");
+  autoSaveTitle.textContent = t("autoSave");
+  autoSaveDelayLabel.textContent = t("delay");
+  glyphCompositionTitle.textContent = t("glyphComposition");
+  glyphHighlightTitle.textContent = t("glyphHighlight");
+  symbolColorsTitle.textContent = t("symbolColors");
+  tabIndentationTitle.textContent = t("tabIndentation");
+
+  workspaceCalloutTitle.textContent = t("usingBrowserStorage");
+  workspaceCalloutBody.textContent = t("usingBrowserStorageBody");
+  workspaceCalloutOpen.textContent = t("openWorkspace");
+
+  appDialogTitle.textContent = t("dialog");
+  appDialogClose.setAttribute("aria-label", t("closeDialog"));
+  appDialogClose.setAttribute("title", t("closeDialog"));
+
+  workspacePickerTitle.textContent = t("openWorkspaceTitle");
+  workspacePickerCaption.textContent = t("chooseWorkspaceRoot");
+  workspacePickerClose.setAttribute("aria-label", t("closeWorkspacePicker"));
+  workspacePickerClose.setAttribute("title", t("closeWorkspacePicker"));
+  workspacePickerUp.setAttribute("aria-label", t("goToParentFolder"));
+  workspacePickerUp.setAttribute("title", t("goToParentFolder"));
+  workspacePickerCurrent.setAttribute("aria-label", t("workspacePath"));
+  workspacePickerConfirm.textContent = t("useThisFolder");
+
+  appDialogCancel.textContent = t("cancel");
+  toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
+  toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
 }
 
 function getCaretLineIndex() {
@@ -1076,6 +1358,12 @@ function syncSidebar() {
   document.body.classList.toggle("sidebar-open", sidebarOpen);
   workspaceShell.classList.toggle("sidebar-open", sidebarOpen);
   toggleSidebar.setAttribute("aria-expanded", String(sidebarOpen));
+  toggleSidebar.setAttribute("aria-label", t("openSidebar"));
+  toggleSidebar.setAttribute("title", t("openSidebar"));
+  toggleSidebar.innerHTML = sidebarToggleSvg(false);
+  closeSidebar.innerHTML = sidebarToggleSvg(false);
+  closeSidebar.setAttribute("aria-label", t("closeSidebar"));
+  closeSidebar.setAttribute("title", t("closeSidebar"));
 
   drawerTabs.forEach((button) => {
     const active = button.dataset.drawerTab === activeDrawerTab;
@@ -1107,6 +1395,19 @@ function collectTreePaths(entries, bucket = new Set()) {
     bucket.add(entry.path);
     if (entry.type === "directory" && Array.isArray(entry.children)) {
       collectTreePaths(entry.children, bucket);
+    }
+  });
+  return bucket;
+}
+
+function collectDirectoryPaths(entries, bucket = new Set()) {
+  entries.forEach((entry) => {
+    if (!entry?.path || entry.type !== "directory") {
+      return;
+    }
+    bucket.add(entry.path);
+    if (Array.isArray(entry.children)) {
+      collectDirectoryPaths(entry.children, bucket);
     }
   });
   return bucket;
@@ -1158,7 +1459,18 @@ function joinRelativePath(basePath, leafName) {
   return basePath ? `${basePath}/${leafName}` : leafName;
 }
 
-function defaultContainerPathForCreation() {
+function normalizeWorkspaceDraftPath(rawPath) {
+  return String(rawPath || "")
+    .trim()
+    .replace(/^(?:(?:\.\/)|\/)+/, "");
+}
+
+function formatWorkspaceDraftPath(rawPath) {
+  const normalizedPath = normalizeWorkspaceDraftPath(rawPath);
+  return normalizedPath ? `./${normalizedPath}` : "./";
+}
+
+function resolveCreationBasePath() {
   const entry = activeTreeEntry();
   if (!entry) {
     return "";
@@ -1169,14 +1481,11 @@ function defaultContainerPathForCreation() {
   return parentDirectoryOf(entry.path);
 }
 
-function defaultCreateFileTarget() {
-  const basePath = defaultContainerPathForCreation();
-  return basePath ? joinRelativePath(basePath, "new_file.styio") : defaultCreateFilePath;
-}
-
-function defaultCreateFolderTarget() {
-  const basePath = defaultContainerPathForCreation();
-  return basePath ? joinRelativePath(basePath, "new_folder") : defaultCreateFolderPath;
+function defaultCreateTarget(kind) {
+  const leafName = defaultCreateLeafNames[kind];
+  const basePath = resolveCreationBasePath();
+  const targetPath = basePath ? joinRelativePath(basePath, leafName) : leafName;
+  return formatWorkspaceDraftPath(targetPath);
 }
 
 function isTreePathSelected(path) {
@@ -1205,23 +1514,219 @@ function syncBulkDeleteButton() {
   if (!bulkDeleteMode) {
     const activeEntry = activeTreeEntry();
     if (activeEntry) {
-      bulkDeleteButton.setAttribute("aria-label", `Delete ${activeEntry.name}`);
-      bulkDeleteButton.setAttribute("title", `Delete ${activeEntry.name}`);
+      const label = t("deleteActiveEntry", { name: activeEntry.name });
+      bulkDeleteButton.setAttribute("aria-label", label);
+      bulkDeleteButton.setAttribute("title", label);
       return;
     }
-    bulkDeleteButton.setAttribute("aria-label", "Select files to delete");
-    bulkDeleteButton.setAttribute("title", "Select files to delete");
+    bulkDeleteButton.setAttribute("aria-label", t("selectFilesToDelete"));
+    bulkDeleteButton.setAttribute("title", t("selectFilesToDelete"));
     return;
   }
 
   if (selectedCount > 0) {
-    bulkDeleteButton.setAttribute("aria-label", `Delete ${selectedCount} selected item${selectedCount > 1 ? "s" : ""}`);
-    bulkDeleteButton.setAttribute("title", `Delete ${selectedCount} selected item${selectedCount > 1 ? "s" : ""}`);
+    const label = t("deleteSelectedItems", {
+      count: selectedCount,
+      suffix: selectedCount > 1 ? "s" : "",
+    });
+    bulkDeleteButton.setAttribute("aria-label", label);
+    bulkDeleteButton.setAttribute("title", label);
     return;
   }
 
-  bulkDeleteButton.setAttribute("aria-label", "Exit delete selection");
-  bulkDeleteButton.setAttribute("title", "Exit delete selection");
+  bulkDeleteButton.setAttribute("aria-label", t("exitDeleteSelection"));
+  bulkDeleteButton.setAttribute("title", t("exitDeleteSelection"));
+}
+
+function syncRefreshWorkspaceButton() {
+  if (!refreshWorkspaceButton) {
+    return;
+  }
+
+  refreshWorkspaceButton.classList.toggle("is-cancel-mode", bulkDeleteMode);
+  refreshWorkspaceButton.innerHTML = bulkDeleteMode ? cancelSelectionSvg : refreshWorkspaceSvg;
+  const label = bulkDeleteMode ? t("cancelMultiSelect") : t("refreshWorkspace");
+  refreshWorkspaceButton.setAttribute("aria-label", label);
+  refreshWorkspaceButton.setAttribute("title", label);
+}
+
+function currentLanguageOption() {
+  return languageOptionsList.find((option) => option.key === activeLanguageKey) ?? languageOptionsList[0];
+}
+
+function syncLanguageUi() {
+  if (languageModeButton) {
+    languageModeButton.textContent = currentLanguageOption().label;
+    languageModeButton.setAttribute("aria-expanded", String(languageMenuOpen));
+  }
+
+  if (!languageModeOptions) {
+    return;
+  }
+
+  languageModeOptions.classList.toggle("is-open", languageMenuOpen);
+  languageModeOptions.querySelectorAll("[data-language-key]").forEach((button) => {
+    const active = button.dataset.languageKey === activeLanguageKey;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function renderLanguageOptions() {
+  if (!languageModeOptions) {
+    return;
+  }
+
+  languageModeOptions.innerHTML = languageOptionsList
+    .map(
+      (option) => `
+        <button class="palette-option" type="button" data-language-key="${option.key}">
+          ${option.label}
+        </button>
+      `,
+    )
+    .join("");
+
+  syncLanguageUi();
+}
+
+function currentAutoSaveOption() {
+  return autoSaveModeOptionsList.find((option) => option.key === autoSaveMode) ?? autoSaveModeOptionsList[0];
+}
+
+function clearAutoSaveTimer() {
+  if (autoSaveTimer !== null) {
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+}
+
+function persistAutoSaveState() {
+  try {
+    window.localStorage.setItem(
+      autoSaveStorageKey,
+      JSON.stringify({
+        mode: autoSaveMode,
+        delay: autoSaveDelay,
+      }),
+    );
+  } catch (error) {
+    console.warn("failed to persist auto save state", error);
+  }
+}
+
+function loadAutoSaveState() {
+  try {
+    const raw = window.localStorage.getItem(autoSaveStorageKey);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (autoSaveModeOptionsList.some((option) => option.key === parsed?.mode)) {
+      autoSaveMode = parsed.mode;
+    }
+    const nextDelay = Number(parsed?.delay);
+    if (Number.isFinite(nextDelay) && nextDelay >= 250) {
+      autoSaveDelay = Math.round(nextDelay / 250) * 250;
+    }
+  } catch (error) {
+    console.warn("failed to restore auto save state", error);
+  }
+}
+
+function syncAutoSaveUi() {
+  if (autoSaveModeButton) {
+    const labelMap = {
+      off: activeLanguageKey === "zhCn" ? "关闭" : "Off",
+      afterDelay: activeLanguageKey === "zhCn" ? "延迟后" : "After Delay",
+      onFocusChange: activeLanguageKey === "zhCn" ? "焦点切换时" : "On Focus Change",
+      onWindowChange: activeLanguageKey === "zhCn" ? "窗口切换时" : "On Window Change",
+    };
+    autoSaveModeButton.textContent = labelMap[autoSaveMode] ?? currentAutoSaveOption().label;
+    autoSaveModeButton.setAttribute("aria-expanded", String(autoSaveMenuOpen));
+  }
+
+  if (autoSaveModeOptions) {
+    autoSaveModeOptions.classList.toggle("is-open", autoSaveMenuOpen);
+    autoSaveModeOptions.querySelectorAll("[data-auto-save-mode]").forEach((button) => {
+      const active = button.dataset.autoSaveMode === autoSaveMode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  if (autoSaveDelayField) {
+    autoSaveDelayField.hidden = autoSaveMode !== "afterDelay";
+  }
+
+  if (autoSaveDelayInput) {
+    autoSaveDelayInput.value = String(autoSaveDelay);
+  }
+
+  if (autoSaveState) {
+    if (autoSaveMode === "off") {
+      autoSaveState.textContent = activeLanguageKey === "zhCn" ? "自动保存：关闭" : "autosave: off";
+    } else if (autoSaveMode === "afterDelay") {
+      autoSaveState.textContent =
+        activeLanguageKey === "zhCn" ? `自动保存：${autoSaveDelay}ms 后` : `autosave: after ${autoSaveDelay}ms`;
+    } else if (autoSaveMode === "onFocusChange") {
+      autoSaveState.textContent =
+        activeLanguageKey === "zhCn" ? "自动保存：焦点切换时" : "autosave: on focus change";
+    } else {
+      autoSaveState.textContent =
+        activeLanguageKey === "zhCn" ? "自动保存：窗口切换时" : "autosave: on window change";
+    }
+  }
+}
+
+function renderAutoSaveOptions() {
+  if (!autoSaveModeOptions) {
+    return;
+  }
+
+  autoSaveModeOptions.innerHTML = autoSaveModeOptionsList
+    .map(
+      (option) => `
+        <button class="palette-option" type="button" data-auto-save-mode="${option.key}">
+          ${
+            activeLanguageKey === "zhCn"
+              ? option.key === "off"
+                ? "关闭"
+                : option.key === "afterDelay"
+                  ? "延迟后"
+                  : option.key === "onFocusChange"
+                    ? "焦点切换时"
+                    : "窗口切换时"
+              : option.label
+          }
+        </button>
+      `,
+    )
+    .join("");
+
+  syncAutoSaveUi();
+}
+
+function triggerAutoSave(reason = "") {
+  if (autoSaveMode === "off" || !workspaceApiAvailable || saveInFlight || !fileDirty[currentFile]) {
+    return;
+  }
+
+  clearAutoSaveTimer();
+  void saveCurrentFile(reason);
+}
+
+function scheduleAutoSave() {
+  clearAutoSaveTimer();
+  if (autoSaveMode !== "afterDelay" || !workspaceApiAvailable || saveInFlight || !fileDirty[currentFile]) {
+    return;
+  }
+
+  autoSaveTimer = window.setTimeout(() => {
+    autoSaveTimer = null;
+    triggerAutoSave("after-delay");
+  }, autoSaveDelay);
 }
 
 function closeAppDialog(result = null) {
@@ -1240,10 +1745,10 @@ function closeAppDialog(result = null) {
 
 function openAppDialog(options = {}) {
   const {
-    title = "Dialog",
+    title = t("dialog"),
     message = "",
-    confirmLabel = "Confirm",
-    cancelLabel = "Cancel",
+    confirmLabel = t("confirm"),
+    cancelLabel = t("cancel"),
     input = null,
     items = [],
     placeholder = "",
@@ -1256,7 +1761,7 @@ function openAppDialog(options = {}) {
   }
 
   appDialogTitle.hidden = !title;
-  appDialogTitle.textContent = title || "";
+  appDialogTitle.textContent = title || t("dialog");
   appDialogMessage.textContent = message;
   appDialogMessage.classList.toggle("is-danger", destructive);
   appDialogConfirm.textContent = confirmLabel;
@@ -1343,7 +1848,7 @@ function renderFileTabs() {
           <button class="editor-tab-main" data-tab-file="${escapeHtml(fileName)}" type="button">
             <span class="editor-tab-label">${escapeHtml(fileName.split("/").pop() || fileName)}</span>
           </button>
-          <button class="editor-tab-close" data-tab-close="${escapeHtml(fileName)}" type="button" aria-label="Close ${escapeHtml(fileName)}" title="Close tab">
+          <button class="editor-tab-close" data-tab-close="${escapeHtml(fileName)}" type="button" aria-label="${escapeHtml(`${activeLanguageKey === "zhCn" ? "关闭 " : "Close "}${fileName}`)}" title="${escapeHtml(activeLanguageKey === "zhCn" ? "关闭标签页" : "Close tab")}">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6 6 18"></path>
               <path d="m6 6 12 12"></path>
@@ -1361,14 +1866,22 @@ function renderTreeEntries(entries, depth = 0) {
       if (entry.type === "directory") {
         const directorySelected = isTreePathSelected(entry.path);
         const directoryActive = activeTreePath === entry.path;
+        const directoryExpanded = expandedTreePaths.has(entry.path);
+        const selectVerb = directorySelected
+          ? activeLanguageKey === "zhCn"
+            ? "取消选择"
+            : "Deselect"
+          : activeLanguageKey === "zhCn"
+            ? "选择"
+            : "Select";
         return `
-          <details class="tree-folder ${bulkDeleteMode ? "is-bulk-delete-mode" : ""} ${directorySelected ? "is-bulk-selected" : ""} ${directoryActive ? "is-tree-active" : ""}" open style="--tree-depth:${depth}">
+          <details class="tree-folder ${bulkDeleteMode ? "is-bulk-delete-mode" : ""} ${directorySelected ? "is-bulk-selected" : ""} ${directoryActive ? "is-tree-active" : ""}" data-tree-folder-path="${escapeHtml(entry.path)}" ${directoryExpanded ? "open" : ""} style="--tree-depth:${depth}">
             <summary class="tree-folder-summary" data-tree-folder="${escapeHtml(entry.path)}">
               <div class="tree-folder-leading">
                 ${
                   bulkDeleteMode
                     ? `
-                      <button class="tree-select-toggle ${directorySelected ? "is-selected" : ""}" data-select-tree-path="${escapeHtml(entry.path)}" type="button" aria-label="${directorySelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}" title="${directorySelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}">
+                      <button class="tree-select-toggle ${directorySelected ? "is-selected" : ""}" data-select-tree-path="${escapeHtml(entry.path)}" type="button" aria-label="${escapeHtml(`${selectVerb} ${entry.name}`)}" title="${escapeHtml(`${selectVerb} ${entry.name}`)}">
                         <span class="tree-select-dot" aria-hidden="true"></span>
                       </button>
                     `
@@ -1400,6 +1913,13 @@ function renderTreeEntries(entries, depth = 0) {
 
       const fileSelected = isTreePathSelected(fileName);
       const fileActive = activeTreePath === fileName;
+      const selectVerb = fileSelected
+        ? activeLanguageKey === "zhCn"
+          ? "取消选择"
+          : "Deselect"
+        : activeLanguageKey === "zhCn"
+          ? "选择"
+          : "Select";
 
       return `
         <div class="tree-file-card ${fileActive ? "is-tree-active" : ""} ${bulkDeleteMode ? "is-bulk-delete-mode" : ""} ${fileSelected ? "is-bulk-selected" : ""}" style="--tree-depth:${depth}">
@@ -1407,7 +1927,7 @@ function renderTreeEntries(entries, depth = 0) {
             ${
               bulkDeleteMode
                 ? `
-                  <button class="tree-select-toggle ${fileSelected ? "is-selected" : ""}" data-select-tree-path="${escapeHtml(fileName)}" type="button" aria-label="${fileSelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}" title="${fileSelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}">
+                  <button class="tree-select-toggle ${fileSelected ? "is-selected" : ""}" data-select-tree-path="${escapeHtml(fileName)}" type="button" aria-label="${escapeHtml(`${selectVerb} ${entry.name}`)}" title="${escapeHtml(`${selectVerb} ${entry.name}`)}">
                     <span class="tree-select-dot" aria-hidden="true"></span>
                   </button>
                 `
@@ -1422,7 +1942,7 @@ function renderTreeEntries(entries, depth = 0) {
             ${
               bulkDeleteMode
                 ? `
-                  <button class="tree-preview-button" data-preview-file="${escapeHtml(fileName)}" type="button" aria-label="Preview ${escapeHtml(entry.name)}" title="Preview file">
+                  <button class="tree-preview-button" data-preview-file="${escapeHtml(fileName)}" type="button" aria-label="${escapeHtml(`${t("previewFile")} ${entry.name}`)}" title="${escapeHtml(t("previewFile"))}">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
                       <circle cx="12" cy="12" r="3"></circle>
@@ -1440,7 +1960,7 @@ function renderTreeEntries(entries, depth = 0) {
 
 function renderFileTree() {
   if (!workspaceEntries.length && !fileOrder.length) {
-    fileTree.innerHTML = '<div class="workspace-picker-empty">No files in this workspace yet.</div>';
+    fileTree.innerHTML = `<div class="workspace-picker-empty">${escapeHtml(t("noFilesInWorkspace"))}</div>`;
     return;
   }
 
@@ -1605,27 +2125,53 @@ async function deleteWorkspacePaths(paths) {
   }
 }
 
+async function confirmDeletePaths(paths) {
+  const deleteItems = normalizeDeleteSelection(paths);
+  if (!deleteItems.length) {
+    return;
+  }
+
+  const confirmed = await openConfirmDialog({
+    title: "",
+    message:
+      deleteItems.length === 1
+        ? t("deleteSinglePrompt")
+        : t("deleteMultiplePrompt", { count: deleteItems.length }),
+    confirmLabel: t("delete"),
+    destructive: true,
+    items: deleteItems,
+  });
+  if (confirmed === null) {
+    return;
+  }
+
+  await deleteWorkspacePaths(deleteItems);
+}
+
 async function refreshWorkspace(preferredFile = currentFile) {
   openFileActionMenu = null;
   pendingDeleteFile = null;
-  clearBulkDeleteSelection();
+  exitBulkDeleteMode();
+  activeTreePath = "";
   await loadWorkspace({ preferredFile, resetState: true });
-  await focusFile(currentFile);
+  editorInput.value = fileSources[currentFile] ?? "";
+  renderEditor();
 }
 
 async function renameWorkspaceFile(fileName) {
+  const displayedPath = formatWorkspaceDraftPath(fileName);
   const suggestedPath = await openPromptDialog({
-    title: "Rename File",
-    message: "Enter the new relative path.",
-    confirmLabel: "Rename",
-    input: fileName,
-    placeholder: "src/main.styio",
+    title: t("renameFile"),
+    message: t("renameFileMessage"),
+    confirmLabel: t("rename"),
+    input: displayedPath,
+    placeholder: displayedPath,
   });
   if (suggestedPath === null) {
     return;
   }
 
-  const nextPath = suggestedPath.trim();
+  const nextPath = normalizeWorkspaceDraftPath(suggestedPath);
   if (!nextPath || nextPath === fileName) {
     return;
   }
@@ -1672,73 +2218,54 @@ async function renameWorkspaceFile(fileName) {
   }
 }
 
-async function createWorkspaceFile() {
+async function createWorkspaceEntry(kind) {
+  const isFile = kind === "file";
+  const defaultTarget = defaultCreateTarget(kind);
   const relativePath = await openPromptDialog({
-    title: "Create File",
-    message: "Enter a relative path under the current workspace.",
-    confirmLabel: "Create",
-    input: defaultCreateFileTarget(),
-    placeholder: defaultCreateFileTarget(),
+    title: isFile ? t("createFileTitle") : t("createFolderTitle"),
+    message: isFile ? t("createFileMessage") : t("createFolderMessage"),
+    confirmLabel: activeLanguageKey === "zhCn" ? "创建" : "Create",
+    input: defaultTarget,
+    placeholder: defaultTarget,
   });
   if (relativePath === null) {
     return;
   }
 
-  const nextPath = relativePath.trim();
+  const nextPath = normalizeWorkspaceDraftPath(relativePath);
   if (!nextPath) {
     return;
   }
 
   try {
-    const response = await fetch(`${workspaceApiBase}/create-file`, {
+    const response = await fetch(`${workspaceApiBase}/${isFile ? "create-file" : "create-folder"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: nextPath, content: "" }),
+      body: JSON.stringify(isFile ? { path: nextPath, content: "" } : { path: nextPath }),
     });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.error || `create file failed with ${response.status}`);
+      throw new Error(payload.error || `create ${kind} failed with ${response.status}`);
     }
 
-    await loadWorkspace({ preferredFile: payload.file });
-    await focusFile(payload.file);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-async function createWorkspaceFolder() {
-  const relativePath = await openPromptDialog({
-    title: "Create Folder",
-    message: "Enter a relative folder path under the current workspace.",
-    confirmLabel: "Create",
-    input: defaultCreateFolderTarget(),
-    placeholder: defaultCreateFolderTarget(),
-  });
-  if (relativePath === null) {
-    return;
-  }
-
-  const nextPath = relativePath.trim();
-  if (!nextPath) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`${workspaceApiBase}/create-folder`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: nextPath }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || `create folder failed with ${response.status}`);
+    if (isFile) {
+      await loadWorkspace({ preferredFile: payload.file });
+      await focusFile(payload.file);
+      return;
     }
 
     await refreshWorkspace(currentFile);
   } catch (error) {
     console.error(error);
   }
+}
+
+async function createWorkspaceFile() {
+  await createWorkspaceEntry("file");
+}
+
+async function createWorkspaceFolder() {
+  await createWorkspaceEntry("folder");
 }
 
 async function loadWorkspaceFile(fileName) {
@@ -1795,7 +2322,7 @@ function renderWorkspacePicker(snapshot) {
           `,
         )
         .join("")
-    : '<div class="workspace-picker-empty">No directories found in this location.</div>';
+    : `<div class="workspace-picker-empty">${escapeHtml(t("noDirectoriesFound"))}</div>`;
 }
 
 async function browseWorkspaceDirectories(path) {
@@ -1805,8 +2332,8 @@ async function browseWorkspaceDirectories(path) {
   }
 
   workspacePickerCurrent.value = targetPath;
-  workspacePickerList.innerHTML = '<div class="workspace-picker-empty">Loading folders…</div>';
-  setWorkspacePickerMessage("Choose a local folder to use as the current workspace root.");
+  workspacePickerList.innerHTML = `<div class="workspace-picker-empty">${escapeHtml(t("loadingFolders"))}</div>`;
+  setWorkspacePickerMessage(t("chooseWorkspaceRoot"));
 
   try {
     const response = await fetch(`/api/browser/directories?path=${encodeURIComponent(targetPath)}`, {
@@ -1835,13 +2362,13 @@ function openWorkspacePicker(startPath = workspacePathInput.value.trim() || work
 
 function closeWorkspacePicker() {
   workspacePickerOverlay.hidden = true;
-  setWorkspacePickerMessage("Choose a local folder to use as the current workspace root.");
+  setWorkspacePickerMessage(t("chooseWorkspaceRoot"));
 }
 
 async function applyWorkspaceRoot(path) {
   const nextPath = (path || "").trim();
   if (!nextPath) {
-    setWorkspacePickerMessage("Choose a local folder to use as the current workspace root.");
+    setWorkspacePickerMessage(t("chooseWorkspaceRoot"));
     return;
   }
 
@@ -1987,57 +2514,80 @@ function updateIndentUi() {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  indentState.textContent = `indent: ${indentSize} spaces`;
+  indentState.textContent =
+    activeLanguageKey === "zhCn" ? `缩进：${indentSize} 个空格` : `indent: ${indentSize} spaces`;
 }
 
 function updateStatusbar(analysis) {
   latestAnalysis = analysis;
-  currentFileTitle.textContent = "Styio Editor";
+  currentFileTitle.textContent = t("appTitle");
   workspacePathHint.hidden = true;
   workspacePathHint.textContent = "";
-  glyphState.textContent = `glyphs: ${glyphsOn ? "on" : "off"} / ${analysis.glyphCount}`;
+  glyphState.textContent =
+    activeLanguageKey === "zhCn"
+      ? `符号：${glyphsOn ? "开启" : "关闭"} / ${analysis.glyphCount}`
+      : `glyphs: ${glyphsOn ? "on" : "off"} / ${analysis.glyphCount}`;
   updateIndentUi();
-  unitState.textContent = analysis.ready ? "unit: ready" : "unit: incomplete";
-  issueState.textContent = `diagnostics: ${analysis.warnings.length} warning / ${analysis.errors.length} errors`;
-  renderState.textContent = `projection: ${analysis.glyphCount} glyphs / ${analysis.blocks.length} blocks`;
+  unitState.textContent = analysis.ready
+    ? activeLanguageKey === "zhCn"
+      ? "单元：就绪"
+      : "unit: ready"
+    : activeLanguageKey === "zhCn"
+      ? "单元：未完成"
+      : "unit: incomplete";
+  issueState.textContent =
+    activeLanguageKey === "zhCn"
+      ? `诊断：${analysis.warnings.length} 个警告 / ${analysis.errors.length} 个错误`
+      : `diagnostics: ${analysis.warnings.length} warning / ${analysis.errors.length} errors`;
+  renderState.textContent =
+    activeLanguageKey === "zhCn"
+      ? `投影：${analysis.glyphCount} 个符号 / ${analysis.blocks.length} 个块`
+      : `projection: ${analysis.glyphCount} glyphs / ${analysis.blocks.length} blocks`;
   const { start, end } = normalizedSelectionRange();
   if (start === end) {
-    cursorState.textContent = `selection: line ${padLine(lineIndexForOffset(analysis, start))}`;
+    cursorState.textContent =
+      activeLanguageKey === "zhCn"
+        ? `选区：第 ${padLine(lineIndexForOffset(analysis, start))} 行`
+        : `selection: line ${padLine(lineIndexForOffset(analysis, start))}`;
     return;
   }
 
   const startLine = lineIndexForOffset(analysis, start);
   const endLine = lineIndexForOffset(analysis, Math.max(start, end - 1));
-  cursorState.textContent = `selection: ${padLine(startLine)}-${padLine(endLine)} / ${end - start} chars`;
+  cursorState.textContent =
+    activeLanguageKey === "zhCn"
+      ? `选区：${padLine(startLine)}-${padLine(endLine)} / ${end - start} 个字符`
+      : `selection: ${padLine(startLine)}-${padLine(endLine)} / ${end - start} chars`;
 }
 
 function updateSaveUi() {
   if (saveFile) {
     saveFile.disabled = saveInFlight;
-    saveFile.textContent = saveInFlight ? "Saving..." : "Save";
+    saveFile.textContent = saveInFlight ? (activeLanguageKey === "zhCn" ? "保存中..." : "Saving...") : activeLanguageKey === "zhCn" ? "保存" : "Save";
   }
 
   if (!workspaceApiAvailable) {
-    setSaveState("volatile", "disk: api offline");
+    setSaveState("volatile", activeLanguageKey === "zhCn" ? "磁盘：接口离线" : "disk: api offline");
     return;
   }
 
   if (saveInFlight) {
-    setSaveState("saving", "disk: saving");
+    setSaveState("saving", activeLanguageKey === "zhCn" ? "磁盘：保存中" : "disk: saving");
     return;
   }
 
   if (fileDirty[currentFile]) {
-    setSaveState("dirty", "disk: unsaved edits");
+    setSaveState("dirty", activeLanguageKey === "zhCn" ? "磁盘：有未保存改动" : "disk: unsaved edits");
     return;
   }
 
-  setSaveState("saved", `disk: saved / ${currentFile}`);
+  setSaveState("saved", activeLanguageKey === "zhCn" ? `磁盘：已保存 / ${currentFile}` : `disk: saved / ${currentFile}`);
 }
 
 function renderEditor() {
   const analysis = analyzeSource(fileSources[currentFile]);
   syncBulkDeleteButton();
+  syncRefreshWorkspaceButton();
   renderFileTabs();
   renderFileTree();
   renderGutter(analysis);
@@ -2225,6 +2775,7 @@ async function loadWorkspace(options = {}) {
     workspaceName = payload.workspaceName || "workspace";
     workspaceEntries = Array.isArray(payload.entries) ? payload.entries : [];
     workspaceFiles = Array.isArray(payload.files) && payload.files.length ? payload.files : [primaryFile];
+    const availableDirectoryPaths = collectDirectoryPaths(workspaceEntries);
 
     if (resetState) {
       workspaceLoadedFiles = new Set();
@@ -2240,8 +2791,13 @@ async function loadWorkspace(options = {}) {
     });
 
     const availableTreePaths = collectTreePaths(workspaceEntries, new Set(workspaceFiles));
+    if (!expandedTreePaths.size && availableDirectoryPaths.size) {
+      expandedTreePaths = new Set(availableDirectoryPaths);
+    } else {
+      expandedTreePaths = new Set(Array.from(expandedTreePaths).filter((entry) => availableDirectoryPaths.has(entry)));
+    }
     selectedTreePaths = new Set(Array.from(selectedTreePaths).filter((entry) => availableTreePaths.has(entry)));
-    if (!availableTreePaths.has(activeTreePath)) {
+    if (activeTreePath && !availableTreePaths.has(activeTreePath)) {
       activeTreePath = chooseWorkspaceFile(preferredFile, workspaceFiles);
     }
 
@@ -2279,6 +2835,8 @@ async function saveCurrentFile() {
   if (saveInFlight) {
     return;
   }
+
+  clearAutoSaveTimer();
 
   if (!workspaceApiAvailable) {
     setSaveState("volatile", "disk: api offline");
@@ -2417,15 +2975,22 @@ fileTree.addEventListener("click", (event) => {
 
   const folderSummary = event.target.closest("[data-tree-folder]");
   if (folderSummary) {
+    event.preventDefault();
     const folderPath = folderSummary.dataset.treeFolder;
-    activeTreePath = folderPath;
+    if (expandedTreePaths.has(folderPath)) {
+      expandedTreePaths.delete(folderPath);
+    } else {
+      expandedTreePaths.add(folderPath);
+    }
     if (bulkDeleteMode) {
-      event.preventDefault();
+      activeTreePath = folderPath;
       if (selectedTreePaths.has(folderPath)) {
         selectedTreePaths.delete(folderPath);
       } else {
         selectedTreePaths.add(folderPath);
       }
+    } else {
+      activeTreePath = folderPath;
     }
     renderEditor();
     return;
@@ -2459,7 +3024,14 @@ fileTree.addEventListener("click", (event) => {
 
   pendingDeleteFile = null;
   openFileActionMenu = null;
-  focusFile(fileButton.dataset.treeFile);
+  const fileName = fileButton.dataset.treeFile;
+  if (activeTreePath === fileName) {
+    activeTreePath = "";
+    renderEditor();
+    return;
+  }
+
+  focusFile(fileName);
   activeDrawerTab = "files";
   syncSidebar();
 });
@@ -2540,11 +3112,23 @@ quickCreateFileButton.addEventListener("click", () => {
 });
 
 refreshWorkspaceButton.addEventListener("click", () => {
+  if (bulkDeleteMode) {
+    exitBulkDeleteMode();
+    renderEditor();
+    return;
+  }
+
   refreshWorkspace(currentFile);
 });
 
 bulkDeleteButton.addEventListener("click", async () => {
   if (!bulkDeleteMode) {
+    const activeEntry = activeTreeEntry();
+    if (activeEntry) {
+      await confirmDeletePaths([activeEntry.path]);
+      return;
+    }
+
     bulkDeleteMode = true;
     pendingDeleteFile = null;
     openFileActionMenu = null;
@@ -2562,22 +3146,7 @@ bulkDeleteButton.addEventListener("click", async () => {
     return;
   }
 
-  const deleteItems = normalizeDeleteSelection(Array.from(selectedTreePaths));
-  const confirmed = await openConfirmDialog({
-    title: "",
-    message:
-      deleteItems.length === 1
-        ? "Delete the selected item from this workspace?"
-        : `Delete ${deleteItems.length} selected items from this workspace?`,
-    confirmLabel: "Delete",
-    destructive: true,
-    items: deleteItems,
-  });
-  if (confirmed === null) {
-    return;
-  }
-
-  await deleteWorkspacePaths(deleteItems);
+  await confirmDeletePaths(Array.from(selectedTreePaths));
 });
 
 workspaceMoreButton.addEventListener("click", () => {
@@ -2588,8 +3157,8 @@ toggleGlyphs.addEventListener("click", () => {
   glyphsOn = !glyphsOn;
   document.body.classList.toggle("glyphs-off", !glyphsOn);
   toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
-  toggleGlyphs.setAttribute("aria-label", glyphsOn ? "Disable glyph rendering" : "Enable glyph rendering");
-  toggleGlyphs.setAttribute("title", glyphsOn ? "Disable glyph rendering" : "Enable glyph rendering");
+  toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
+  toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
   renderEditor();
 });
 
@@ -2602,6 +3171,7 @@ indentControl.querySelectorAll("[data-indent-size]").forEach((button) => {
 
 highlightPaletteButton.addEventListener("click", () => {
   paletteMenuOpen = !paletteMenuOpen;
+  autoSaveMenuOpen = false;
   blockSurfaceMenuOpen = false;
   lineHighlightMenuOpen = false;
   syncGlyphHighlightUi();
@@ -2630,6 +3200,7 @@ highlightPaletteOptions.addEventListener("click", (event) => {
 
 blockSurfaceButton.addEventListener("click", () => {
   blockSurfaceMenuOpen = !blockSurfaceMenuOpen;
+  autoSaveMenuOpen = false;
   paletteMenuOpen = false;
   lineHighlightMenuOpen = false;
   syncGlyphHighlightUi();
@@ -2655,9 +3226,83 @@ blockSurfaceOptions.addEventListener("click", (event) => {
 
 lineHighlightButton.addEventListener("click", () => {
   lineHighlightMenuOpen = !lineHighlightMenuOpen;
+  autoSaveMenuOpen = false;
   paletteMenuOpen = false;
   blockSurfaceMenuOpen = false;
   syncGlyphHighlightUi();
+});
+
+autoSaveModeButton?.addEventListener("click", () => {
+  autoSaveMenuOpen = !autoSaveMenuOpen;
+  languageMenuOpen = false;
+  paletteMenuOpen = false;
+  blockSurfaceMenuOpen = false;
+  lineHighlightMenuOpen = false;
+  openGlyphColorMenu = null;
+  syncLanguageUi();
+  syncAutoSaveUi();
+  syncGlyphHighlightUi();
+});
+
+autoSaveModeOptions?.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-auto-save-mode]");
+  if (!option) {
+    return;
+  }
+
+  autoSaveMode = option.dataset.autoSaveMode;
+  autoSaveMenuOpen = false;
+  clearAutoSaveTimer();
+  syncAutoSaveUi();
+  persistAutoSaveState();
+  if (autoSaveMode === "afterDelay") {
+    scheduleAutoSave();
+  }
+});
+
+autoSaveDelayInput?.addEventListener("input", () => {
+  const nextDelay = Number(autoSaveDelayInput.value);
+  if (!Number.isFinite(nextDelay) || nextDelay < 250) {
+    return;
+  }
+
+  autoSaveDelay = Math.round(nextDelay / 250) * 250;
+  syncAutoSaveUi();
+  persistAutoSaveState();
+  if (autoSaveMode === "afterDelay") {
+    scheduleAutoSave();
+  }
+});
+
+autoSaveDelayInput?.addEventListener("change", () => {
+  autoSaveDelayInput.value = String(autoSaveDelay);
+});
+
+languageModeButton?.addEventListener("click", () => {
+  languageMenuOpen = !languageMenuOpen;
+  autoSaveMenuOpen = false;
+  paletteMenuOpen = false;
+  blockSurfaceMenuOpen = false;
+  lineHighlightMenuOpen = false;
+  openGlyphColorMenu = null;
+  syncLanguageUi();
+  syncAutoSaveUi();
+  syncGlyphHighlightUi();
+});
+
+languageModeOptions?.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-language-key]");
+  if (!option) {
+    return;
+  }
+
+  activeLanguageKey = option.dataset.languageKey;
+  languageMenuOpen = false;
+  persistLanguageState();
+  applyLanguageUi();
+  renderAutoSaveOptions();
+  syncLanguageUi();
+  renderEditor();
 });
 
 lineHighlightOptions.addEventListener("click", (event) => {
@@ -2736,6 +3381,20 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (!event.target.closest("#autoSaveModeButton") && !event.target.closest("#autoSaveModeOptions")) {
+    if (autoSaveMenuOpen) {
+      autoSaveMenuOpen = false;
+      syncAutoSaveUi();
+    }
+  }
+
+  if (!event.target.closest("#languageModeButton") && !event.target.closest("#languageModeOptions")) {
+    if (languageMenuOpen) {
+      languageMenuOpen = false;
+      syncLanguageUi();
+    }
+  }
+
   if (!event.target.closest("#blockSurfaceButton") && !event.target.closest("#blockSurfaceOptions")) {
     if (blockSurfaceMenuOpen) {
       blockSurfaceMenuOpen = false;
@@ -2773,6 +3432,7 @@ if (saveFile) {
 editorInput.addEventListener("input", () => {
   fileSources[currentFile] = editorInput.value;
   fileDirty[currentFile] = true;
+  scheduleAutoSave();
   renderEditor();
 });
 
@@ -2786,6 +3446,12 @@ editorInput.addEventListener("scroll", () => {
 
 editorInput.addEventListener("click", () => {
   renderEditor();
+});
+
+editorInput.addEventListener("blur", () => {
+  if (autoSaveMode === "onFocusChange") {
+    triggerAutoSave("focus-change");
+  }
 });
 
 editorInput.addEventListener("keyup", () => {
@@ -2943,20 +3609,39 @@ window.addEventListener("beforeunload", (event) => {
   event.returnValue = "";
 });
 
+window.addEventListener("blur", () => {
+  if (autoSaveMode === "onWindowChange") {
+    triggerAutoSave("window-blur");
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && autoSaveMode === "onWindowChange") {
+    triggerAutoSave("visibility-change");
+  }
+});
+
 async function bootstrap() {
   [primaryFile].forEach((fileName) => {
     fileDirty[fileName] = false;
   });
 
+  loadLanguageState();
+  applyLanguageUi();
+  renderLanguageOptions();
+  loadAutoSaveState();
+  renderAutoSaveOptions();
   loadGlyphHighlightState();
   renderGlyphHighlightControls();
   toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
-  toggleGlyphs.setAttribute("aria-label", "Disable glyph rendering");
-  toggleGlyphs.setAttribute("title", "Disable glyph rendering");
+  toggleGlyphs.setAttribute("aria-label", t("disableGlyphRendering"));
+  toggleGlyphs.setAttribute("title", t("disableGlyphRendering"));
   updateIndentUi();
   syncSidebar();
   await loadWorkspace();
-  await focusFile(currentFile);
+  activeTreePath = "";
+  editorInput.value = fileSources[currentFile] ?? "";
+  renderEditor();
 }
 
 bootstrap();
