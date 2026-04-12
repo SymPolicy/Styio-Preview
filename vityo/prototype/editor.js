@@ -1,5 +1,7 @@
 const workspaceApiBase = "/api/workspace";
 const primaryFile = "main.styio";
+const defaultCreateFilePath = "src/new_file.styio";
+const defaultCreateFolderPath = "src/new_folder";
 const fallbackSources = {
   "main.styio": `pipeline mainFlow
 let staged := source |> normalize
@@ -19,8 +21,8 @@ const currentFileTitle = document.getElementById("currentFileTitle");
 const toggleSidebar = document.getElementById("toggleSidebar");
 const closeSidebar = document.getElementById("closeSidebar");
 const drawerTabs = Array.from(document.querySelectorAll("[data-drawer-tab]"));
+const fileTabs = document.getElementById("fileTabs");
 const fileTree = document.getElementById("fileTree");
-const workspaceState = document.getElementById("workspaceState");
 const saveState = document.getElementById("saveState");
 const glyphState = document.getElementById("glyphState");
 const indentState = document.getElementById("indentState");
@@ -28,7 +30,33 @@ const unitState = document.getElementById("unitState");
 const cursorState = document.getElementById("cursorState");
 const issueState = document.getElementById("issueState");
 const renderState = document.getElementById("renderState");
-const fileState = document.getElementById("fileState");
+const workspacePathHint = document.getElementById("workspacePathHint");
+const workspacePathInput = document.getElementById("workspacePathInput");
+const workspacePathApply = document.getElementById("workspacePathApply");
+const createFolderButton = document.getElementById("createFolderButton");
+const quickCreateFileButton = document.getElementById("quickCreateFileButton");
+const refreshWorkspaceButton = document.getElementById("refreshWorkspaceButton");
+const bulkDeleteButton = document.getElementById("bulkDeleteButton");
+const workspaceMoreButton = document.getElementById("workspaceMoreButton");
+const workspaceCallout = document.getElementById("workspaceCallout");
+const workspaceCalloutOpen = document.getElementById("workspaceCalloutOpen");
+const workspacePickerOverlay = document.getElementById("workspacePickerOverlay");
+const workspacePickerClose = document.getElementById("workspacePickerClose");
+const workspacePickerCaption = document.getElementById("workspacePickerCaption");
+const workspacePickerUp = document.getElementById("workspacePickerUp");
+const workspacePickerCurrent = document.getElementById("workspacePickerCurrent");
+const workspacePickerBreadcrumbs = document.getElementById("workspacePickerBreadcrumbs");
+const workspacePickerList = document.getElementById("workspacePickerList");
+const workspacePickerConfirm = document.getElementById("workspacePickerConfirm");
+const appDialogOverlay = document.getElementById("appDialogOverlay");
+const appDialogClose = document.getElementById("appDialogClose");
+const appDialogTitle = document.getElementById("appDialogTitle");
+const appDialogMessage = document.getElementById("appDialogMessage");
+const appDialogInputField = document.getElementById("appDialogInputField");
+const appDialogInput = document.getElementById("appDialogInput");
+const appDialogList = document.getElementById("appDialogList");
+const appDialogCancel = document.getElementById("appDialogCancel");
+const appDialogConfirm = document.getElementById("appDialogConfirm");
 const toggleGlyphs = document.getElementById("toggleGlyphs");
 const indentControl = document.getElementById("indentControl");
 const saveFile = document.getElementById("saveFile");
@@ -53,6 +81,11 @@ let fileOrder = [primaryFile];
 let currentFile = primaryFile;
 let glyphsOn = true;
 let workspaceApiAvailable = false;
+let workspaceRootPath = "";
+let workspaceName = "workspace";
+let workspaceEntries = [];
+let workspaceFiles = [primaryFile];
+let workspaceLoadedFiles = new Set();
 let saveInFlight = false;
 let latestAnalysis = null;
 let sidebarOpen = false;
@@ -68,6 +101,14 @@ let activeLineHighlightKey = "graphite";
 let pointerSelectionAnchor = null;
 let pointerSelectionCleanup = null;
 let pendingNativeRenderFrame = 0;
+let workspacePickerPath = "";
+let workspacePickerParentPath = null;
+let openFileActionMenu = null;
+let pendingDeleteFile = null;
+let bulkDeleteMode = false;
+let selectedTreePaths = new Set();
+let activeTreePath = primaryFile;
+let activeDialogResolver = null;
 const glyphHighlightStorageKey = "styio-view:glyph-highlights";
 
 const operatorGlyphs = {
@@ -1044,13 +1085,309 @@ function syncSidebar() {
   });
 }
 
-function renderFileTree() {
-  fileTree.innerHTML = fileOrder
+function chooseWorkspaceFile(preferredFile, files) {
+  if (preferredFile && files.includes(preferredFile)) {
+    return preferredFile;
+  }
+  if (files.includes(primaryFile)) {
+    return primaryFile;
+  }
+  const styioFile = files.find((filePath) => filePath.endsWith(".styio"));
+  if (styioFile) {
+    return styioFile;
+  }
+  return files[0] ?? primaryFile;
+}
+
+function collectTreePaths(entries, bucket = new Set()) {
+  entries.forEach((entry) => {
+    if (!entry?.path) {
+      return;
+    }
+    bucket.add(entry.path);
+    if (entry.type === "directory" && Array.isArray(entry.children)) {
+      collectTreePaths(entry.children, bucket);
+    }
+  });
+  return bucket;
+}
+
+function normalizeDeleteSelection(paths) {
+  const normalized = Array.from(new Set((paths || []).map((path) => String(path || "").trim()).filter(Boolean))).sort();
+  return normalized.filter((candidate, index) => {
+    return !normalized.some((other, otherIndex) => {
+      if (index === otherIndex) {
+        return false;
+      }
+      return candidate.startsWith(`${other}/`);
+    });
+  });
+}
+
+function findTreeEntryByPath(entries, targetPath) {
+  for (const entry of entries || []) {
+    if (entry?.path === targetPath) {
+      return entry;
+    }
+    if (entry?.type === "directory") {
+      const nested = findTreeEntryByPath(entry.children || [], targetPath);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return null;
+}
+
+function activeTreeEntry() {
+  if (!activeTreePath) {
+    return null;
+  }
+  if (activeTreePath === currentFile && !workspaceEntries.length) {
+    return { type: "file", path: currentFile, name: currentFile.split("/").pop() || currentFile };
+  }
+  return findTreeEntryByPath(workspaceEntries, activeTreePath);
+}
+
+function parentDirectoryOf(path) {
+  const index = String(path || "").lastIndexOf("/");
+  return index >= 0 ? path.slice(0, index) : "";
+}
+
+function joinRelativePath(basePath, leafName) {
+  return basePath ? `${basePath}/${leafName}` : leafName;
+}
+
+function defaultContainerPathForCreation() {
+  const entry = activeTreeEntry();
+  if (!entry) {
+    return "";
+  }
+  if (entry.type === "directory") {
+    return entry.path;
+  }
+  return parentDirectoryOf(entry.path);
+}
+
+function defaultCreateFileTarget() {
+  const basePath = defaultContainerPathForCreation();
+  return basePath ? joinRelativePath(basePath, "new_file.styio") : defaultCreateFilePath;
+}
+
+function defaultCreateFolderTarget() {
+  const basePath = defaultContainerPathForCreation();
+  return basePath ? joinRelativePath(basePath, "new_folder") : defaultCreateFolderPath;
+}
+
+function isTreePathSelected(path) {
+  return selectedTreePaths.has(path);
+}
+
+function clearBulkDeleteSelection() {
+  selectedTreePaths = new Set();
+}
+
+function exitBulkDeleteMode() {
+  bulkDeleteMode = false;
+  clearBulkDeleteSelection();
+}
+
+function syncBulkDeleteButton() {
+  if (!bulkDeleteButton) {
+    return;
+  }
+
+  const selectedCount = selectedTreePaths.size;
+  bulkDeleteButton.classList.toggle("is-active", bulkDeleteMode);
+  bulkDeleteButton.classList.toggle("has-selection", bulkDeleteMode && selectedCount > 0);
+  bulkDeleteButton.setAttribute("aria-pressed", String(bulkDeleteMode));
+
+  if (!bulkDeleteMode) {
+    const activeEntry = activeTreeEntry();
+    if (activeEntry) {
+      bulkDeleteButton.setAttribute("aria-label", `Delete ${activeEntry.name}`);
+      bulkDeleteButton.setAttribute("title", `Delete ${activeEntry.name}`);
+      return;
+    }
+    bulkDeleteButton.setAttribute("aria-label", "Select files to delete");
+    bulkDeleteButton.setAttribute("title", "Select files to delete");
+    return;
+  }
+
+  if (selectedCount > 0) {
+    bulkDeleteButton.setAttribute("aria-label", `Delete ${selectedCount} selected item${selectedCount > 1 ? "s" : ""}`);
+    bulkDeleteButton.setAttribute("title", `Delete ${selectedCount} selected item${selectedCount > 1 ? "s" : ""}`);
+    return;
+  }
+
+  bulkDeleteButton.setAttribute("aria-label", "Exit delete selection");
+  bulkDeleteButton.setAttribute("title", "Exit delete selection");
+}
+
+function closeAppDialog(result = null) {
+  if (appDialogOverlay.hidden) {
+    return;
+  }
+
+  appDialogOverlay.hidden = true;
+  const resolver = activeDialogResolver;
+  activeDialogResolver = null;
+  appDialogInput.value = "";
+  if (resolver) {
+    resolver(result);
+  }
+}
+
+function openAppDialog(options = {}) {
+  const {
+    title = "Dialog",
+    message = "",
+    confirmLabel = "Confirm",
+    cancelLabel = "Cancel",
+    input = null,
+    items = [],
+    placeholder = "",
+    destructive = false,
+  } = options;
+
+  if (activeDialogResolver) {
+    activeDialogResolver(null);
+    activeDialogResolver = null;
+  }
+
+  appDialogTitle.hidden = !title;
+  appDialogTitle.textContent = title || "";
+  appDialogMessage.textContent = message;
+  appDialogMessage.classList.toggle("is-danger", destructive);
+  appDialogConfirm.textContent = confirmLabel;
+  appDialogCancel.textContent = cancelLabel;
+  appDialogConfirm.classList.toggle("danger", destructive);
+
+  const hasInput = input !== null;
+  appDialogInputField.hidden = !hasInput;
+  appDialogInput.value = hasInput ? String(input) : "";
+  appDialogInput.placeholder = placeholder;
+  appDialogInput.setAttribute("aria-label", title);
+
+  const dialogItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  appDialogList.hidden = dialogItems.length === 0;
+  appDialogList.innerHTML = dialogItems
+    .map(
+      (item) => `
+        <div class="app-dialog-list-item">
+          <span class="app-dialog-list-path">${escapeHtml(String(item))}</span>
+        </div>
+      `,
+    )
+    .join("");
+
+  appDialogOverlay.hidden = false;
+
+  requestAnimationFrame(() => {
+    if (hasInput) {
+      appDialogInput.focus();
+      appDialogInput.select();
+    } else {
+      appDialogConfirm.focus();
+    }
+  });
+
+  return new Promise((resolve) => {
+    activeDialogResolver = resolve;
+  });
+}
+
+function openPromptDialog(options = {}) {
+  return openAppDialog({
+    ...options,
+    input: options.input ?? "",
+  });
+}
+
+function openConfirmDialog(options = {}) {
+  return openAppDialog({
+    ...options,
+    input: null,
+  });
+}
+
+function setWorkspacePickerMessage(text) {
+  workspacePickerCaption.textContent = text;
+}
+
+function syncWorkspaceControls() {
+  if (workspacePathInput) {
+    workspacePathInput.value = workspaceRootPath;
+  }
+
+  if (workspacePathHint) {
+    workspacePathHint.hidden = true;
+    workspacePathHint.textContent = "";
+  }
+
+  if (workspaceCallout) {
+    workspaceCallout.hidden = true;
+  }
+}
+
+function renderFileTabs() {
+  if (!fileTabs) {
+    return;
+  }
+
+  fileTabs.innerHTML = fileOrder
     .map((fileName) => {
-      const analysis = analyzeSource(fileSources[fileName]);
       const dirty = Boolean(fileDirty[fileName]);
-      const issueCount = analysis.warnings.length + analysis.errors.length;
-      let badgeText = "saved";
+      return `
+        <div class="editor-tab ${fileName === currentFile ? "is-active" : ""} ${dirty ? "is-dirty" : ""}" data-tab-item="${escapeHtml(fileName)}">
+          <button class="editor-tab-main" data-tab-file="${escapeHtml(fileName)}" type="button">
+            <span class="editor-tab-label">${escapeHtml(fileName.split("/").pop() || fileName)}</span>
+          </button>
+          <button class="editor-tab-close" data-tab-close="${escapeHtml(fileName)}" type="button" aria-label="Close ${escapeHtml(fileName)}" title="Close tab">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderTreeEntries(entries, depth = 0) {
+  return entries
+    .map((entry) => {
+      if (entry.type === "directory") {
+        const directorySelected = isTreePathSelected(entry.path);
+        const directoryActive = activeTreePath === entry.path;
+        return `
+          <details class="tree-folder ${bulkDeleteMode ? "is-bulk-delete-mode" : ""} ${directorySelected ? "is-bulk-selected" : ""} ${directoryActive ? "is-tree-active" : ""}" open style="--tree-depth:${depth}">
+            <summary class="tree-folder-summary" data-tree-folder="${escapeHtml(entry.path)}">
+              <div class="tree-folder-leading">
+                ${
+                  bulkDeleteMode
+                    ? `
+                      <button class="tree-select-toggle ${directorySelected ? "is-selected" : ""}" data-select-tree-path="${escapeHtml(entry.path)}" type="button" aria-label="${directorySelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}" title="${directorySelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}">
+                        <span class="tree-select-dot" aria-hidden="true"></span>
+                      </button>
+                    `
+                    : ""
+                }
+                <span class="tree-folder-name">${escapeHtml(entry.name)}</span>
+              </div>
+            </summary>
+            <div class="tree-folder-children">${renderTreeEntries(entry.children || [], depth + 1)}</div>
+          </details>
+        `;
+      }
+
+      const fileName = entry.path;
+      const source = typeof fileSources[fileName] === "string" ? fileSources[fileName] : "";
+      const analysis = analyzeSource(source);
+      const dirty = Boolean(fileDirty[fileName]);
+      const issueCount = source ? analysis.warnings.length + analysis.errors.length : 0;
+      let badgeText = "";
       let badgeClass = "";
 
       if (dirty) {
@@ -1061,29 +1398,476 @@ function renderFileTree() {
         badgeClass = "has-issues";
       }
 
-      const meta = analysis.pipelineName
-        ? `${analysis.pipelineName} / ${analysis.glyphCount} glyphs / ${analysis.blocks.length} blocks`
-        : `${analysis.lines.length} lines / ${analysis.glyphCount} glyphs`;
+      const fileSelected = isTreePathSelected(fileName);
+      const fileActive = activeTreePath === fileName;
 
       return `
-        <button class="tree-file ${fileName === currentFile ? "is-active" : ""}" data-tree-file="${fileName}">
-          <div class="tree-copy">
-            <span class="tree-name">${fileName}</span>
-            <span class="tree-meta">${meta}</span>
+        <div class="tree-file-card ${fileActive ? "is-tree-active" : ""} ${bulkDeleteMode ? "is-bulk-delete-mode" : ""} ${fileSelected ? "is-bulk-selected" : ""}" style="--tree-depth:${depth}">
+          <div class="tree-file-head">
+            ${
+              bulkDeleteMode
+                ? `
+                  <button class="tree-select-toggle ${fileSelected ? "is-selected" : ""}" data-select-tree-path="${escapeHtml(fileName)}" type="button" aria-label="${fileSelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}" title="${fileSelected ? "Deselect" : "Select"} ${escapeHtml(entry.name)}">
+                    <span class="tree-select-dot" aria-hidden="true"></span>
+                  </button>
+                `
+                : ""
+            }
+            <button class="tree-file" data-tree-file="${escapeHtml(fileName)}" type="button">
+              <div class="tree-copy">
+                <span class="tree-name">${escapeHtml(entry.name)}</span>
+              </div>
+              ${badgeText ? `<span class="tree-badge ${badgeClass}">${badgeText}</span>` : ""}
+            </button>
+            ${
+              bulkDeleteMode
+                ? `
+                  <button class="tree-preview-button" data-preview-file="${escapeHtml(fileName)}" type="button" aria-label="Preview ${escapeHtml(entry.name)}" title="Preview file">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                `
+                : ""
+            }
           </div>
-          <span class="tree-badge ${badgeClass}">${badgeText}</span>
-        </button>
+        </div>
       `;
     })
     .join("");
+}
 
-  fileTree.querySelectorAll("[data-tree-file]").forEach((button) => {
-    button.addEventListener("click", () => {
-      focusFile(button.dataset.treeFile);
-      activeDrawerTab = "files";
-      syncSidebar();
-    });
+function renderFileTree() {
+  if (!workspaceEntries.length && !fileOrder.length) {
+    fileTree.innerHTML = '<div class="workspace-picker-empty">No files in this workspace yet.</div>';
+    return;
+  }
+
+  const entries = workspaceEntries.length
+    ? workspaceEntries
+    : [
+        {
+          type: "file",
+          name: currentFile,
+          path: currentFile,
+        },
+      ];
+
+  fileTree.innerHTML = renderTreeEntries(entries);
+  scheduleTreeActionMenuPlacement();
+}
+
+let pendingTreeActionMenuPlacementFrame = 0;
+
+function scheduleTreeActionMenuPlacement() {
+  if (pendingTreeActionMenuPlacementFrame) {
+    cancelAnimationFrame(pendingTreeActionMenuPlacementFrame);
+  }
+
+  pendingTreeActionMenuPlacementFrame = requestAnimationFrame(() => {
+    pendingTreeActionMenuPlacementFrame = 0;
+    positionOpenTreeActionMenu();
   });
+}
+
+function positionOpenTreeActionMenu() {
+  if (!openFileActionMenu) {
+    return;
+  }
+
+  const card = fileTree.querySelector(".tree-file-card.is-actions-open");
+  const strip = card?.querySelector(".tree-action-strip");
+  const panel = fileTree.closest(".drawer-panel");
+  if (!card || !strip || !panel) {
+    return;
+  }
+
+  card.classList.remove("is-actions-upward");
+
+  const stripRect = strip.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  const spaceBelow = panelRect.bottom - stripRect.top;
+
+  if (spaceBelow < stripRect.height + 12) {
+    card.classList.add("is-actions-upward");
+  }
+}
+
+function closeFileTab(fileName) {
+  if (!fileOrder.includes(fileName) || fileOrder.length <= 1) {
+    renderEditor();
+    return;
+  }
+
+  const index = fileOrder.indexOf(fileName);
+  fileOrder = fileOrder.filter((entry) => entry !== fileName);
+
+  if (currentFile === fileName) {
+    const nextFile = fileOrder[Math.max(0, index - 1)] ?? fileOrder[0];
+    focusFile(nextFile);
+    return;
+  }
+
+  renderEditor();
+}
+
+async function deleteWorkspaceFile(fileName) {
+  try {
+    const response = await fetch(`${workspaceApiBase}/delete-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: fileName }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `delete file failed with ${response.status}`);
+    }
+
+    pendingDeleteFile = null;
+    openFileActionMenu = null;
+    workspaceLoadedFiles.delete(fileName);
+    delete fileSources[fileName];
+    delete fileDirty[fileName];
+
+    const remainingFiles = workspaceFiles.filter((entry) => entry !== fileName);
+    const preferredFile =
+      currentFile === fileName
+        ? chooseWorkspaceFile(undefined, remainingFiles)
+        : currentFile;
+
+    await loadWorkspace({ preferredFile, resetState: true });
+
+    if (!workspaceFiles.length) {
+      currentFile = primaryFile;
+      fileOrder = [primaryFile];
+      fileSources[primaryFile] = fileSources[primaryFile] ?? "";
+      fileDirty[primaryFile] = false;
+    }
+
+    await focusFile(currentFile);
+  } catch (error) {
+    console.error(error);
+    pendingDeleteFile = null;
+    openFileActionMenu = null;
+    renderEditor();
+  }
+}
+
+async function deleteWorkspacePaths(paths) {
+  const normalizedPaths = normalizeDeleteSelection(paths);
+  if (!normalizedPaths.length) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${workspaceApiBase}/delete-paths`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: normalizedPaths }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `delete paths failed with ${response.status}`);
+    }
+
+    normalizedPaths.forEach((entry) => {
+      workspaceLoadedFiles.delete(entry);
+      delete fileSources[entry];
+      delete fileDirty[entry];
+    });
+
+    const remainingFiles = workspaceFiles.filter((entry) => !normalizedPaths.includes(entry));
+    const preferredFile = normalizedPaths.includes(currentFile)
+      ? chooseWorkspaceFile(undefined, remainingFiles)
+      : currentFile;
+    if (normalizedPaths.some((entry) => activeTreePath === entry || activeTreePath.startsWith(`${entry}/`))) {
+      activeTreePath = preferredFile;
+    }
+
+    pendingDeleteFile = null;
+    openFileActionMenu = null;
+    exitBulkDeleteMode();
+
+    await loadWorkspace({ preferredFile, resetState: true });
+
+    if (!workspaceFiles.length) {
+      currentFile = primaryFile;
+      fileOrder = [primaryFile];
+      fileSources[primaryFile] = fileSources[primaryFile] ?? "";
+      fileDirty[primaryFile] = false;
+    }
+
+    await focusFile(currentFile);
+  } catch (error) {
+    console.error(error);
+    renderEditor();
+  }
+}
+
+async function refreshWorkspace(preferredFile = currentFile) {
+  openFileActionMenu = null;
+  pendingDeleteFile = null;
+  clearBulkDeleteSelection();
+  await loadWorkspace({ preferredFile, resetState: true });
+  await focusFile(currentFile);
+}
+
+async function renameWorkspaceFile(fileName) {
+  const suggestedPath = await openPromptDialog({
+    title: "Rename File",
+    message: "Enter the new relative path.",
+    confirmLabel: "Rename",
+    input: fileName,
+    placeholder: "src/main.styio",
+  });
+  if (suggestedPath === null) {
+    return;
+  }
+
+  const nextPath = suggestedPath.trim();
+  if (!nextPath || nextPath === fileName) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${workspaceApiBase}/rename-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: fileName, nextPath }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `rename file failed with ${response.status}`);
+    }
+
+    const nextFile = payload.nextFile ?? nextPath;
+    const existingSource = fileSources[fileName];
+    const existingDirty = fileDirty[fileName];
+    if (typeof existingSource === "string") {
+      fileSources[nextFile] = existingSource;
+    }
+    if (typeof existingDirty === "boolean") {
+      fileDirty[nextFile] = existingDirty;
+    }
+    delete fileSources[fileName];
+    delete fileDirty[fileName];
+    workspaceLoadedFiles.delete(fileName);
+    workspaceLoadedFiles.add(nextFile);
+
+    fileOrder = fileOrder.map((entry) => (entry === fileName ? nextFile : entry));
+    if (currentFile === fileName) {
+      currentFile = nextFile;
+    }
+    if (activeTreePath === fileName) {
+      activeTreePath = nextFile;
+    }
+
+    openFileActionMenu = null;
+    pendingDeleteFile = null;
+    await loadWorkspace({ preferredFile: currentFile });
+    await focusFile(currentFile);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function createWorkspaceFile() {
+  const relativePath = await openPromptDialog({
+    title: "Create File",
+    message: "Enter a relative path under the current workspace.",
+    confirmLabel: "Create",
+    input: defaultCreateFileTarget(),
+    placeholder: defaultCreateFileTarget(),
+  });
+  if (relativePath === null) {
+    return;
+  }
+
+  const nextPath = relativePath.trim();
+  if (!nextPath) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${workspaceApiBase}/create-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: nextPath, content: "" }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `create file failed with ${response.status}`);
+    }
+
+    await loadWorkspace({ preferredFile: payload.file });
+    await focusFile(payload.file);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function createWorkspaceFolder() {
+  const relativePath = await openPromptDialog({
+    title: "Create Folder",
+    message: "Enter a relative folder path under the current workspace.",
+    confirmLabel: "Create",
+    input: defaultCreateFolderTarget(),
+    placeholder: defaultCreateFolderTarget(),
+  });
+  if (relativePath === null) {
+    return;
+  }
+
+  const nextPath = relativePath.trim();
+  if (!nextPath) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${workspaceApiBase}/create-folder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: nextPath }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `create folder failed with ${response.status}`);
+    }
+
+    await refreshWorkspace(currentFile);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function loadWorkspaceFile(fileName) {
+  if (!workspaceApiAvailable || !fileName) {
+    return fileSources[fileName] ?? fallbackSources[fileName] ?? "";
+  }
+
+  if (workspaceLoadedFiles.has(fileName) && typeof fileSources[fileName] === "string") {
+    return fileSources[fileName];
+  }
+
+  const response = await fetch(`${workspaceApiBase}/file/${encodeURIComponent(fileName)}`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`file load failed with ${response.status}`);
+  }
+
+  const payload = await response.json();
+  fileSources[fileName] = payload.content ?? "";
+  fileDirty[fileName] = false;
+  workspaceLoadedFiles.add(fileName);
+  return fileSources[fileName];
+}
+
+function renderWorkspacePicker(snapshot) {
+  workspacePickerPath = snapshot.currentPath || "";
+  workspacePickerParentPath = snapshot.parentPath || null;
+  workspacePickerCurrent.value = workspacePickerPath;
+  workspacePickerUp.disabled = !workspacePickerParentPath;
+
+  workspacePickerBreadcrumbs.innerHTML = (snapshot.breadcrumbs || [])
+    .map(
+      (crumb) => `
+        <button class="workspace-picker-breadcrumb" type="button" data-picker-path="${escapeHtml(crumb.path)}">
+          ${escapeHtml(crumb.name)}
+        </button>
+      `,
+    )
+    .join("");
+
+  workspacePickerList.innerHTML = (snapshot.directories || []).length
+    ? snapshot.directories
+        .map(
+          (directory) => `
+            <button class="workspace-picker-entry" type="button" data-picker-path="${escapeHtml(directory.path)}">
+              <span class="workspace-picker-entry-copy">
+                <span class="workspace-picker-entry-name">${escapeHtml(directory.name)}</span>
+                <span class="workspace-picker-entry-path">${escapeHtml(directory.path)}</span>
+              </span>
+              <span class="workspace-picker-entry-chevron" aria-hidden="true"></span>
+            </button>
+          `,
+        )
+        .join("")
+    : '<div class="workspace-picker-empty">No directories found in this location.</div>';
+}
+
+async function browseWorkspaceDirectories(path) {
+  const targetPath = (path || workspaceRootPath || "").trim();
+  if (!targetPath) {
+    return false;
+  }
+
+  workspacePickerCurrent.value = targetPath;
+  workspacePickerList.innerHTML = '<div class="workspace-picker-empty">Loading folders…</div>';
+  setWorkspacePickerMessage("Choose a local folder to use as the current workspace root.");
+
+  try {
+    const response = await fetch(`/api/browser/directories?path=${encodeURIComponent(targetPath)}`, {
+      cache: "no-store",
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `directory browse failed with ${response.status}`);
+    }
+
+    renderWorkspacePicker(payload);
+    return true;
+  } catch (error) {
+    console.error(error);
+    workspacePickerList.innerHTML = `<div class="workspace-picker-empty">${escapeHtml(error.message)}</div>`;
+    setWorkspacePickerMessage(error.message);
+    return false;
+  }
+}
+
+function openWorkspacePicker(startPath = workspacePathInput.value.trim() || workspaceRootPath) {
+  workspacePickerOverlay.hidden = false;
+  browseWorkspaceDirectories(startPath);
+}
+
+function closeWorkspacePicker() {
+  workspacePickerOverlay.hidden = true;
+  setWorkspacePickerMessage("Choose a local folder to use as the current workspace root.");
+}
+
+async function applyWorkspaceRoot(path) {
+  const nextPath = (path || "").trim();
+  if (!nextPath) {
+    setWorkspacePickerMessage("Choose a local folder to use as the current workspace root.");
+    return;
+  }
+
+  workspacePickerConfirm.disabled = true;
+
+  try {
+    const response = await fetch(`${workspaceApiBase}/root`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: nextPath }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `workspace change failed with ${response.status}`);
+    }
+
+    workspaceRootPath = payload.rootPath ?? nextPath;
+    closeWorkspacePicker();
+    await loadWorkspace({ preferredFile: primaryFile, resetState: true });
+    renderEditor();
+  } catch (error) {
+    console.error(error);
+    setWorkspacePickerMessage(error.message);
+  } finally {
+    workspacePickerConfirm.disabled = false;
+  }
 }
 
 function renderGutter(analysis) {
@@ -1208,16 +1992,14 @@ function updateIndentUi() {
 
 function updateStatusbar(analysis) {
   latestAnalysis = analysis;
-  currentFileTitle.textContent = currentFile;
-  workspaceState.textContent = workspaceApiAvailable
-    ? `workspace: disk-backed / ${fileOrder.length} files`
-    : "workspace: memory fallback";
+  currentFileTitle.textContent = "Styio Editor";
+  workspacePathHint.hidden = true;
+  workspacePathHint.textContent = "";
   glyphState.textContent = `glyphs: ${glyphsOn ? "on" : "off"} / ${analysis.glyphCount}`;
   updateIndentUi();
   unitState.textContent = analysis.ready ? "unit: ready" : "unit: incomplete";
   issueState.textContent = `diagnostics: ${analysis.warnings.length} warning / ${analysis.errors.length} errors`;
   renderState.textContent = `projection: ${analysis.glyphCount} glyphs / ${analysis.blocks.length} blocks`;
-  fileState.textContent = `file: ${currentFile}`;
   const { start, end } = normalizedSelectionRange();
   if (start === end) {
     cursorState.textContent = `selection: line ${padLine(lineIndexForOffset(analysis, start))}`;
@@ -1230,8 +2012,10 @@ function updateStatusbar(analysis) {
 }
 
 function updateSaveUi() {
-  saveFile.disabled = saveInFlight;
-  saveFile.textContent = saveInFlight ? "Saving..." : "Save";
+  if (saveFile) {
+    saveFile.disabled = saveInFlight;
+    saveFile.textContent = saveInFlight ? "Saving..." : "Save";
+  }
 
   if (!workspaceApiAvailable) {
     setSaveState("volatile", "disk: api offline");
@@ -1248,11 +2032,13 @@ function updateSaveUi() {
     return;
   }
 
-  setSaveState("saved", `disk: saved / workspace/${currentFile}`);
+  setSaveState("saved", `disk: saved / ${currentFile}`);
 }
 
 function renderEditor() {
   const analysis = analyzeSource(fileSources[currentFile]);
+  syncBulkDeleteButton();
+  renderFileTabs();
   renderFileTree();
   renderGutter(analysis);
   renderLines(analysis);
@@ -1264,8 +2050,26 @@ function renderEditor() {
   updateSaveUi();
 }
 
-function focusFile(fileName) {
+async function focusFile(fileName) {
+  if (!fileName) {
+    return;
+  }
+
+  if (!fileOrder.includes(fileName)) {
+    fileOrder.push(fileName);
+  }
+
   currentFile = fileName;
+  activeTreePath = fileName;
+  try {
+    await loadWorkspaceFile(fileName);
+  } catch (error) {
+    console.error(error);
+    if (typeof fileSources[fileName] !== "string") {
+      fileSources[fileName] = "";
+      fileDirty[fileName] = false;
+    }
+  }
   editorInput.value = fileSources[currentFile];
   editorInput.scrollTop = 0;
   editorInput.scrollLeft = 0;
@@ -1408,7 +2212,8 @@ function handleBackspaceIndent() {
   return true;
 }
 
-async function loadWorkspace() {
+async function loadWorkspace(options = {}) {
+  const { preferredFile = currentFile, resetState = false } = options;
   try {
     const response = await fetch(workspaceApiBase, { cache: "no-store" });
     if (!response.ok) {
@@ -1416,27 +2221,57 @@ async function loadWorkspace() {
     }
 
     const payload = await response.json();
-    const files = payload.files || {};
-    const loadedNames = [primaryFile].filter((fileName) => typeof files[fileName] === "string");
+    workspaceRootPath = payload.rootPath || "";
+    workspaceName = payload.workspaceName || "workspace";
+    workspaceEntries = Array.isArray(payload.entries) ? payload.entries : [];
+    workspaceFiles = Array.isArray(payload.files) && payload.files.length ? payload.files : [primaryFile];
 
-    if (loadedNames.length > 0) {
-      fileOrder = loadedNames;
-      loadedNames.forEach((fileName) => {
-        fileSources[fileName] = files[fileName];
-        fileDirty[fileName] = false;
+    if (resetState) {
+      workspaceLoadedFiles = new Set();
+      Object.keys(fileDirty).forEach((fileName) => {
+        delete fileDirty[fileName];
       });
-      currentFile = primaryFile;
     }
 
+    workspaceFiles.forEach((fileName) => {
+      if (!(fileName in fileDirty)) {
+        fileDirty[fileName] = false;
+      }
+    });
+
+    const availableTreePaths = collectTreePaths(workspaceEntries, new Set(workspaceFiles));
+    selectedTreePaths = new Set(Array.from(selectedTreePaths).filter((entry) => availableTreePaths.has(entry)));
+    if (!availableTreePaths.has(activeTreePath)) {
+      activeTreePath = chooseWorkspaceFile(preferredFile, workspaceFiles);
+    }
+
+    const nextCurrentFile = chooseWorkspaceFile(preferredFile, workspaceFiles);
+    const nextTabs = fileOrder.filter((fileName) => workspaceFiles.includes(fileName));
+    if (!nextTabs.includes(nextCurrentFile)) {
+      nextTabs.push(nextCurrentFile);
+    }
+
+    fileOrder = nextTabs.length ? nextTabs : [nextCurrentFile];
+    currentFile = nextCurrentFile;
+    await loadWorkspaceFile(currentFile);
+
     workspaceApiAvailable = true;
+    syncWorkspaceControls();
   } catch (error) {
     console.error(error);
     workspaceApiAvailable = false;
+    workspaceRootPath = "";
+    workspaceName = "workspace";
+    workspaceEntries = [];
+    workspaceFiles = [primaryFile];
+    fileOrder = [primaryFile];
+    currentFile = primaryFile;
     [primaryFile].forEach((fileName) => {
       if (!(fileName in fileDirty)) {
         fileDirty[fileName] = false;
       }
     });
+    syncWorkspaceControls();
   }
 }
 
@@ -1454,7 +2289,7 @@ async function saveCurrentFile() {
   updateSaveUi();
 
   try {
-    const response = await fetch(`${workspaceApiBase}/${encodeURIComponent(currentFile)}`, {
+    const response = await fetch(`${workspaceApiBase}/file/${encodeURIComponent(currentFile)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: editorInput.value }),
@@ -1467,6 +2302,7 @@ async function saveCurrentFile() {
     await response.json();
     fileSources[currentFile] = editorInput.value;
     fileDirty[currentFile] = false;
+    workspaceLoadedFiles.add(currentFile);
     renderEditor();
   } catch (error) {
     console.error(error);
@@ -1476,6 +2312,54 @@ async function saveCurrentFile() {
     updateSaveUi();
   }
 }
+
+appDialogClose.addEventListener("click", () => {
+  closeAppDialog(null);
+});
+
+appDialogCancel.addEventListener("click", () => {
+  closeAppDialog(null);
+});
+
+appDialogConfirm.addEventListener("click", () => {
+  closeAppDialog(appDialogInputField.hidden ? true : appDialogInput.value);
+});
+
+appDialogOverlay.addEventListener("click", (event) => {
+  if (event.target === appDialogOverlay) {
+    closeAppDialog(null);
+  }
+});
+
+appDialogInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    closeAppDialog(appDialogInput.value);
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeAppDialog(null);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (appDialogOverlay.hidden) {
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeAppDialog(null);
+    return;
+  }
+
+  if (event.key === "Enter" && appDialogInputField.hidden) {
+    event.preventDefault();
+    closeAppDialog(true);
+  }
+});
 
 toggleSidebar.addEventListener("click", () => {
   sidebarOpen = !sidebarOpen;
@@ -1493,6 +2377,211 @@ drawerTabs.forEach((button) => {
     sidebarOpen = true;
     syncSidebar();
   });
+});
+
+fileTabs.addEventListener("click", (event) => {
+  const closeButton = event.target.closest("[data-tab-close]");
+  if (closeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    openFileActionMenu = null;
+    pendingDeleteFile = null;
+    closeFileTab(closeButton.dataset.tabClose);
+    return;
+  }
+
+  const tabButton = event.target.closest("[data-tab-file]");
+  if (!tabButton) {
+    return;
+  }
+
+  openFileActionMenu = null;
+  pendingDeleteFile = null;
+  focusFile(tabButton.dataset.tabFile);
+});
+
+fileTree.addEventListener("click", (event) => {
+  const selectToggle = event.target.closest("[data-select-tree-path]");
+  if (selectToggle) {
+    event.preventDefault();
+    event.stopPropagation();
+    const treePath = selectToggle.dataset.selectTreePath;
+    if (selectedTreePaths.has(treePath)) {
+      selectedTreePaths.delete(treePath);
+    } else {
+      selectedTreePaths.add(treePath);
+    }
+    renderEditor();
+    return;
+  }
+
+  const folderSummary = event.target.closest("[data-tree-folder]");
+  if (folderSummary) {
+    const folderPath = folderSummary.dataset.treeFolder;
+    activeTreePath = folderPath;
+    if (bulkDeleteMode) {
+      event.preventDefault();
+      if (selectedTreePaths.has(folderPath)) {
+        selectedTreePaths.delete(folderPath);
+      } else {
+        selectedTreePaths.add(folderPath);
+      }
+    }
+    renderEditor();
+    return;
+  }
+
+  const previewButton = event.target.closest("[data-preview-file]");
+  if (previewButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    focusFile(previewButton.dataset.previewFile);
+    return;
+  }
+
+  const fileButton = event.target.closest("[data-tree-file]");
+  if (!fileButton) {
+    return;
+  }
+
+  if (bulkDeleteMode) {
+    event.preventDefault();
+    const fileName = fileButton.dataset.treeFile;
+    activeTreePath = fileName;
+    if (selectedTreePaths.has(fileName)) {
+      selectedTreePaths.delete(fileName);
+    } else {
+      selectedTreePaths.add(fileName);
+    }
+    renderEditor();
+    return;
+  }
+
+  pendingDeleteFile = null;
+  openFileActionMenu = null;
+  focusFile(fileButton.dataset.treeFile);
+  activeDrawerTab = "files";
+  syncSidebar();
+});
+
+workspacePathApply.addEventListener("click", () => {
+  openWorkspacePicker(workspacePathInput.value.trim() || workspaceRootPath);
+});
+
+workspacePathInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+  openWorkspacePicker(workspacePathInput.value.trim() || workspaceRootPath);
+});
+
+workspaceCalloutOpen.addEventListener("click", () => {
+  openWorkspacePicker(workspaceRootPath);
+});
+
+workspacePickerClose.addEventListener("click", () => {
+  closeWorkspacePicker();
+});
+
+workspacePickerOverlay.addEventListener("click", (event) => {
+  if (event.target === workspacePickerOverlay) {
+    closeWorkspacePicker();
+  }
+});
+
+workspacePickerUp.addEventListener("click", () => {
+  if (!workspacePickerParentPath) {
+    return;
+  }
+  browseWorkspaceDirectories(workspacePickerParentPath);
+});
+
+workspacePickerBreadcrumbs.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-picker-path]");
+  if (!button) {
+    return;
+  }
+  browseWorkspaceDirectories(button.dataset.pickerPath);
+});
+
+workspacePickerList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-picker-path]");
+  if (!button) {
+    return;
+  }
+  browseWorkspaceDirectories(button.dataset.pickerPath);
+});
+
+workspacePickerCurrent.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    browseWorkspaceDirectories(workspacePickerCurrent.value);
+  }
+});
+
+workspacePickerCurrent.addEventListener("blur", () => {
+  if (!workspacePickerOverlay.hidden && workspacePickerCurrent.value.trim()) {
+    browseWorkspaceDirectories(workspacePickerCurrent.value);
+  }
+});
+
+workspacePickerConfirm.addEventListener("click", async () => {
+  await applyWorkspaceRoot(workspacePickerCurrent.value || workspacePickerPath);
+});
+
+createFolderButton.addEventListener("click", () => {
+  createWorkspaceFolder();
+});
+
+quickCreateFileButton.addEventListener("click", () => {
+  createWorkspaceFile();
+});
+
+refreshWorkspaceButton.addEventListener("click", () => {
+  refreshWorkspace(currentFile);
+});
+
+bulkDeleteButton.addEventListener("click", async () => {
+  if (!bulkDeleteMode) {
+    bulkDeleteMode = true;
+    pendingDeleteFile = null;
+    openFileActionMenu = null;
+    clearBulkDeleteSelection();
+    if (activeTreePath) {
+      selectedTreePaths.add(activeTreePath);
+    }
+    renderEditor();
+    return;
+  }
+
+  if (!selectedTreePaths.size) {
+    exitBulkDeleteMode();
+    renderEditor();
+    return;
+  }
+
+  const deleteItems = normalizeDeleteSelection(Array.from(selectedTreePaths));
+  const confirmed = await openConfirmDialog({
+    title: "",
+    message:
+      deleteItems.length === 1
+        ? "Delete the selected item from this workspace?"
+        : `Delete ${deleteItems.length} selected items from this workspace?`,
+    confirmLabel: "Delete",
+    destructive: true,
+    items: deleteItems,
+  });
+  if (confirmed === null) {
+    return;
+  }
+
+  await deleteWorkspacePaths(deleteItems);
+});
+
+workspaceMoreButton.addEventListener("click", () => {
+  openWorkspacePicker(workspaceRootPath);
 });
 
 toggleGlyphs.addEventListener("click", () => {
@@ -1665,11 +2754,21 @@ document.addEventListener("click", (event) => {
     openGlyphColorMenu = null;
     syncGlyphHighlightUi();
   }
+
+  if (!event.target.closest("#fileTree")) {
+    if (openFileActionMenu !== null || pendingDeleteFile !== null) {
+      openFileActionMenu = null;
+      pendingDeleteFile = null;
+      renderEditor();
+    }
+  }
 });
 
-saveFile.addEventListener("click", () => {
-  saveCurrentFile();
-});
+if (saveFile) {
+  saveFile.addEventListener("click", () => {
+    saveCurrentFile();
+  });
+}
 
 editorInput.addEventListener("input", () => {
   fileSources[currentFile] = editorInput.value;
@@ -1777,6 +2876,12 @@ codeStage.addEventListener("mousedown", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (!workspacePickerOverlay.hidden && event.key === "Escape") {
+    event.preventDefault();
+    closeWorkspacePicker();
+    return;
+  }
+
   if (document.activeElement !== editorInput) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
@@ -1851,7 +2956,7 @@ async function bootstrap() {
   updateIndentUi();
   syncSidebar();
   await loadWorkspace();
-  focusFile(currentFile);
+  await focusFile(currentFile);
 }
 
 bootstrap();

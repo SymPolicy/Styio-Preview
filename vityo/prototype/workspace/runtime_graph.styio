@@ -1,7 +1,0 @@
-pipeline monitor
-fn stageGraph(session) {
-  state idle
-  when session.ready -> state running
-  when session.joined -> state complete
-}
-state complete
