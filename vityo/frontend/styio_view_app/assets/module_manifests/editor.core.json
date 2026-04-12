@@ -1,0 +1,15 @@
+{
+  "moduleId": "editor.core",
+  "displayName": "Editor Core",
+  "version": "0.1.0",
+  "kind": "core",
+  "slot": "editor",
+  "description": "Custom document and render host for Styio editing surfaces.",
+  "enabledByDefault": true,
+  "entrypoint": "lib/src/editor/editor_surface.dart",
+  "distributionPolicyRef": "base-shell",
+  "capabilityFlags": {
+    "documentModel": true,
+    "renderHost": true
+  }
+}

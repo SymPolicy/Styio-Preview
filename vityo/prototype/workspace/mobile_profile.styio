@@ -1,0 +1,6 @@
+pipeline mobilePredict
+fn mobilePredictor(input) {
+  state waiting
+  when input.stable -> state suggestion_ready
+}
+profile sync local_only

@@ -1,0 +1,11 @@
+pipeline renderFlow
+let commitFlow = source |> normalize |> shade -> commit
+let route = sensor <- bridge
+let reduce = state <= threshold
+let dispatch = state => sink
+let binding := prepared
+fn commitFrame(frame) {
+  state paint_ready
+  when frame.ready -> state submitted
+  emit frame.commit
+}

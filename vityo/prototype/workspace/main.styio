@@ -1,0 +1,8 @@
+@ import {
+  core
+}
+
+# print (i) {
+  i -> >_
+}
+

@@ -1,0 +1,37 @@
+# ExecutionAdapter
+
+**Purpose:** 冻结 compile/run 会话与其机器输出；`styio-view` 的保存、运行、debug console 与 runtime surface 都围绕本合同消费结果。
+
+**Last updated:** 2026-04-12
+
+## 1. Session Contract
+
+### 1.1 `ExecutionSession`
+
+1. `sessionId`
+2. `kind`
+3. `unitRange`
+4. `status`
+5. `statusMessage`
+6. `diagnostics[]`
+7. `stdoutEvents[]`
+8. `stderrEvents[]`
+
+### 1.2 `ExecutionLogEvent`
+
+1. `timestamp`
+2. `origin`
+3. `message`
+
+## 2. Required Behaviors
+
+1. 能明确区分 `succeeded / failed / blocked / running`。
+2. diagnostics 必须结构化返回，不允许只靠 stderr 文本解析。
+3. 如果某条执行路径当前未发布，adapter 必须返回 `blocked` 和清晰原因。
+4. 单文件 scratch 路径与项目路径可以拥有不同实现，但都必须落在同一 session 合同上。
+
+## 3. Product Assumptions
+
+1. 主线先支持 `CLI Adapter`。
+2. `FFI Adapter` 是统一本地原生接入标识，不绑定某个专门的仓库名。
+3. `Cloud Adapter` 是移动端与 hosted workspace 的补充执行路径。

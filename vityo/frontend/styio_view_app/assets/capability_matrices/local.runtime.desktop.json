@@ -1,0 +1,11 @@
+{
+  "moduleId": "local.runtime.desktop",
+  "platforms": {
+    "web": { "supported": false, "visible": false, "installable": false, "mountedByDefault": false, "iosSafe": false, "distributionChannel": "hosted-web", "note": "Web does not expose local runtime." },
+    "windows": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": false, "distributionChannel": "self-hosted", "note": "Desktop local runtime is mounted by default." },
+    "linux": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": false, "distributionChannel": "self-hosted", "note": "Desktop local runtime is mounted by default." },
+    "android": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": false, "distributionChannel": "self-hosted", "note": "Android supports local runtime as an optional module." },
+    "macos": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": false, "distributionChannel": "self-hosted", "note": "Desktop local runtime is mounted by default." },
+    "ios": { "supported": false, "visible": false, "installable": false, "mountedByDefault": false, "iosSafe": false, "distributionChannel": "app-store", "note": "iOS never mounts local runtime." }
+  }
+}
