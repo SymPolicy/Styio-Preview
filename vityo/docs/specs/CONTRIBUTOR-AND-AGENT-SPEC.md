@@ -33,6 +33,7 @@
 6. Agent 若修改 adapter 或 hosted workspace 合同，必须同步更新对应 schema 文档。
 7. Agent 新增或调整 UI 面板、卡片、下拉或工具条后，必须检查内部组件是否超出外部容器，尤其是侧边栏、弹窗和移动端窄视口。
 8. Agent 调整默认字体、主题、调色盘或图标系统前，必须优先确认默认方案来自开源、低争议来源；不得把专有商业字体作为默认值，也不得直接把第三方产品品牌名作为默认主题标签。
+9. Agent 修改 `prototype/editor.html` 这条手写 Web IDE 主线前，应先遵守 [HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md](./HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md) 中的分层、渲染与工作流约束。
 
 ## 4. 人类审阅重点
 

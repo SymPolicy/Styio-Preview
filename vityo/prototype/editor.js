@@ -1,22 +1,54 @@
-const workspaceApiBase = "/api/workspace";
-const primaryFile = "main.styio";
-const defaultCreateLeafNames = {
-  file: "new_file.styio",
-  folder: "new_folder",
-};
-const fallbackSources = {
-  "main.styio": `pipeline mainFlow
-let staged := source |> normalize
-let routeOut = staged -> render
-let routeIn = source <- bridge
-let promote = state => running
-let fallback = state <= idle
-fn main(input) {
-  state idle
-  when input.ready -> state running
-  emit staged
-}`,
-};
+import {
+  workspaceApiBase,
+  primaryFile,
+  defaultCreateLeafNames,
+  fallbackSources,
+  storageKeys,
+  customPaletteConfigSchema,
+  createInitialRuntimeState,
+} from "./editor-modules/runtime-config.js";
+import { autoSaveModeOptionsList, languageOptionsList, SURFACE_KEYS } from "./editor-modules/enums.js";
+import {
+  SURFACE_ACTIONS,
+  SURFACE_PERSIST_TARGETS,
+  SURFACE_RENDER_TARGETS,
+} from "./editor-modules/surface-actions.js";
+import {
+  themeColorPresets,
+  themeBackgroundPresets,
+  themeTextPresets,
+  themeLinePresets,
+  themePalettePresets,
+  interfaceFontOptionsList,
+  interfaceSizeOptionsList,
+  editorFontOptionsList,
+  editorFontSizePresets,
+  legacyInterfaceSizeKeyMap,
+  legacyThemeColorKeyMap,
+  legacyInterfaceFontKeyMap,
+  legacyEditorFontSizeKeyMap,
+  legacyEditorTextHighlightKeyMap,
+  legacyDefaultGlyphPaletteKeyMap,
+  editorBackgroundPresets,
+  editorTextColorPresets,
+  editorTextHighlightPresets,
+} from "./editor-modules/theme-presets.js";
+import {
+  operatorGlyphs,
+  glyphOperators,
+  glyphOperatorPattern,
+  glyphColorSpecs,
+  glyphColorOptions,
+  glyphPaletteOptions,
+  editorPaletteMeta,
+  legacyGlyphPaletteKeyMap,
+  blockSurfacePresets,
+  lineHighlightPresets,
+  selectionHighlightPresets,
+  defaultGlyphColor,
+} from "./editor-modules/glyph-presets.js";
+import { styioKeywordTokens } from "./editor-modules/styio-language-config.js";
+import { createRenderPipeline, RenderSlice } from "./editor-modules/render-pipeline.js";
 
 const workspaceShell = document.getElementById("workspaceShell");
 const currentFileTitle = document.getElementById("currentFileTitle");
@@ -92,6 +124,7 @@ const interfaceSizeTitle = document.getElementById("interfaceSizeTitle");
 const editorTitle = document.getElementById("editorTitle");
 const editorFontCardTitle = document.getElementById("editorFontCardTitle");
 const editorColorCardTitle = document.getElementById("editorColorCardTitle");
+const editorConfigTitle = document.getElementById("editorConfigTitle");
 const tabSizeTitle = document.getElementById("tabSizeTitle");
 const editorFontTitle = document.getElementById("editorFontTitle");
 const editorFontSizeTitle = document.getElementById("editorFontSizeTitle");
@@ -104,6 +137,8 @@ const lineTitle = document.getElementById("lineTitle");
 const selectionTitle = document.getElementById("selectionTitle");
 const importThemeConfigButton = document.getElementById("importThemeConfigButton");
 const editThemeConfigButton = document.getElementById("editThemeConfigButton");
+const importEditorConfigButton = document.getElementById("importEditorConfigButton");
+const editEditorConfigButton = document.getElementById("editEditorConfigButton");
 const languageModeButton = document.getElementById("languageModeButton");
 const languageModeOptions = document.getElementById("languageModeOptions");
 const autoSaveModeButton = document.getElementById("autoSaveModeButton");
@@ -164,89 +199,411 @@ const caretLayer = document.getElementById("caretLayer");
 const caretIndicator = document.getElementById("caretIndicator");
 const editorInput = document.getElementById("editorInput");
 
+const initialRuntimeState = createInitialRuntimeState();
 const fileSources = { ...fallbackSources };
 const fileDirty = {};
-let fileOrder = [primaryFile];
-let currentFile = primaryFile;
-let glyphsOn = true;
-let workspaceApiAvailable = false;
-let workspaceRootPath = "";
-let workspaceName = "workspace";
-let workspaceEntries = [];
-let workspaceFiles = [primaryFile];
-let workspaceLoadedFiles = new Set();
-let saveInFlight = false;
-let latestAnalysis = null;
-let sidebarOpen = false;
-let activeDrawerTab = "files";
-let indentSize = 2;
-let activeLanguageKey = "zhCn";
-let languageMenuOpen = false;
-let autoSaveMode = "afterDelay";
-let autoSaveDelay = 1000;
-let autoSaveMenuOpen = false;
+let fileOrder = [...initialRuntimeState.fileOrder];
+let currentFile = initialRuntimeState.currentFile;
+let glyphsOn = initialRuntimeState.glyphsOn;
+let workspaceApiAvailable = initialRuntimeState.workspaceApiAvailable;
+let workspaceRootPath = initialRuntimeState.workspaceRootPath;
+let workspaceName = initialRuntimeState.workspaceName;
+let workspaceEntries = [...initialRuntimeState.workspaceEntries];
+let workspaceFiles = [...initialRuntimeState.workspaceFiles];
+let workspaceLoadedFiles = initialRuntimeState.workspaceLoadedFiles;
+let saveInFlight = initialRuntimeState.saveInFlight;
+let latestAnalysis = initialRuntimeState.latestAnalysis;
+let sidebarOpen = initialRuntimeState.sidebarOpen;
+let activeDrawerTab = initialRuntimeState.activeDrawerTab;
+let indentSize = initialRuntimeState.indentSize;
+let activeLanguageKey = initialRuntimeState.activeLanguageKey;
+let languageMenuOpen = initialRuntimeState.languageMenuOpen;
+let autoSaveMode = initialRuntimeState.autoSaveMode;
+let autoSaveDelay = initialRuntimeState.autoSaveDelay;
+let autoSaveMenuOpen = initialRuntimeState.autoSaveMenuOpen;
 let autoSaveTimer = null;
-let themeMode = "dark";
-let themePaletteMenuOpen = false;
-let themeColorMenuOpen = false;
-let themeBackgroundMenuOpen = false;
-let interfaceFontMenuOpen = false;
-let themeTextMenuOpen = false;
-let themeLineMenuOpen = false;
-let editorFontMenuOpen = false;
-let openGlyphColorMenu = null;
-let paletteMenuOpen = false;
-let editorBackgroundMenuOpen = false;
-let textColorMenuOpen = false;
-let textHighlightMenuOpen = false;
-let blockSurfaceMenuOpen = false;
-let lineHighlightMenuOpen = false;
-let selectionHighlightMenuOpen = false;
-let editorMode = "dark";
-let activeThemePaletteKey = "graphiteGold";
-let activeThemeColorKey = "defaultGold";
-let activeThemeBackgroundKey = "graphite";
-let activeThemeTextKey = "mist";
-let activeInterfaceFontKey = "defaultSans";
-let activeInterfaceSizeKey = "15";
-let activeEditorFontKey = "jetbrainsMono";
-let activeEditorFontSizeKey = "15";
-let activePaletteKey = "default";
-let activeEditorBackgroundKey = "graphite";
-let activeEditorTextColorKey = "mist";
-let activeEditorTextHighlightKey = "defaultGold";
-let activeThemeLineKey = "soft";
-let activeBlockSurfaceKey = "graphite";
-let activeLineHighlightKey = "graphite";
-let activeSelectionHighlightKey = "graphite";
+let themeMode = initialRuntimeState.themeMode;
+let themePaletteMenuOpen = initialRuntimeState.themePaletteMenuOpen;
+let themeColorMenuOpen = initialRuntimeState.themeColorMenuOpen;
+let themeBackgroundMenuOpen = initialRuntimeState.themeBackgroundMenuOpen;
+let interfaceFontMenuOpen = initialRuntimeState.interfaceFontMenuOpen;
+let themeTextMenuOpen = initialRuntimeState.themeTextMenuOpen;
+let themeLineMenuOpen = initialRuntimeState.themeLineMenuOpen;
+let editorFontMenuOpen = initialRuntimeState.editorFontMenuOpen;
+let openGlyphColorMenu = initialRuntimeState.openGlyphColorMenu;
+let paletteMenuOpen = initialRuntimeState.paletteMenuOpen;
+let editorBackgroundMenuOpen = initialRuntimeState.editorBackgroundMenuOpen;
+let textColorMenuOpen = initialRuntimeState.textColorMenuOpen;
+let textHighlightMenuOpen = initialRuntimeState.textHighlightMenuOpen;
+let blockSurfaceMenuOpen = initialRuntimeState.blockSurfaceMenuOpen;
+let lineHighlightMenuOpen = initialRuntimeState.lineHighlightMenuOpen;
+let selectionHighlightMenuOpen = initialRuntimeState.selectionHighlightMenuOpen;
+let editorMode = initialRuntimeState.editorMode;
+let activeThemePaletteKey = initialRuntimeState.activeThemePaletteKey;
+let activeThemeColorKey = initialRuntimeState.activeThemeColorKey;
+let activeThemeBackgroundKey = initialRuntimeState.activeThemeBackgroundKey;
+let activeThemeTextKey = initialRuntimeState.activeThemeTextKey;
+let activeInterfaceFontKey = initialRuntimeState.activeInterfaceFontKey;
+let activeInterfaceSizeKey = initialRuntimeState.activeInterfaceSizeKey;
+let activeEditorFontKey = initialRuntimeState.activeEditorFontKey;
+let activeEditorFontSizeKey = initialRuntimeState.activeEditorFontSizeKey;
+let activePaletteKey = initialRuntimeState.activePaletteKey;
+let activeEditorBackgroundKey = initialRuntimeState.activeEditorBackgroundKey;
+let activeEditorTextColorKey = initialRuntimeState.activeEditorTextColorKey;
+let activeEditorTextHighlightKey = initialRuntimeState.activeEditorTextHighlightKey;
+let activeThemeLineKey = initialRuntimeState.activeThemeLineKey;
+let activeBlockSurfaceKey = initialRuntimeState.activeBlockSurfaceKey;
+let activeLineHighlightKey = initialRuntimeState.activeLineHighlightKey;
+let activeSelectionHighlightKey = initialRuntimeState.activeSelectionHighlightKey;
 let pointerSelectionAnchor = null;
 let pointerSelectionCleanup = null;
-let pendingNativeRenderFrame = 0;
-let workspacePickerPath = "";
-let workspacePickerParentPath = null;
-let workspacePickerMode = "directory";
-let workspacePickerIncludeFiles = false;
-let workspacePickerSelectedFilePath = "";
-let workspacePickerConfirmAction = null;
-let workspacePickerTitleText = "";
-let workspacePickerDefaultCaptionText = "";
-let workspacePickerConfirmText = "";
-let openFileActionMenu = null;
-let pendingDeleteFile = null;
-let bulkDeleteMode = false;
-let selectedTreePaths = new Set();
-let activeTreePath = "";
-let expandedTreePaths = new Set();
+let pendingLayoutRenderTimeout = 0;
+let latestAnalysisFile = "";
+let latestAnalysisSource = "";
+let workspacePickerPath = initialRuntimeState.workspacePickerPath;
+let workspacePickerParentPath = initialRuntimeState.workspacePickerParentPath;
+let workspacePickerMode = initialRuntimeState.workspacePickerMode;
+let workspacePickerIncludeFiles = initialRuntimeState.workspacePickerIncludeFiles;
+let workspacePickerSelectedFilePath = initialRuntimeState.workspacePickerSelectedFilePath;
+let workspacePickerConfirmAction = initialRuntimeState.workspacePickerConfirmAction;
+let workspacePickerTitleText = initialRuntimeState.workspacePickerTitleText;
+let workspacePickerDefaultCaptionText = initialRuntimeState.workspacePickerDefaultCaptionText;
+let workspacePickerConfirmText = initialRuntimeState.workspacePickerConfirmText;
+let openFileActionMenu = initialRuntimeState.openFileActionMenu;
+let pendingDeleteFile = initialRuntimeState.pendingDeleteFile;
+let bulkDeleteMode = initialRuntimeState.bulkDeleteMode;
+let selectedTreePaths = initialRuntimeState.selectedTreePaths;
+let activeTreePath = initialRuntimeState.activeTreePath;
+let expandedTreePaths = initialRuntimeState.expandedTreePaths;
 let workspacePathDrag = null;
 let activeDialogResolver = null;
 let appToastTimer = null;
-const glyphHighlightStorageKey = "styio-view:glyph-highlights";
-const autoSaveStorageKey = "styio-view:auto-save";
-const languageStorageKey = "styio-view:language";
-const themeSettingsStorageKey = "styio-view:theme-settings";
-const editorSettingsStorageKey = "styio-view:editor-settings";
-const customPaletteConfigStorageKey = "styio-view:custom-palette-config";
-const customPaletteConfigSchema = "https://styio.dev/schemas/theme-customizations.json";
+const {
+  glyphHighlight: glyphHighlightStorageKey,
+  autoSave: autoSaveStorageKey,
+  language: languageStorageKey,
+  themeSettings: themeSettingsStorageKey,
+  editorSettings: editorSettingsStorageKey,
+  customPaletteConfig: customPaletteConfigStorageKey,
+} = storageKeys;
+
+const renderGroups = Object.freeze({
+  themeAppearance: [RenderSlice.themeAppearance],
+  settingsState: [RenderSlice.settingsState],
+  settingsControls: [RenderSlice.settingsControls, RenderSlice.settingsState],
+  sidebar: [RenderSlice.sidebar],
+  themeSurface: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  themeFont: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  themeColor: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorSurface: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorFont: [
+    RenderSlice.themeAppearance,
+    RenderSlice.settingsState,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+  ],
+  editorColor: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorBlock: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorLine: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorSelectionStyle: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorGlyph: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorContent: [
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+    RenderSlice.saveUi,
+  ],
+  editorSelection: [RenderSlice.editorLines, RenderSlice.editorCaret, RenderSlice.statusbar],
+  editorLayout: [
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+  ],
+  editorTheme: [
+    RenderSlice.themeAppearance,
+    RenderSlice.settingsState,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+  ],
+  fullEditor: [
+    RenderSlice.sidebar,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+    RenderSlice.saveUi,
+  ],
+  fullApp: [
+    RenderSlice.themeAppearance,
+    RenderSlice.settingsControls,
+    RenderSlice.sidebar,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+    RenderSlice.saveUi,
+  ],
+});
+
+const renderPipeline = createRenderPipeline({ flush: flushRenderSlices });
+const surfaceRenderTargets = Object.freeze({
+  [SURFACE_RENDER_TARGETS.THEME_SURFACE]: renderGroups.themeSurface,
+  [SURFACE_RENDER_TARGETS.THEME_FONT]: renderGroups.themeFont,
+  [SURFACE_RENDER_TARGETS.THEME_COLOR]: renderGroups.themeColor,
+  [SURFACE_RENDER_TARGETS.EDITOR_SURFACE]: renderGroups.editorSurface,
+  [SURFACE_RENDER_TARGETS.EDITOR_FONT]: renderGroups.editorFont,
+  [SURFACE_RENDER_TARGETS.EDITOR_COLOR]: renderGroups.editorColor,
+  [SURFACE_RENDER_TARGETS.EDITOR_BLOCK]: renderGroups.editorBlock,
+  [SURFACE_RENDER_TARGETS.EDITOR_LINE]: renderGroups.editorLine,
+  [SURFACE_RENDER_TARGETS.EDITOR_SELECTION]: renderGroups.editorSelectionStyle,
+  [SURFACE_RENDER_TARGETS.EDITOR_GLYPH]: renderGroups.editorGlyph,
+});
+
+function hasRenderSlice(slices, slice) {
+  return slices.has(slice);
+}
+
+function requestRender(...slices) {
+  renderPipeline.request(...slices);
+}
+
+function flushRender(...slices) {
+  renderPipeline.flushNow(...slices);
+}
+
+function getCurrentAnalysis() {
+  const source = fileSources[currentFile] ?? "";
+  if (latestAnalysis && latestAnalysisFile === currentFile && latestAnalysisSource === source) {
+    return latestAnalysis;
+  }
+
+  latestAnalysis = analyzeSource(source);
+  latestAnalysisFile = currentFile;
+  latestAnalysisSource = source;
+  return latestAnalysis;
+}
+
+function renderSidebarModule() {
+  syncBulkDeleteButton();
+  syncRefreshWorkspaceButton();
+  renderFileTabs();
+  renderFileTree();
+}
+
+function flushRenderSlices(requestedSlices) {
+  if (hasRenderSlice(requestedSlices, RenderSlice.themeAppearance)) {
+    applyWorkbenchThemeState();
+    applyEditorFontTheme();
+    applyEditorFontSizeTheme();
+    applyEditorTheme();
+    applyEditorBackgroundTheme();
+    applyEditorTextColorTheme();
+    applyEditorTextHighlightTheme();
+    applyBlockSurfaceTheme();
+    applyLineHighlightTheme();
+    applySelectionHighlightTheme();
+    applyGlyphColors();
+  }
+
+  if (hasRenderSlice(requestedSlices, RenderSlice.settingsControls)) {
+    renderLanguageOptions();
+    renderAutoSaveOptions();
+    renderThemeControls();
+    renderEditorPreferenceControls();
+    renderGlyphHighlightControls();
+  } else if (hasRenderSlice(requestedSlices, RenderSlice.settingsState)) {
+    syncSettingsUi();
+  }
+
+  if (hasRenderSlice(requestedSlices, RenderSlice.sidebar)) {
+    renderSidebarModule();
+  }
+
+  const needsAnalysis =
+    hasRenderSlice(requestedSlices, RenderSlice.editorLines) ||
+    hasRenderSlice(requestedSlices, RenderSlice.editorLayout) ||
+    hasRenderSlice(requestedSlices, RenderSlice.editorBlocks) ||
+    hasRenderSlice(requestedSlices, RenderSlice.editorCaret) ||
+    hasRenderSlice(requestedSlices, RenderSlice.statusbar);
+  const analysis = needsAnalysis ? getCurrentAnalysis() : latestAnalysis;
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorLines)) {
+    renderGutter(analysis);
+    renderLines(analysis);
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorLayout)) {
+    syncOverlayMetrics();
+    syncScroll();
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorBlocks)) {
+    renderBlocks(analysis);
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorCaret)) {
+    syncCaretIndicator(analysis);
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.statusbar)) {
+    updateStatusbar(analysis);
+  }
+
+  if (hasRenderSlice(requestedSlices, RenderSlice.saveUi)) {
+    updateSaveUi();
+  }
+}
+
+function requestSettingsStateRender() {
+  requestRender(renderGroups.settingsState);
+}
+
+function requestSettingsControlsRender() {
+  requestRender(renderGroups.settingsControls);
+}
+
+function requestSidebarRender() {
+  requestRender(renderGroups.sidebar);
+}
+
+function requestEditorContentRender() {
+  requestRender(renderGroups.editorContent);
+}
+
+function requestEditorSelectionRender() {
+  requestRender(renderGroups.editorSelection);
+}
+
+function requestEditorThemeRender() {
+  requestRender(renderGroups.editorTheme);
+}
+
+function flushFullAppRender() {
+  flushRender(renderGroups.fullApp);
+}
+
+function persistEditorSurfaceState() {
+  persistEditorPreferences();
+  persistGlyphHighlights();
+}
+
+function persistSurfaceTarget(persistTarget) {
+  if (persistTarget === SURFACE_PERSIST_TARGETS.THEME) {
+    persistThemeSettings();
+    return;
+  }
+
+  if (persistTarget === SURFACE_PERSIST_TARGETS.EDITOR) {
+    persistEditorSurfaceState();
+    return;
+  }
+
+  if (persistTarget === SURFACE_PERSIST_TARGETS.EDITOR_PREFERENCES) {
+    persistEditorPreferences();
+    return;
+  }
+
+  if (persistTarget === SURFACE_PERSIST_TARGETS.EDITOR_GLYPHS) {
+    persistGlyphHighlights();
+  }
+}
+
+function requestSurfaceRenderTarget(renderTarget) {
+  const slices = surfaceRenderTargets[renderTarget];
+  if (!slices) {
+    requestEditorThemeRender();
+    return;
+  }
+  requestRender(slices);
+}
+
+function dispatchSurfaceAction(action, applyState, options = {}) {
+  if (!action || typeof applyState !== "function") {
+    return;
+  }
+
+  const { closeMenus: shouldCloseMenus = true } = options;
+  applyState();
+  if (shouldCloseMenus) {
+    closeSettingsMenus();
+  }
+  persistSurfaceTarget(action.persistTarget);
+  requestSurfaceRenderTarget(action.renderTarget);
+}
+
+function themeSurfaceController() {
+  return {
+    getMode() {
+      return themeMode;
+    },
+    setMode(nextMode) {
+      themeMode = nextMode;
+    },
+    defaultPaletteForMode: defaultThemePaletteForMode,
+    applyPaletteSelection: applyThemePaletteSelection,
+  };
+}
+
+function editorSurfaceController() {
+  return {
+    getMode() {
+      return editorMode;
+    },
+    setMode(nextMode) {
+      editorMode = nextMode;
+    },
+    defaultPaletteForMode: defaultEditorPaletteForMode,
+    applyPaletteSelection: applyEditorPaletteSelection,
+  };
+}
+
+function getSurfaceController(surfaceKey) {
+  if (surfaceKey === SURFACE_KEYS.THEME) {
+    return themeSurfaceController();
+  }
+  if (surfaceKey === SURFACE_KEYS.EDITOR) {
+    return editorSurfaceController();
+  }
+  throw new Error(`unknown surface controller: ${surfaceKey}`);
+}
+
+function switchSurfaceMode(surfaceKey, nextMode) {
+  const controller = getSurfaceController(surfaceKey);
+  if (controller.getMode() === nextMode) {
+    return;
+  }
+
+  const action =
+    surfaceKey === SURFACE_KEYS.THEME ? SURFACE_ACTIONS.THEME_MODE : SURFACE_ACTIONS.EDITOR_MODE;
+  dispatchSurfaceAction(action, () => {
+    controller.setMode(nextMode);
+    const nextPalette = controller.defaultPaletteForMode(controller.getMode());
+    if (nextPalette) {
+      controller.applyPaletteSelection(nextPalette.key);
+    }
+  });
+}
+
+function selectSurfacePalette(surfaceKey, paletteKey) {
+  const controller = getSurfaceController(surfaceKey);
+  const action =
+    surfaceKey === SURFACE_KEYS.THEME ? SURFACE_ACTIONS.THEME_PALETTE : SURFACE_ACTIONS.EDITOR_PALETTE;
+  dispatchSurfaceAction(action, () => {
+    controller.applyPaletteSelection(paletteKey);
+  });
+}
+
 const refreshWorkspaceSvg = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
@@ -274,628 +631,6 @@ function sidebarToggleSvg(isOpen) {
     </svg>
   `;
 }
-const autoSaveModeOptionsList = [
-  { key: "off", label: "Off" },
-  { key: "afterDelay", label: "After Delay" },
-  { key: "onFocusChange", label: "On Focus Change" },
-  { key: "onWindowChange", label: "On Window Change" },
-];
-const languageOptionsList = [
-  { key: "zhCn", label: "中文" },
-  { key: "en", label: "English" },
-];
-const themeColorPresets = [
-  {
-    key: "defaultGold",
-    label: "Gold",
-    vars: {
-      "--accent": "#f4c76a",
-      "--accent-2": "#ffb15c",
-      "--accent-3": "#f4c76a",
-      "--brand-color": "rgba(244, 199, 106, 0.96)",
-      "--brand-glow": "rgba(244, 199, 106, 0.08)",
-    },
-  },
-  {
-    key: "violet",
-    label: "Violet",
-    vars: {
-      "--accent": "#8b5cf6",
-      "--accent-2": "#a78bfa",
-      "--accent-3": "#c4b5fd",
-      "--brand-color": "rgba(196, 181, 253, 0.96)",
-      "--brand-glow": "rgba(196, 181, 253, 0.08)",
-    },
-  },
-  {
-    key: "ice",
-    label: "Ice Blue",
-    vars: {
-      "--accent": "#60a5fa",
-      "--accent-2": "#7dd3fc",
-      "--accent-3": "#93c5fd",
-      "--brand-color": "rgba(147, 197, 253, 0.96)",
-      "--brand-glow": "rgba(147, 197, 253, 0.08)",
-    },
-  },
-  {
-    key: "emerald",
-    label: "Emerald",
-    vars: {
-      "--accent": "#34D399",
-      "--accent-2": "#6EE7B7",
-      "--accent-3": "#A7F3D0",
-      "--brand-color": "rgba(110, 231, 183, 0.96)",
-      "--brand-glow": "rgba(110, 231, 183, 0.08)",
-    },
-  },
-  {
-    key: "quartz",
-    label: "Quartz",
-    vars: {
-      "--accent": "#E5E7EB",
-      "--accent-2": "#F3F4F6",
-      "--accent-3": "#D1D5DB",
-      "--brand-color": "rgba(243, 244, 246, 0.96)",
-      "--brand-glow": "rgba(243, 244, 246, 0.08)",
-    },
-  },
-  {
-    key: "rose",
-    label: "Rose",
-    vars: {
-      "--accent": "#F472B6",
-      "--accent-2": "#F9A8D4",
-      "--accent-3": "#FBCFE8",
-      "--brand-color": "rgba(249, 168, 212, 0.96)",
-      "--brand-glow": "rgba(249, 168, 212, 0.08)",
-    },
-  },
-];
-const themeBackgroundPresets = [
-  {
-    key: "graphite",
-    label: "Graphite",
-    mode: "dark",
-    vars: {
-      "--bg": "#0f1115",
-      "--bg-2": "#171a21",
-      "--panel": "rgba(19, 21, 26, 0.84)",
-      "--panel-2": "rgba(255, 255, 255, 0.025)",
-      "--shell-bg": "rgba(10, 12, 16, 0.46)",
-      "--line": "rgba(255, 255, 255, 0.07)",
-      "--line-strong": "rgba(255, 255, 255, 0.12)",
-      "--text": "#edf1f4",
-      "--muted": "#98a0aa",
-    },
-  },
-  {
-    key: "midnight",
-    label: "Midnight",
-    mode: "dark",
-    vars: {
-      "--bg": "#0b0f16",
-      "--bg-2": "#121822",
-      "--panel": "rgba(13, 17, 24, 0.88)",
-      "--panel-2": "rgba(255, 255, 255, 0.02)",
-      "--shell-bg": "rgba(8, 11, 18, 0.52)",
-      "--line": "rgba(255, 255, 255, 0.065)",
-      "--line-strong": "rgba(255, 255, 255, 0.11)",
-      "--text": "#edf1f4",
-      "--muted": "#92a0b3",
-    },
-  },
-  {
-    key: "carbon",
-    label: "Carbon",
-    mode: "dark",
-    vars: {
-      "--bg": "#131313",
-      "--bg-2": "#1a1a1a",
-      "--panel": "rgba(22, 22, 22, 0.86)",
-      "--panel-2": "rgba(255, 255, 255, 0.022)",
-      "--shell-bg": "rgba(14, 14, 14, 0.52)",
-      "--line": "rgba(255, 255, 255, 0.065)",
-      "--line-strong": "rgba(255, 255, 255, 0.105)",
-      "--text": "#f2f2f2",
-      "--muted": "#a0a0a0",
-    },
-  },
-  {
-    key: "fog",
-    label: "Fog",
-    mode: "dark",
-    vars: {
-      "--bg": "#101317",
-      "--bg-2": "#181d23",
-      "--panel": "rgba(21, 25, 31, 0.82)",
-      "--panel-2": "rgba(255, 255, 255, 0.03)",
-      "--shell-bg": "rgba(13, 16, 21, 0.48)",
-      "--line": "rgba(255, 255, 255, 0.075)",
-      "--line-strong": "rgba(255, 255, 255, 0.125)",
-      "--text": "#edf1f4",
-      "--muted": "#9aa5b1",
-    },
-  },
-  {
-    key: "obsidian",
-    label: "Obsidian",
-    mode: "dark",
-    vars: {
-      "--bg": "#090B0F",
-      "--bg-2": "#11151B",
-      "--panel": "rgba(13, 16, 21, 0.9)",
-      "--panel-2": "rgba(255, 255, 255, 0.018)",
-      "--shell-bg": "rgba(7, 9, 13, 0.6)",
-      "--line": "rgba(255, 255, 255, 0.055)",
-      "--line-strong": "rgba(255, 255, 255, 0.095)",
-      "--text": "#F3F4F6",
-      "--muted": "#9CA3AF",
-    },
-  },
-  {
-    key: "blueprint",
-    label: "Blueprint",
-    mode: "dark",
-    vars: {
-      "--bg": "#0D1320",
-      "--bg-2": "#151D2C",
-      "--panel": "rgba(16, 22, 34, 0.88)",
-      "--panel-2": "rgba(147, 197, 253, 0.025)",
-      "--shell-bg": "rgba(10, 16, 28, 0.56)",
-      "--line": "rgba(148, 163, 184, 0.08)",
-      "--line-strong": "rgba(148, 163, 184, 0.13)",
-      "--text": "#E5EDF8",
-      "--muted": "#8FA2BC",
-    },
-  },
-  {
-    key: "paper",
-    label: "Paper",
-    mode: "light",
-    vars: {
-      "--bg": "#F5F6F8",
-      "--bg-2": "#ECEEF2",
-      "--panel": "rgba(255, 255, 255, 0.9)",
-      "--panel-2": "rgba(17, 17, 17, 0.022)",
-      "--shell-bg": "rgba(255, 255, 255, 0.82)",
-      "--line": "rgba(17, 17, 17, 0.12)",
-      "--line-strong": "rgba(17, 17, 17, 0.2)",
-      "--text": "#111111",
-      "--muted": "#4F5560",
-    },
-  },
-  {
-    key: "porcelain",
-    label: "Porcelain",
-    mode: "light",
-    vars: {
-      "--bg": "#F4F7FB",
-      "--bg-2": "#EAF0F7",
-      "--panel": "rgba(255, 255, 255, 0.88)",
-      "--panel-2": "rgba(17, 17, 17, 0.02)",
-      "--shell-bg": "rgba(255, 255, 255, 0.78)",
-      "--line": "rgba(17, 17, 17, 0.12)",
-      "--line-strong": "rgba(17, 17, 17, 0.19)",
-      "--text": "#111111",
-      "--muted": "#556274",
-    },
-  },
-  {
-    key: "linen",
-    label: "Linen",
-    mode: "light",
-    vars: {
-      "--bg": "#FAF7F2",
-      "--bg-2": "#F2EDE4",
-      "--panel": "rgba(255, 255, 255, 0.84)",
-      "--panel-2": "rgba(17, 17, 17, 0.02)",
-      "--shell-bg": "rgba(255, 255, 255, 0.74)",
-      "--line": "rgba(17, 17, 17, 0.12)",
-      "--line-strong": "rgba(17, 17, 17, 0.19)",
-      "--text": "#111111",
-      "--muted": "#61584C",
-    },
-  },
-];
-const themeTextPresets = [
-  { key: "mist", label: "Mist", mode: "dark", vars: { "--text": "#EDF1F4" } },
-  { key: "bright", label: "Bright", mode: "dark", vars: { "--text": "#F8FAFC" } },
-  { key: "cool", label: "Cool", mode: "dark", vars: { "--text": "#E2E8F0" } },
-  { key: "ink", label: "Ink", mode: "light", vars: { "--text": "#111111" } },
-  { key: "graphiteText", label: "Graphite", mode: "light", vars: { "--text": "#1A1A1A" } },
-];
-const themeLinePresets = [
-  {
-    key: "soft",
-    label: "Soft",
-    mode: "dark",
-    vars: {
-      "--line": "rgba(255, 255, 255, 0.07)",
-      "--line-strong": "rgba(255, 255, 255, 0.12)",
-    },
-  },
-  {
-    key: "crisp",
-    label: "Crisp",
-    mode: "dark",
-    vars: {
-      "--line": "rgba(255, 255, 255, 0.1)",
-      "--line-strong": "rgba(255, 255, 255, 0.16)",
-    },
-  },
-  {
-    key: "coolLines",
-    label: "Cool",
-    mode: "dark",
-    vars: {
-      "--line": "rgba(148, 163, 184, 0.12)",
-      "--line-strong": "rgba(148, 163, 184, 0.18)",
-    },
-  },
-  {
-    key: "paperLines",
-    label: "Paper",
-    mode: "light",
-    vars: {
-      "--line": "rgba(17, 17, 17, 0.12)",
-      "--line-strong": "rgba(17, 17, 17, 0.2)",
-    },
-  },
-];
-const themePalettePresets = [
-  {
-    key: "graphiteGold",
-    label: "Graphite Gold",
-    mode: "dark",
-    themeColorKey: "defaultGold",
-    themeTextKey: "mist",
-    themeBackgroundKey: "graphite",
-    themeLineKey: "soft",
-  },
-  {
-    key: "blueprintIce",
-    label: "Blueprint Ice",
-    mode: "dark",
-    themeColorKey: "ice",
-    themeTextKey: "cool",
-    themeBackgroundKey: "blueprint",
-    themeLineKey: "coolLines",
-  },
-  {
-    key: "obsidianQuartz",
-    label: "Obsidian Quartz",
-    mode: "dark",
-    themeColorKey: "quartz",
-    themeTextKey: "bright",
-    themeBackgroundKey: "obsidian",
-    themeLineKey: "crisp",
-  },
-  {
-    key: "violetSignal",
-    label: "Violet Signal",
-    mode: "dark",
-    themeColorKey: "violet",
-    themeTextKey: "mist",
-    themeBackgroundKey: "fog",
-    themeLineKey: "soft",
-  },
-  {
-    key: "paperGold",
-    label: "Paper Gold",
-    mode: "light",
-    themeColorKey: "defaultGold",
-    themeTextKey: "ink",
-    themeBackgroundKey: "paper",
-    themeLineKey: "paperLines",
-  },
-  {
-    key: "porcelainIce",
-    label: "Porcelain Ice",
-    mode: "light",
-    themeColorKey: "ice",
-    themeTextKey: "ink",
-    themeBackgroundKey: "porcelain",
-    themeLineKey: "paperLines",
-  },
-  {
-    key: "linenRose",
-    label: "Linen Rose",
-    mode: "light",
-    themeColorKey: "rose",
-    themeTextKey: "ink",
-    themeBackgroundKey: "linen",
-    themeLineKey: "paperLines",
-  },
-];
-const interfaceFontOptionsList = [
-  { key: "defaultSans", label: "Default Sans", value: '"IBM Plex Sans", "Inter", "Noto Sans", sans-serif' },
-  { key: "inter", label: "Inter", value: '"Inter", "IBM Plex Sans", "Noto Sans", sans-serif' },
-  { key: "plexSans", label: "IBM Plex Sans", value: '"IBM Plex Sans", "Inter", "Noto Sans", sans-serif' },
-  { key: "recursiveSans", label: "Recursive Sans", value: '"Recursive", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "spaceGrotesk", label: "Space Grotesk", value: '"Space Grotesk", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "plusJakartaSans", label: "Plus Jakarta Sans", value: '"Plus Jakarta Sans", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "sora", label: "Sora", value: '"Sora", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "sourceSans3", label: "Source Sans 3", value: '"Source Sans 3", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "monaSans", label: "Mona Sans", value: '"Mona Sans", "Inter", "IBM Plex Sans", sans-serif' },
-];
-const interfaceSizeOptionsList = [
-  {
-    key: "13",
-    size: 13,
-    label: "13",
-    vars: {
-      "--ui-font-size": "13px",
-      "--sidebar-title-size": "13px",
-      "--setting-copy-size": "11px",
-      "--pill-font-size": "10px",
-      "--setting-subtitle-size": "12px",
-      "--tab-label-size": "12px",
-      "--tree-name-size": "12px",
-      "--workspace-path-size": "12px",
-      "--action-font-size": "12px",
-    },
-  },
-  {
-    key: "14",
-    size: 14,
-    label: "14",
-    vars: {
-      "--ui-font-size": "14px",
-      "--sidebar-title-size": "14px",
-      "--setting-copy-size": "12px",
-      "--pill-font-size": "10px",
-      "--setting-subtitle-size": "12px",
-      "--tab-label-size": "12px",
-      "--tree-name-size": "12px",
-      "--workspace-path-size": "12px",
-      "--action-font-size": "13px",
-    },
-  },
-  {
-    key: "15",
-    size: 15,
-    label: "15",
-    vars: {
-      "--ui-font-size": "15px",
-      "--sidebar-title-size": "15px",
-      "--setting-copy-size": "13px",
-      "--pill-font-size": "11px",
-      "--setting-subtitle-size": "13px",
-      "--tab-label-size": "13px",
-      "--tree-name-size": "13px",
-      "--workspace-path-size": "13px",
-      "--action-font-size": "14px",
-    },
-  },
-  {
-    key: "16",
-    size: 16,
-    label: "16",
-    vars: {
-      "--ui-font-size": "16px",
-      "--sidebar-title-size": "16px",
-      "--setting-copy-size": "14px",
-      "--pill-font-size": "12px",
-      "--setting-subtitle-size": "14px",
-      "--tab-label-size": "14px",
-      "--tree-name-size": "14px",
-      "--workspace-path-size": "14px",
-      "--action-font-size": "15px",
-    },
-  },
-  {
-    key: "17",
-    size: 17,
-    label: "17",
-    vars: {
-      "--ui-font-size": "17px",
-      "--sidebar-title-size": "17px",
-      "--setting-copy-size": "15px",
-      "--pill-font-size": "13px",
-      "--setting-subtitle-size": "15px",
-      "--tab-label-size": "15px",
-      "--tree-name-size": "15px",
-      "--workspace-path-size": "15px",
-      "--action-font-size": "16px",
-    },
-  },
-];
-const editorFontOptionsList = [
-  { key: "jetbrainsMono", label: "JetBrains Mono", value: '"JetBrains Mono", "IBM Plex Mono", "Recursive", monospace' },
-  { key: "ibmPlexMono", label: "IBM Plex Mono", value: '"IBM Plex Mono", "JetBrains Mono", "Recursive", monospace' },
-  { key: "recursive", label: "Recursive", value: '"Recursive", "JetBrains Mono", "IBM Plex Mono", monospace' },
-  { key: "monaspace", label: "Monaspace Neon", value: '"Monaspace Neon", "JetBrains Mono", "Source Code Pro", monospace' },
-  { key: "sourceCodePro", label: "Source Code Pro", value: '"Source Code Pro", "JetBrains Mono", "IBM Plex Mono", monospace' },
-];
-const editorFontSizePresets = [
-  { key: "13", size: 13, label: "13", vars: { "--editor-font-size": "13px", "--editor-line-height": "23px" } },
-  { key: "14", size: 14, label: "14", vars: { "--editor-font-size": "14px", "--editor-line-height": "24px" } },
-  { key: "15", size: 15, label: "15", vars: { "--editor-font-size": "15px", "--editor-line-height": "26px" } },
-  { key: "16", size: 16, label: "16", vars: { "--editor-font-size": "16px", "--editor-line-height": "28px" } },
-  { key: "17", size: 17, label: "17", vars: { "--editor-font-size": "17px", "--editor-line-height": "30px" } },
-];
-const legacyInterfaceSizeKeyMap = {
-  "1": "13",
-  compact: "14",
-  default: "15",
-  comfortable: "16",
-  large: "17",
-};
-const legacyThemeColorKeyMap = {
-  styioGold: "defaultGold",
-  "Styio Gold": "Gold",
-  "Default Gold": "Gold",
-};
-const legacyInterfaceFontKeyMap = {
-  styioSans: "defaultSans",
-  "Styio Sans": "Default Sans",
-};
-const legacyEditorFontSizeKeyMap = {
-  "1": "13",
-  compact: "14",
-  default: "15",
-  large: "16",
-  "5": "17",
-};
-const legacyEditorTextHighlightKeyMap = {
-  styioGold: "defaultGold",
-  "Styio Gold": "Gold",
-  "Default Gold": "Gold",
-};
-const legacyDefaultGlyphPaletteKeyMap = {
-  styio: "default",
-  Styio: "Default",
-};
-const editorBackgroundPresets = [
-  {
-    key: "graphite",
-    label: "Graphite",
-    mode: "dark",
-    vars: {
-      "--editor": "#15171C",
-      "--editor-gutter-bg": "#1C1F26",
-      "--editor-frame-border": "rgba(232, 236, 241, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.012)",
-    },
-  },
-  {
-    key: "midnight",
-    label: "Midnight",
-    mode: "dark",
-    vars: {
-      "--editor": "#10141D",
-      "--editor-gutter-bg": "#171C26",
-      "--editor-frame-border": "rgba(232, 236, 241, 0.075)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.008)",
-    },
-  },
-  {
-    key: "carbon",
-    label: "Carbon",
-    mode: "dark",
-    vars: {
-      "--editor": "#171717",
-      "--editor-gutter-bg": "#1F1F1F",
-      "--editor-frame-border": "rgba(242, 242, 242, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.018)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.006)",
-    },
-  },
-  {
-    key: "slate",
-    label: "Slate",
-    mode: "dark",
-    vars: {
-      "--editor": "#1A2029",
-      "--editor-gutter-bg": "#202733",
-      "--editor-frame-border": "rgba(237, 241, 244, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.026)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-    },
-  },
-  {
-    key: "paper",
-    label: "Paper",
-    mode: "light",
-    vars: {
-      "--editor": "#FBFBFC",
-      "--editor-gutter-bg": "#F2F4F7",
-      "--editor-frame-border": "rgba(17, 17, 17, 0.1)",
-      "--editor-surface-overlay-top": "rgba(17, 17, 17, 0.01)",
-      "--editor-surface-overlay-bottom": "rgba(17, 17, 17, 0.004)",
-    },
-  },
-  {
-    key: "sky",
-    label: "Sky",
-    mode: "light",
-    vars: {
-      "--editor": "#F7FAFE",
-      "--editor-gutter-bg": "#EEF4FB",
-      "--editor-frame-border": "rgba(17, 17, 17, 0.1)",
-      "--editor-surface-overlay-top": "rgba(96, 165, 250, 0.01)",
-      "--editor-surface-overlay-bottom": "rgba(96, 165, 250, 0.005)",
-    },
-  },
-  {
-    key: "mint",
-    label: "Mint",
-    mode: "light",
-    vars: {
-      "--editor": "#F6FBF8",
-      "--editor-gutter-bg": "#ECF6F2",
-      "--editor-frame-border": "rgba(17, 17, 17, 0.1)",
-      "--editor-surface-overlay-top": "rgba(52, 211, 153, 0.01)",
-      "--editor-surface-overlay-bottom": "rgba(52, 211, 153, 0.005)",
-    },
-  },
-];
-const editorTextColorPresets = [
-  {
-    key: "mist",
-    label: "Mist",
-    mode: "dark",
-    vars: {
-      "--editor-text": "#E8ECF1",
-      "--editor-muted": "#7F8893",
-    },
-  },
-  {
-    key: "bright",
-    label: "Bright",
-    mode: "dark",
-    vars: {
-      "--editor-text": "#F6F8FB",
-      "--editor-muted": "#9CA7B3",
-    },
-  },
-  {
-    key: "soft",
-    label: "Soft",
-    mode: "dark",
-    vars: {
-      "--editor-text": "#D7DEE6",
-      "--editor-muted": "#7D8894",
-    },
-  },
-  {
-    key: "warm",
-    label: "Warm",
-    mode: "dark",
-    vars: {
-      "--editor-text": "#F1E9DC",
-      "--editor-muted": "#A89883",
-    },
-  },
-  {
-    key: "ink",
-    label: "Ink",
-    mode: "light",
-    vars: {
-      "--editor-text": "#111111",
-      "--editor-muted": "#5F6772",
-    },
-  },
-  {
-    key: "graphiteText",
-    label: "Graphite",
-    mode: "light",
-    vars: {
-      "--editor-text": "#1A1A1A",
-      "--editor-muted": "#5F6772",
-    },
-  },
-];
-const editorTextHighlightPresets = [
-  { key: "defaultGold", label: "Gold", color: "#F4C76A", caretShadow: "rgba(244, 199, 106, 0.18)" },
-  { key: "violet", label: "Violet", color: "#8B5CF6", caretShadow: "rgba(139, 92, 246, 0.18)" },
-  { key: "ice", label: "Ice Blue", color: "#60A5FA", caretShadow: "rgba(96, 165, 250, 0.18)" },
-  { key: "emerald", label: "Emerald", color: "#34D399", caretShadow: "rgba(52, 211, 153, 0.18)" },
-  { key: "quartz", label: "Quartz", color: "#E5E7EB", caretShadow: "rgba(229, 231, 235, 0.16)" },
-];
 const translations = {
   zhCn: {
     documentTitle: "Styio 编辑器",
@@ -921,6 +656,7 @@ const translations = {
     font: "字体",
     mode: "模式",
     themeConfig: "Config",
+    customized: "Customized",
     themePalette: "预设",
     themeText: "文字",
     themeColor: "图标",
@@ -940,7 +676,7 @@ const translations = {
     block: "代码块高亮风格",
     line: "行高亮风格",
     selection: "选区高亮风格",
-    symbolColors: "符号颜色",
+    symbolHighlight: "符号高亮",
     usingBrowserStorage: "使用浏览器存储",
     usingBrowserStorageBody: "在你选择真实工作区文件夹之前，文件和编辑器设置会暂存在浏览器缓存中。",
     openWorkspace: "打开工作区",
@@ -1017,6 +753,7 @@ const translations = {
     font: "Font",
     mode: "Mode",
     themeConfig: "Config",
+    customized: "Customized",
     themePalette: "Palette",
     themeText: "Text",
     themeColor: "Icon",
@@ -1036,7 +773,7 @@ const translations = {
     block: "Block",
     line: "Line",
     selection: "Selection",
-    symbolColors: "Symbol Colors",
+    symbolHighlight: "Symbol Highlight",
     usingBrowserStorage: "Using Browser Storage",
     usingBrowserStorageBody:
       "Files and editor settings are currently staying in browser cache until you choose a real workspace folder.",
@@ -1092,547 +829,8 @@ const translations = {
   },
 };
 
-const operatorGlyphs = {
-  "#": { tokenClass: "token-hash", visual: "#" },
-  "@": { tokenClass: "token-at", visual: "@" },
-  ">_": {
-    tokenClass: "token-prompt",
-    markup: `
-      <svg class="terminal-glyph" viewBox="6 8 12.5 8" aria-hidden="true">
-        <path d="M7 8.75l4.25 3.25L7 15.25"></path>
-        <path d="M13.25 15.25h4.5"></path>
-      </svg>
-    `,
-  },
-  "|>": { tokenClass: "token-pipe", visual: "▸" },
-  "<|": { tokenClass: "token-pipe-left", visual: "◂" },
-  "->": { tokenClass: "token-arrow-right", visual: "→" },
-  "<-": { tokenClass: "token-arrow-left", visual: "←" },
-  "=>": { tokenClass: "token-double-arrow", visual: "⇒" },
-  "<=": { tokenClass: "token-double-arrow-left", visual: "⇐" },
-  ":=": { tokenClass: "token-define", visual: "≔" },
-};
-const glyphOperators = Object.keys(operatorGlyphs).sort((left, right) => right.length - left.length);
-const glyphOperatorPattern = new RegExp(
-  `(${glyphOperators.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
-  "g",
-);
-const glyphColorSpecs = [
-  { key: "hash", token: "#", label: "Heading / Macro", cssVar: "--glyph-color-hash" },
-  { key: "at", token: "@", label: "Attribute / Import", cssVar: "--glyph-color-at" },
-  { key: "prompt", token: ">_", label: "Terminal Prompt", cssVar: "--glyph-color-prompt" },
-  { key: "pipe", token: "|>", label: "Pipeline", cssVar: "--glyph-color-pipe" },
-  { key: "pipeLeft", token: "<|", label: "Pipeline Left", cssVar: "--glyph-color-pipe-left" },
-  { key: "arrowRight", token: "->", label: "Right Arrow", cssVar: "--glyph-color-arrow-right" },
-  { key: "arrowLeft", token: "<-", label: "Left Arrow", cssVar: "--glyph-color-arrow-left" },
-  { key: "doubleArrow", token: "=>", label: "Double Arrow", cssVar: "--glyph-color-double-arrow" },
-  {
-    key: "doubleArrowLeft",
-    token: "<=",
-    label: "Double Arrow Left",
-    cssVar: "--glyph-color-double-arrow-left",
-  },
-  { key: "define", token: ":=", label: "Definition", cssVar: "--glyph-color-define" },
-];
-const glyphColorOptions = [
-  "#569CD6",
-  "#4EC9B0",
-  "#9CDCFE",
-  "#C586C0",
-  "#D7BA7D",
-  "#D19A66",
-  "#E5C07B",
-  "#D2A8FF",
-  "#7EE787",
-  "#58A6FF",
-  "#FFA657",
-  "#FF6188",
-];
-const glyphPaletteOptions = [
-  {
-    key: "default",
-    label: "Default",
-    color: "#F4C76A",
-    editorTheme: {
-      "--editor": "#15171C",
-      "--editor-text": "#E8ECF1",
-      "--editor-muted": "#7F8893",
-      "--editor-frame-border": "rgba(232, 236, 241, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.012)",
-      "--editor-gutter-bg": "#1C1F26",
-      "--editor-issue-dot": "#FF7A6A",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.028)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.06)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.034)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.068)",
-      "--editor-block-at-bg": "rgba(244, 246, 248, 0.03)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.064)",
-      "--editor-caret": "#F4C76A",
-      "--editor-caret-shadow": "rgba(244, 199, 106, 0.18)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.045)",
-      "--editor-line-issue": "#FF7A6A",
-      "--editor-selection": "rgba(244, 199, 106, 0.22)",
-    },
-  },
-  {
-    key: "studioDark",
-    label: "Studio Dark",
-    color: "#569CD6",
-    editorTheme: {
-      "--editor": "#1E1E1E",
-      "--editor-text": "#D4D4D4",
-      "--editor-muted": "#858585",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.04)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.02)",
-      "--editor-gutter-bg": "#252526",
-      "--editor-issue-dot": "#F14C4C",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.04)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-caret": "#AEAFAD",
-      "--editor-caret-shadow": "rgba(174, 175, 173, 0.18)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.05)",
-      "--editor-line-issue": "#F14C4C",
-      "--editor-selection": "rgba(38, 79, 120, 0.55)",
-    },
-  },
-  {
-    key: "graphiteBlue",
-    label: "Graphite Blue",
-    color: "#61AFEF",
-    editorTheme: {
-      "--editor": "#282C34",
-      "--editor-text": "#ABB2BF",
-      "--editor-muted": "#5C6370",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.015)",
-      "--editor-gutter-bg": "#21252B",
-      "--editor-issue-dot": "#E06C75",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.035)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-caret": "#528BFF",
-      "--editor-caret-shadow": "rgba(82, 139, 255, 0.2)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.05)",
-      "--editor-line-issue": "#E06C75",
-      "--editor-selection": "rgba(82, 139, 255, 0.3)",
-    },
-  },
-  {
-    key: "amberNight",
-    label: "Amber Night",
-    color: "#78DCE8",
-    editorTheme: {
-      "--editor": "#272822",
-      "--editor-text": "#F8F8F2",
-      "--editor-muted": "#75715E",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.025)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#221F22",
-      "--editor-issue-dot": "#FF6188",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.035)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-caret": "#F8F8F0",
-      "--editor-caret-shadow": "rgba(248, 248, 240, 0.18)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.045)",
-      "--editor-line-issue": "#FF6188",
-      "--editor-selection": "rgba(73, 72, 62, 0.8)",
-    },
-  },
-  {
-    key: "forgeDark",
-    label: "Forge Dark",
-    color: "#79C0FF",
-    editorTheme: {
-      "--editor": "#0D1117",
-      "--editor-text": "#C9D1D9",
-      "--editor-muted": "#8B949E",
-      "--editor-frame-border": "rgba(240, 246, 252, 0.1)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#161B22",
-      "--editor-issue-dot": "#FF7B72",
-      "--editor-block-bg": "rgba(110, 118, 129, 0.12)",
-      "--editor-block-border": "rgba(240, 246, 252, 0.08)",
-      "--editor-caret": "#79C0FF",
-      "--editor-caret-shadow": "rgba(121, 192, 255, 0.18)",
-      "--editor-line-selected": "rgba(56, 139, 253, 0.14)",
-      "--editor-line-issue": "#FF7B72",
-      "--editor-selection": "rgba(56, 139, 253, 0.28)",
-    },
-  },
-  {
-    key: "plumNight",
-    label: "Plum Night",
-    color: "#BD93F9",
-    editorTheme: {
-      "--editor": "#282A36",
-      "--editor-text": "#F8F8F2",
-      "--editor-muted": "#6272A4",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#232530",
-      "--editor-issue-dot": "#FF5555",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.035)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-caret": "#F8F8F2",
-      "--editor-caret-shadow": "rgba(248, 248, 242, 0.16)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.05)",
-      "--editor-line-issue": "#FF5555",
-      "--editor-selection": "rgba(189, 147, 249, 0.22)",
-    },
-  },
-  {
-    key: "arctic",
-    label: "Arctic",
-    color: "#81A1C1",
-    editorTheme: {
-      "--editor": "#2E3440",
-      "--editor-text": "#D8DEE9",
-      "--editor-muted": "#81A1C1",
-      "--editor-frame-border": "rgba(216, 222, 233, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#3B4252",
-      "--editor-issue-dot": "#BF616A",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.03)",
-      "--editor-block-border": "rgba(216, 222, 233, 0.08)",
-      "--editor-caret": "#88C0D0",
-      "--editor-caret-shadow": "rgba(136, 192, 208, 0.16)",
-      "--editor-line-selected": "rgba(129, 161, 193, 0.15)",
-      "--editor-line-issue": "#BF616A",
-      "--editor-selection": "rgba(94, 129, 172, 0.3)",
-    },
-  },
-  {
-    key: "mocha",
-    label: "Mocha",
-    color: "#89B4FA",
-    editorTheme: {
-      "--editor": "#1E1E2E",
-      "--editor-text": "#CDD6F4",
-      "--editor-muted": "#6C7086",
-      "--editor-frame-border": "rgba(205, 214, 244, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.018)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.008)",
-      "--editor-gutter-bg": "#181825",
-      "--editor-issue-dot": "#F38BA8",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.03)",
-      "--editor-block-border": "rgba(205, 214, 244, 0.08)",
-      "--editor-caret": "#F5E0DC",
-      "--editor-caret-shadow": "rgba(245, 224, 220, 0.14)",
-      "--editor-line-selected": "rgba(137, 180, 250, 0.14)",
-      "--editor-line-issue": "#F38BA8",
-      "--editor-selection": "rgba(137, 180, 250, 0.22)",
-    },
-  },
-  {
-    key: "solar",
-    label: "Solar",
-    color: "#268BD2",
-    editorTheme: {
-      "--editor": "#002B36",
-      "--editor-text": "#93A1A1",
-      "--editor-muted": "#586E75",
-      "--editor-frame-border": "rgba(147, 161, 161, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.015)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.006)",
-      "--editor-gutter-bg": "#073642",
-      "--editor-issue-dot": "#DC322F",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.025)",
-      "--editor-block-border": "rgba(147, 161, 161, 0.08)",
-      "--editor-caret": "#839496",
-      "--editor-caret-shadow": "rgba(131, 148, 150, 0.14)",
-      "--editor-line-selected": "rgba(38, 139, 210, 0.14)",
-      "--editor-line-issue": "#DC322F",
-      "--editor-selection": "rgba(7, 54, 66, 0.95)",
-    },
-  },
-  {
-    key: "monoChrome",
-    label: "Mono Chrome",
-    color: "#E5E7EB",
-    editorTheme: {
-      "--editor": "#0B0D10",
-      "--editor-text": "#F3F4F6",
-      "--editor-muted": "#9CA3AF",
-      "--editor-frame-border": "rgba(229, 231, 235, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.008)",
-      "--editor-gutter-bg": "#111418",
-      "--editor-issue-dot": "#F87171",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.024)",
-      "--editor-block-border": "rgba(229, 231, 235, 0.07)",
-      "--editor-caret": "#F3F4F6",
-      "--editor-caret-shadow": "rgba(243, 244, 246, 0.16)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.04)",
-      "--editor-line-issue": "#F87171",
-      "--editor-selection": "rgba(229, 231, 235, 0.16)",
-    },
-  },
-  {
-    key: "signalViolet",
-    label: "Signal Violet",
-    color: "#A78BFA",
-    editorTheme: {
-      "--editor": "#12111A",
-      "--editor-text": "#ECEAF8",
-      "--editor-muted": "#9C98B8",
-      "--editor-frame-border": "rgba(196, 181, 253, 0.08)",
-      "--editor-surface-overlay-top": "rgba(196, 181, 253, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(196, 181, 253, 0.012)",
-      "--editor-gutter-bg": "#181624",
-      "--editor-issue-dot": "#FB7185",
-      "--editor-block-bg": "rgba(167, 139, 250, 0.05)",
-      "--editor-block-border": "rgba(196, 181, 253, 0.09)",
-      "--editor-caret": "#C4B5FD",
-      "--editor-caret-shadow": "rgba(196, 181, 253, 0.18)",
-      "--editor-line-selected": "rgba(167, 139, 250, 0.1)",
-      "--editor-line-issue": "#FB7185",
-      "--editor-selection": "rgba(167, 139, 250, 0.22)",
-    },
-  },
-  {
-    key: "emeraldConsole",
-    label: "Emerald Console",
-    color: "#34D399",
-    editorTheme: {
-      "--editor": "#0B1212",
-      "--editor-text": "#DDF7EE",
-      "--editor-muted": "#83A69B",
-      "--editor-frame-border": "rgba(52, 211, 153, 0.08)",
-      "--editor-surface-overlay-top": "rgba(52, 211, 153, 0.025)",
-      "--editor-surface-overlay-bottom": "rgba(52, 211, 153, 0.01)",
-      "--editor-gutter-bg": "#10191A",
-      "--editor-issue-dot": "#F97316",
-      "--editor-block-bg": "rgba(52, 211, 153, 0.04)",
-      "--editor-block-border": "rgba(110, 231, 183, 0.08)",
-      "--editor-caret": "#6EE7B7",
-      "--editor-caret-shadow": "rgba(110, 231, 183, 0.16)",
-      "--editor-line-selected": "rgba(52, 211, 153, 0.08)",
-      "--editor-line-issue": "#F97316",
-      "--editor-selection": "rgba(52, 211, 153, 0.18)",
-    },
-  },
-  {
-    key: "auroraBloom",
-    label: "Aurora Bloom",
-    color: "#7DD3FC",
-    editorTheme: {
-      "--editor": "#12131E",
-      "--editor-text": "#EEF2FF",
-      "--editor-muted": "#9AA4C0",
-      "--editor-frame-border": "rgba(125, 211, 252, 0.09)",
-      "--editor-surface-overlay-top": "rgba(167, 139, 250, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(125, 211, 252, 0.012)",
-      "--editor-gutter-bg": "#181A28",
-      "--editor-issue-dot": "#FB7185",
-      "--editor-block-bg": "rgba(125, 211, 252, 0.04)",
-      "--editor-block-border": "rgba(167, 139, 250, 0.08)",
-      "--editor-caret": "#7DD3FC",
-      "--editor-caret-shadow": "rgba(125, 211, 252, 0.16)",
-      "--editor-line-selected": "rgba(167, 139, 250, 0.09)",
-      "--editor-line-issue": "#FB7185",
-      "--editor-selection": "rgba(125, 211, 252, 0.18)",
-    },
-  },
-  {
-    key: "terminalSlate",
-    label: "Terminal Slate",
-    color: "#94A3B8",
-    editorTheme: {
-      "--editor": "#0F1720",
-      "--editor-text": "#E2E8F0",
-      "--editor-muted": "#8694A8",
-      "--editor-frame-border": "rgba(148, 163, 184, 0.08)",
-      "--editor-surface-overlay-top": "rgba(148, 163, 184, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(148, 163, 184, 0.01)",
-      "--editor-gutter-bg": "#141E2A",
-      "--editor-issue-dot": "#F87171",
-      "--editor-block-bg": "rgba(148, 163, 184, 0.03)",
-      "--editor-block-border": "rgba(148, 163, 184, 0.07)",
-      "--editor-caret": "#CBD5E1",
-      "--editor-caret-shadow": "rgba(203, 213, 225, 0.16)",
-      "--editor-line-selected": "rgba(148, 163, 184, 0.08)",
-      "--editor-line-issue": "#F87171",
-      "--editor-selection": "rgba(148, 163, 184, 0.18)",
-    },
-  },
-  {
-    key: "paperCode",
-    label: "Paper Code",
-    color: "#D4A63F",
-    editorTheme: {
-      "--editor": "#FBFBFC",
-      "--editor-text": "#1F2937",
-      "--editor-muted": "#6B7280",
-      "--editor-frame-border": "rgba(31, 41, 55, 0.08)",
-      "--editor-surface-overlay-top": "rgba(15, 23, 42, 0.012)",
-      "--editor-surface-overlay-bottom": "rgba(15, 23, 42, 0.006)",
-      "--editor-gutter-bg": "#F2F4F7",
-      "--editor-issue-dot": "#DC2626",
-      "--editor-block-bg": "rgba(15, 23, 42, 0.035)",
-      "--editor-block-border": "rgba(15, 23, 42, 0.08)",
-      "--editor-caret": "#D4A63F",
-      "--editor-caret-shadow": "rgba(212, 166, 63, 0.16)",
-      "--editor-line-selected": "rgba(15, 23, 42, 0.05)",
-      "--editor-line-issue": "#DC2626",
-      "--editor-selection": "rgba(212, 166, 63, 0.18)",
-    },
-  },
-  {
-    key: "skyDraft",
-    label: "Sky Draft",
-    color: "#60A5FA",
-    editorTheme: {
-      "--editor": "#F7FAFE",
-      "--editor-text": "#1E293B",
-      "--editor-muted": "#64748B",
-      "--editor-frame-border": "rgba(30, 41, 59, 0.08)",
-      "--editor-surface-overlay-top": "rgba(96, 165, 250, 0.01)",
-      "--editor-surface-overlay-bottom": "rgba(96, 165, 250, 0.005)",
-      "--editor-gutter-bg": "#EEF4FB",
-      "--editor-issue-dot": "#E11D48",
-      "--editor-block-bg": "rgba(96, 165, 250, 0.05)",
-      "--editor-block-border": "rgba(96, 165, 250, 0.11)",
-      "--editor-caret": "#3B82F6",
-      "--editor-caret-shadow": "rgba(59, 130, 246, 0.14)",
-      "--editor-line-selected": "rgba(59, 130, 246, 0.08)",
-      "--editor-line-issue": "#E11D48",
-      "--editor-selection": "rgba(96, 165, 250, 0.16)",
-    },
-  },
-  {
-    key: "mintSheet",
-    label: "Mint Sheet",
-    color: "#34D399",
-    editorTheme: {
-      "--editor": "#F6FBF8",
-      "--editor-text": "#1F2D2A",
-      "--editor-muted": "#6A827D",
-      "--editor-frame-border": "rgba(31, 45, 42, 0.08)",
-      "--editor-surface-overlay-top": "rgba(52, 211, 153, 0.01)",
-      "--editor-surface-overlay-bottom": "rgba(52, 211, 153, 0.005)",
-      "--editor-gutter-bg": "#ECF6F2",
-      "--editor-issue-dot": "#DC2626",
-      "--editor-block-bg": "rgba(52, 211, 153, 0.045)",
-      "--editor-block-border": "rgba(16, 185, 129, 0.09)",
-      "--editor-caret": "#10B981",
-      "--editor-caret-shadow": "rgba(16, 185, 129, 0.14)",
-      "--editor-line-selected": "rgba(52, 211, 153, 0.07)",
-      "--editor-line-issue": "#DC2626",
-      "--editor-selection": "rgba(52, 211, 153, 0.16)",
-    },
-  },
-];
-const editorPaletteMeta = {
-  default: {
-    mode: "dark",
-    backgroundKey: "graphite",
-    textColorKey: "mist",
-    textHighlightKey: "defaultGold",
-    blockKey: "graphite",
-    lineKey: "graphite",
-    selectionKey: "graphite",
-  },
-  studioDark: { mode: "dark", backgroundKey: "graphite", textColorKey: "mist", textHighlightKey: "ice", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  graphiteBlue: { mode: "dark", backgroundKey: "midnight", textColorKey: "mist", textHighlightKey: "ice", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  amberNight: { mode: "dark", backgroundKey: "carbon", textColorKey: "warm", textHighlightKey: "defaultGold", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  forgeDark: { mode: "dark", backgroundKey: "midnight", textColorKey: "mist", textHighlightKey: "ice", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  plumNight: { mode: "dark", backgroundKey: "fog", textColorKey: "mist", textHighlightKey: "violet", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  arctic: { mode: "dark", backgroundKey: "blueprint", textColorKey: "bright", textHighlightKey: "ice", blockKey: "frost", lineKey: "graphite", selectionKey: "graphite" },
-  mocha: { mode: "dark", backgroundKey: "graphite", textColorKey: "soft", textHighlightKey: "ice", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  solar: { mode: "dark", backgroundKey: "graphite", textColorKey: "soft", textHighlightKey: "ice", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  monoChrome: { mode: "dark", backgroundKey: "obsidian", textColorKey: "bright", textHighlightKey: "defaultGold", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  signalViolet: { mode: "dark", backgroundKey: "fog", textColorKey: "mist", textHighlightKey: "violet", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  emeraldConsole: { mode: "dark", backgroundKey: "graphite", textColorKey: "soft", textHighlightKey: "emerald", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  auroraBloom: { mode: "dark", backgroundKey: "blueprint", textColorKey: "bright", textHighlightKey: "ice", blockKey: "frost", lineKey: "graphite", selectionKey: "graphite" },
-  terminalSlate: { mode: "dark", backgroundKey: "midnight", textColorKey: "soft", textHighlightKey: "quartz", blockKey: "graphite", lineKey: "graphite", selectionKey: "graphite" },
-  paperCode: { mode: "light", backgroundKey: "paper", textColorKey: "ink", textHighlightKey: "defaultGold", blockKey: "frost", lineKey: "paperLine", selectionKey: "paperSelection" },
-  skyDraft: { mode: "light", backgroundKey: "sky", textColorKey: "ink", textHighlightKey: "ice", blockKey: "frost", lineKey: "paperLine", selectionKey: "paperSelection" },
-  mintSheet: { mode: "light", backgroundKey: "mint", textColorKey: "ink", textHighlightKey: "emerald", blockKey: "frost", lineKey: "paperLine", selectionKey: "paperSelection" },
-};
-const legacyGlyphPaletteKeyMap = {
-  darkPlus: "studioDark",
-  oneDark: "graphiteBlue",
-  monokai: "amberNight",
-  githubDark: "forgeDark",
-  dracula: "plumNight",
-  nord: "arctic",
-  catppuccinMocha: "mocha",
-  solarized: "solar",
-};
-const blockSurfacePresets = [
-  {
-    key: "frost",
-    label: "Frost",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.045)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.085)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.058)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.1)",
-      "--editor-block-at-bg": "rgba(248, 249, 252, 0.052)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.095)",
-    },
-  },
-  {
-    key: "softMist",
-    label: "Soft Mist",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.036)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.072)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.044)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.082)",
-      "--editor-block-at-bg": "rgba(245, 246, 248, 0.04)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.076)",
-    },
-  },
-  {
-    key: "paperGlass",
-    label: "Paper Glass",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.062)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.12)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.074)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.132)",
-      "--editor-block-at-bg": "rgba(250, 250, 252, 0.068)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.124)",
-    },
-  },
-  {
-    key: "graphite",
-    label: "Graphite",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.028)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.06)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.034)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.068)",
-      "--editor-block-at-bg": "rgba(244, 246, 248, 0.03)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.064)",
-    },
-  },
-];
-const lineHighlightPresets = [
-  { key: "graphite", label: "Graphite", value: "rgba(255, 255, 255, 0.045)" },
-  { key: "glassWhite", label: "Glass White", value: "rgba(255, 255, 255, 0.065)" },
-  { key: "violetMist", label: "Violet Mist", value: "rgba(139, 92, 246, 0.12)" },
-  { key: "blueTint", label: "Blue Tint", value: "rgba(96, 165, 250, 0.12)" },
-  { key: "amberSoft", label: "Amber Soft", value: "rgba(255, 138, 87, 0.11)" },
-  { key: "paperLine", label: "Paper", value: "rgba(17, 17, 17, 0.08)" },
-];
-const selectionHighlightPresets = [
-  { key: "graphite", label: "Graphite", value: "rgba(255, 255, 255, 0.12)" },
-  { key: "glassWhite", label: "Glass White", value: "rgba(255, 255, 255, 0.18)" },
-  { key: "violetMist", label: "Violet Mist", value: "rgba(139, 92, 246, 0.22)" },
-  { key: "blueTint", label: "Blue Tint", value: "rgba(96, 165, 250, 0.22)" },
-  { key: "amberSoft", label: "Amber Soft", value: "rgba(255, 138, 87, 0.22)" },
-  { key: "paperSelection", label: "Paper", value: "rgba(15, 23, 42, 0.14)" },
-];
-const defaultGlyphColor = glyphPaletteOptions[0].color;
 let glyphColors = Object.fromEntries(glyphColorSpecs.map((spec) => [spec.key, defaultGlyphColor]));
+const styioHighlightKeywords = new Set(styioKeywordTokens);
 
 const measureLine = document.createElement("div");
 measureLine.className = "measure-line";
@@ -1714,6 +912,7 @@ function applyLanguageUi() {
   editorTitle.textContent = t("editor");
   editorFontCardTitle.textContent = t("font");
   editorColorCardTitle.textContent = t("color");
+  editorConfigTitle.textContent = t("themeConfig");
   glyphCompositionTitle.textContent = t("glyphComposition");
   tabSizeTitle.textContent = t("tabSize");
   editorFontTitle.textContent = t("editorFont");
@@ -1725,7 +924,7 @@ function applyLanguageUi() {
   blockTitle.textContent = t("block");
   lineTitle.textContent = t("line");
   selectionTitle.textContent = t("selection");
-  symbolColorsTitle.textContent = t("symbolColors");
+  symbolColorsTitle.textContent = t("symbolHighlight");
   themeModeToggle?.setAttribute("aria-label", `${t("theme")} ${t("mode")}`);
   editorModeToggle?.setAttribute("aria-label", `${t("editor")} ${t("mode")}`);
   indentControl?.setAttribute("aria-label", t("tabSize"));
@@ -1749,6 +948,10 @@ function applyLanguageUi() {
   importThemeConfigButton.setAttribute("title", t("importConfig"));
   editThemeConfigButton.setAttribute("aria-label", t("editConfig"));
   editThemeConfigButton.setAttribute("title", t("editConfig"));
+  importEditorConfigButton.setAttribute("aria-label", t("importConfig"));
+  importEditorConfigButton.setAttribute("title", t("importConfig"));
+  editEditorConfigButton.setAttribute("aria-label", t("editConfig"));
+  editEditorConfigButton.setAttribute("title", t("editConfig"));
 
   workspacePickerTitle.textContent = workspacePickerTitleText || t("openWorkspaceTitle");
   workspacePickerCaption.textContent = workspacePickerDefaultCaptionText || t("chooseWorkspaceRoot");
@@ -2085,7 +1288,7 @@ function buildCustomPaletteConfigObject() {
     $schema: customPaletteConfigSchema,
     name: "Custom Palette",
     "workbench.colorCustomizations": {
-      "styio.themePalette": activeThemePaletteKey,
+      "styio.themePalette": currentThemePaletteSelectionKey(),
       "styio.themeColor": activeThemeColorKey,
       "styio.themeText": activeThemeTextKey,
       "styio.background": activeThemeBackgroundKey,
@@ -2104,7 +1307,7 @@ function buildCustomPaletteConfigObject() {
       editorMode,
     },
     "editor.tokenColorCustomizations": {
-      "styio.palette": activePaletteKey,
+      "styio.palette": currentEditorPaletteSelectionKey(),
       "styio.editorBackground": activeEditorBackgroundKey,
       "styio.textColor": activeEditorTextColorKey,
       "styio.textHighlight": activeEditorTextHighlightKey,
@@ -2126,7 +1329,7 @@ function persistThemeSettings() {
       themeSettingsStorageKey,
       JSON.stringify({
         themeMode,
-        themePaletteKey: activeThemePaletteKey,
+        themePaletteKey: currentThemePaletteSelectionKey(),
         themeColorKey: activeThemeColorKey,
         themeTextKey: activeThemeTextKey,
         themeBackgroundKey: activeThemeBackgroundKey,
@@ -2196,7 +1399,7 @@ function persistEditorPreferences() {
         indentSize,
         editorFontKey: activeEditorFontKey,
         editorFontSizeKey: activeEditorFontSizeKey,
-        paletteKey: activePaletteKey,
+        paletteKey: currentEditorPaletteSelectionKey(),
         editorBackgroundKey: activeEditorBackgroundKey,
         editorTextColorKey: activeEditorTextColorKey,
         editorTextHighlightKey: activeEditorTextHighlightKey,
@@ -2285,15 +1488,6 @@ function applyCustomPaletteConfig(config) {
   });
   coerceThemeSelectionsForMode();
   coerceEditorSelectionsForMode();
-  applyWorkbenchThemeState();
-  applyEditorTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  applyBlockSurfaceTheme();
-  applyLineHighlightTheme();
-  applySelectionHighlightTheme();
-  applyGlyphColors();
 }
 
 function loadCustomPaletteConfigState() {
@@ -2463,11 +1657,9 @@ function stepInterfaceSize(direction) {
     return;
   }
 
-  activeInterfaceSizeKey = options[nextIndex].key;
-  applyWorkbenchThemeState();
-  syncThemeUi();
-  renderEditor();
-  persistThemeSettings();
+  dispatchSurfaceAction(SURFACE_ACTIONS.INTERFACE_SIZE, () => {
+    activeInterfaceSizeKey = options[nextIndex].key;
+  });
 }
 
 function stepEditorFontSize(direction) {
@@ -2481,11 +1673,9 @@ function stepEditorFontSize(direction) {
     return;
   }
 
-  activeEditorFontSizeKey = presets[nextIndex].key;
-  applyEditorFontSizeTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_FONT_SIZE, () => {
+    activeEditorFontSizeKey = presets[nextIndex].key;
+  });
 }
 
 function currentEditorBackgroundPreset() {
@@ -2578,6 +1768,27 @@ function defaultThemePaletteForMode(mode) {
   return themePalettePresets.find((palette) => palette.mode === mode) ?? themePalettePresets[0];
 }
 
+function matchedThemePalette() {
+  return (
+    themePalettePresets.find(
+      (palette) =>
+        palette.mode === themeMode &&
+        palette.themeColorKey === activeThemeColorKey &&
+        palette.themeTextKey === activeThemeTextKey &&
+        palette.themeBackgroundKey === activeThemeBackgroundKey &&
+        palette.themeLineKey === activeThemeLineKey,
+    ) ?? null
+  );
+}
+
+function currentThemePaletteSelectionKey() {
+  return matchedThemePalette()?.key ?? "customized";
+}
+
+function currentThemePaletteLabel() {
+  return matchedThemePalette()?.label ?? t("customized");
+}
+
 function currentThemePalette() {
   const byKey = themePalettePresets.find((palette) => palette.key === activeThemePaletteKey);
   if (byKey && byKey.mode === themeMode) {
@@ -2620,7 +1831,6 @@ function applyThemePaletteSelection(paletteKey) {
   activeThemeTextKey = palette.themeTextKey;
   activeThemeBackgroundKey = palette.themeBackgroundKey;
   activeThemeLineKey = palette.themeLineKey;
-  applyWorkbenchThemeState();
 }
 
 function syncThemeUi() {
@@ -2656,7 +1866,7 @@ function syncThemeUi() {
     )
     .join("");
 
-  themePaletteButton.textContent = currentThemePalette().label;
+  themePaletteButton.textContent = currentThemePaletteLabel();
   themePaletteButton.setAttribute("aria-expanded", String(themePaletteMenuOpen));
   themePaletteOptionsMenu.classList.toggle("is-open", themePaletteMenuOpen);
   themePaletteOptionsMenu.innerHTML = currentThemeModeOptions()
@@ -2669,7 +1879,7 @@ function syncThemeUi() {
     )
     .join("");
   themePaletteOptionsMenu.querySelectorAll("[data-theme-palette-key]").forEach((button) => {
-    const active = button.dataset.themePaletteKey === activeThemePaletteKey;
+    const active = button.dataset.themePaletteKey === currentThemePaletteSelectionKey();
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
@@ -2936,7 +2146,7 @@ function persistGlyphHighlights() {
       glyphHighlightStorageKey,
       JSON.stringify({
         editorMode,
-        paletteKey: activePaletteKey,
+        paletteKey: currentEditorPaletteSelectionKey(),
         editorBackgroundKey: activeEditorBackgroundKey,
         editorTextColorKey: activeEditorTextColorKey,
         editorTextHighlightKey: activeEditorTextHighlightKey,
@@ -2969,6 +2179,31 @@ function defaultEditorPaletteForMode(mode) {
     glyphPaletteOptions.find((palette) => (editorPaletteMeta[palette.key]?.mode ?? "dark") === mode) ??
     glyphPaletteOptions[0]
   );
+}
+
+function matchedEditorPalette() {
+  return (
+    glyphPaletteOptions.find((palette) => {
+      const meta = editorPaletteMeta[palette.key] ?? {};
+      return (
+        (meta.mode ?? "dark") === editorMode &&
+        meta.backgroundKey === activeEditorBackgroundKey &&
+        meta.textColorKey === activeEditorTextColorKey &&
+        meta.textHighlightKey === activeEditorTextHighlightKey &&
+        meta.blockKey === activeBlockSurfaceKey &&
+        meta.lineKey === activeLineHighlightKey &&
+        meta.selectionKey === activeSelectionHighlightKey
+      );
+    }) ?? null
+  );
+}
+
+function currentEditorPaletteSelectionKey() {
+  return matchedEditorPalette()?.key ?? "customized";
+}
+
+function currentEditorPaletteLabel() {
+  return matchedEditorPalette()?.label ?? t("customized");
 }
 
 function currentPalette() {
@@ -3035,18 +2270,10 @@ function applyEditorPaletteSelection(paletteKey) {
   activeLineHighlightKey = meta.lineKey ?? activeLineHighlightKey;
   activeSelectionHighlightKey = meta.selectionKey ?? activeSelectionHighlightKey;
   applySharedGlyphColor(palette.color);
-  applyEditorTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  applyBlockSurfaceTheme();
-  applyLineHighlightTheme();
-  applySelectionHighlightTheme();
-  applyGlyphColors();
 }
 
 function syncGlyphHighlightUi() {
-  highlightPaletteButton.textContent = currentPalette().label;
+  highlightPaletteButton.textContent = currentEditorPaletteLabel();
   highlightPaletteButton.setAttribute("aria-expanded", String(paletteMenuOpen));
   highlightPaletteOptions.classList.toggle("is-open", paletteMenuOpen);
   highlightPaletteOptions.innerHTML = currentEditorModeOptions()
@@ -3059,7 +2286,7 @@ function syncGlyphHighlightUi() {
     )
     .join("");
   highlightPaletteOptions.querySelectorAll("[data-palette-key]").forEach((button) => {
-    const active = activePaletteKey === button.dataset.paletteKey;
+    const active = currentEditorPaletteSelectionKey() === button.dataset.paletteKey;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
@@ -3224,11 +2451,6 @@ function loadGlyphHighlightState() {
       activeBlockSurfaceKey = blockSurfacePresets[0].key;
       activeLineHighlightKey = lineHighlightPresets[0].key;
       activeSelectionHighlightKey = selectionHighlightPresets[0].key;
-      applyEditorTheme();
-      applyBlockSurfaceTheme();
-      applyLineHighlightTheme();
-      applySelectionHighlightTheme();
-      applyGlyphColors();
       return;
     }
 
@@ -3279,15 +2501,6 @@ function loadGlyphHighlightState() {
   } catch (error) {
     console.warn("failed to restore glyph highlights", error);
   }
-
-  applyEditorTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  applyBlockSurfaceTheme();
-  applyLineHighlightTheme();
-  applySelectionHighlightTheme();
-  applyGlyphColors();
 }
 
 function countMatches(value, regex) {
@@ -3483,6 +2696,33 @@ function renderToken(token) {
   return `<span class="token ${glyph.tokenClass}"><span class="token-visual">${visualMarkup}</span><span class="token-raw">${escapeHtml(token)}</span></span>`;
 }
 
+function isKeywordChar(char) {
+  return /[\p{L}\p{N}_]/u.test(char);
+}
+
+function findKeywordTokenAt(line, index) {
+  const current = line[index] ?? "";
+  if (!isKeywordChar(current)) {
+    return null;
+  }
+
+  if (index > 0 && isKeywordChar(line[index - 1] ?? "")) {
+    return null;
+  }
+
+  let end = index + 1;
+  while (end < line.length && isKeywordChar(line[end] ?? "")) {
+    end += 1;
+  }
+
+  const lexeme = line.slice(index, end);
+  return styioHighlightKeywords.has(lexeme) ? lexeme : null;
+}
+
+function renderKeywordToken(token) {
+  return `<span class="token-keyword">${escapeHtml(token)}</span>`;
+}
+
 function findGlyphTokenAt(line, index) {
   return glyphOperators.find((token) => line.startsWith(token, index)) ?? null;
 }
@@ -3493,6 +2733,7 @@ function renderInlineWithCaret(line, lineStart, caretOffset) {
 
   while (index < line.length) {
     const token = findGlyphTokenAt(line, index);
+    const keyword = !token ? findKeywordTokenAt(line, index) : null;
     const tokenStart = lineStart + index;
     const insideToken =
       token !== null && caretOffset > tokenStart && caretOffset < tokenStart + token.length;
@@ -3500,6 +2741,12 @@ function renderInlineWithCaret(line, lineStart, caretOffset) {
     if (token && !insideToken) {
       html += renderToken(token);
       index += token.length;
+      continue;
+    }
+
+    if (keyword) {
+      html += renderKeywordToken(keyword);
+      index += keyword.length;
       continue;
     }
 
@@ -3709,14 +2956,21 @@ function stopPointerSelection() {
 }
 
 function scheduleNativeRender() {
-  if (pendingNativeRenderFrame) {
-    return;
-  }
+  requestRender(renderGroups.editorSelection);
+}
 
-  pendingNativeRenderFrame = window.requestAnimationFrame(() => {
-    pendingNativeRenderFrame = 0;
-    renderEditor();
+function scheduleLayoutRender() {
+  requestRender(renderGroups.editorLayout);
+  window.requestAnimationFrame(() => {
+    requestRender(renderGroups.editorLayout);
   });
+  if (pendingLayoutRenderTimeout) {
+    window.clearTimeout(pendingLayoutRenderTimeout);
+  }
+  pendingLayoutRenderTimeout = window.setTimeout(() => {
+    pendingLayoutRenderTimeout = 0;
+    requestRender(renderGroups.editorLayout);
+  }, 260);
 }
 
 function syncSidebar() {
@@ -3736,6 +2990,8 @@ function syncSidebar() {
     const panel = document.getElementById(`drawerPanel${button.dataset.drawerTab.charAt(0).toUpperCase()}${button.dataset.drawerTab.slice(1)}`);
     panel.classList.toggle("is-active", active);
   });
+
+  scheduleLayoutRender();
 }
 
 function chooseWorkspaceFile(preferredFile, files) {
@@ -4960,26 +4216,13 @@ function applyImportedPaletteConfig(rawText) {
   const parsedConfig = parseCustomPaletteConfig(rawText);
   applyCustomPaletteConfig(parsedConfig);
   persistThemeSettings();
-  persistEditorPreferences();
-  persistGlyphHighlights();
+  persistEditorSurfaceState();
   document.body.classList.toggle("glyphs-off", !glyphsOn);
-  applyWorkbenchThemeState();
-  applyEditorFontTheme();
-  applyEditorFontSizeTheme();
-  applyEditorTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  applyBlockSurfaceTheme();
-  applyLineHighlightTheme();
-  applySelectionHighlightTheme();
-  applyGlyphColors();
-  syncSettingsUi();
   updateIndentUi();
   toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
   toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
   toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
-  renderEditor();
+  flushFullAppRender();
 }
 
 async function openPaletteConfigImportPicker(startPath = workspaceRootPath) {
@@ -5231,19 +4474,7 @@ function updateSaveUi() {
 }
 
 function renderEditor() {
-  const analysis = analyzeSource(fileSources[currentFile]);
-  syncBulkDeleteButton();
-  syncRefreshWorkspaceButton();
-  renderFileTabs();
-  renderFileTree();
-  renderGutter(analysis);
-  renderLines(analysis);
-  syncOverlayMetrics();
-  renderBlocks(analysis);
-  syncCaretIndicator(analysis);
-  syncScroll();
-  updateStatusbar(analysis);
-  updateSaveUi();
+  flushRender(renderGroups.fullEditor);
 }
 
 async function focusFile(fileName) {
@@ -5280,7 +4511,8 @@ function replaceSelection(replacement, nextSelectionStart, nextSelectionEnd = ne
   editorInput.setSelectionRange(nextSelectionStart, nextSelectionEnd);
   fileSources[currentFile] = nextValue;
   fileDirty[currentFile] = true;
-  renderEditor();
+  requestSidebarRender();
+  requestEditorContentRender();
 }
 
 function currentLineStart(value, offset) {
@@ -5507,7 +4739,8 @@ async function saveCurrentFile() {
     fileSources[currentFile] = editorInput.value;
     fileDirty[currentFile] = false;
     workspaceLoadedFiles.add(currentFile);
-    renderEditor();
+    requestSidebarRender();
+    requestRender(RenderSlice.saveUi);
   } catch (error) {
     console.error(error);
     setSaveState("error", "disk: save failed");
@@ -5632,7 +4865,7 @@ fileTree.addEventListener("click", (event) => {
     } else {
       selectedTreePaths.add(treePath);
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -5655,7 +4888,7 @@ fileTree.addEventListener("click", (event) => {
     } else {
       activeTreePath = folderPath;
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -5681,7 +4914,7 @@ fileTree.addEventListener("click", (event) => {
     } else {
       selectedTreePaths.add(fileName);
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -5690,7 +4923,7 @@ fileTree.addEventListener("click", (event) => {
   const fileName = fileButton.dataset.treeFile;
   if (activeTreePath === fileName) {
     activeTreePath = "";
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -5757,7 +4990,24 @@ window.addEventListener("pointerup", () => {
 
 window.addEventListener("resize", () => {
   syncWorkspacePathScrollerMetrics();
+  scheduleLayoutRender();
 });
+
+workspaceShell.addEventListener("transitionend", (event) => {
+  if (event.target !== workspaceShell) {
+    return;
+  }
+  if (event.propertyName === "grid-template-columns" || event.propertyName === "gap") {
+    scheduleNativeRender();
+  }
+});
+
+if (window.ResizeObserver) {
+  const codeStageResizeObserver = new ResizeObserver(() => {
+    scheduleNativeRender();
+  });
+  codeStageResizeObserver.observe(codeStage);
+}
 
 workspacePickerClose.addEventListener("click", () => {
   closeWorkspacePicker();
@@ -5847,7 +5097,7 @@ quickCreateFileButton.addEventListener("click", () => {
 refreshWorkspaceButton.addEventListener("click", () => {
   if (bulkDeleteMode) {
     exitBulkDeleteMode();
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -5869,13 +5119,13 @@ bulkDeleteButton.addEventListener("click", async () => {
     if (activeTreePath) {
       selectedTreePaths.add(activeTreePath);
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
   if (!selectedTreePaths.size) {
     exitBulkDeleteMode();
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -5894,6 +5144,14 @@ editThemeConfigButton.addEventListener("click", () => {
   openPaletteConfigEditor();
 });
 
+importEditorConfigButton.addEventListener("click", () => {
+  openPaletteConfigImportPicker(workspaceRootPath);
+});
+
+editEditorConfigButton.addEventListener("click", () => {
+  openPaletteConfigEditor();
+});
+
 toggleGlyphs.addEventListener("click", () => {
   glyphsOn = !glyphsOn;
   document.body.classList.toggle("glyphs-off", !glyphsOn);
@@ -5901,7 +5159,7 @@ toggleGlyphs.addEventListener("click", () => {
   toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
   toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
   persistEditorPreferences();
-  renderEditor();
+  requestEditorContentRender();
 });
 
 indentControl.querySelectorAll("[data-indent-size]").forEach((button) => {
@@ -5913,42 +5171,16 @@ indentControl.querySelectorAll("[data-indent-size]").forEach((button) => {
 });
 
 themeModeDark?.addEventListener("click", () => {
-  if (themeMode === "dark") {
-    return;
-  }
-
-  themeMode = "dark";
-  const nextPalette = defaultThemePaletteForMode(themeMode);
-  if (nextPalette) {
-    applyThemePaletteSelection(nextPalette.key);
-  } else {
-    syncThemeUi();
-  }
-  syncSettingsUi();
-  persistThemeSettings();
-  renderEditor();
+  switchSurfaceMode(SURFACE_KEYS.THEME, "dark");
 });
 
 themeModeLight?.addEventListener("click", () => {
-  if (themeMode === "light") {
-    return;
-  }
-
-  themeMode = "light";
-  const nextPalette = defaultThemePaletteForMode(themeMode);
-  if (nextPalette) {
-    applyThemePaletteSelection(nextPalette.key);
-  } else {
-    syncThemeUi();
-  }
-  syncSettingsUi();
-  persistThemeSettings();
-  renderEditor();
+  switchSurfaceMode(SURFACE_KEYS.THEME, "light");
 });
 
 themePaletteButton?.addEventListener("click", () => {
   closeSettingsMenus(themePaletteMenuOpen ? "" : "themePalette");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 themePaletteOptionsMenu?.addEventListener("click", (event) => {
@@ -5957,16 +5189,13 @@ themePaletteOptionsMenu?.addEventListener("click", (event) => {
     return;
   }
 
-  applyThemePaletteSelection(option.dataset.themePaletteKey);
   closeSettingsMenus();
-  syncThemeUi();
-  persistThemeSettings();
-  renderEditor();
+  selectSurfacePalette(SURFACE_KEYS.THEME, option.dataset.themePaletteKey);
 });
 
 themeTextButton?.addEventListener("click", () => {
   closeSettingsMenus(themeTextMenuOpen ? "" : "themeText");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 themeTextOptions?.addEventListener("click", (event) => {
@@ -5980,17 +5209,14 @@ themeTextOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeThemeTextKey = preset.key;
-  closeSettingsMenus();
-  applyWorkbenchThemeState();
-  syncThemeUi();
-  persistThemeSettings();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.THEME_TEXT, () => {
+    activeThemeTextKey = preset.key;
+  });
 });
 
 themeColorButton?.addEventListener("click", () => {
   closeSettingsMenus(themeColorMenuOpen ? "" : "themeColor");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 themeColorOptions?.addEventListener("click", (event) => {
@@ -6004,17 +5230,14 @@ themeColorOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeThemeColorKey = preset.key;
-  closeSettingsMenus();
-  applyWorkbenchThemeState();
-  syncThemeUi();
-  persistThemeSettings();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.THEME_COLOR, () => {
+    activeThemeColorKey = preset.key;
+  });
 });
 
 themeBackgroundButton?.addEventListener("click", () => {
   closeSettingsMenus(themeBackgroundMenuOpen ? "" : "themeBackground");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 themeBackgroundOptions?.addEventListener("click", (event) => {
@@ -6028,17 +5251,14 @@ themeBackgroundOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeThemeBackgroundKey = preset.key;
-  closeSettingsMenus();
-  applyWorkbenchThemeState();
-  syncThemeUi();
-  persistThemeSettings();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.THEME_BACKGROUND, () => {
+    activeThemeBackgroundKey = preset.key;
+  });
 });
 
 themeLineButton?.addEventListener("click", () => {
   closeSettingsMenus(themeLineMenuOpen ? "" : "themeLine");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 themeLineOptions?.addEventListener("click", (event) => {
@@ -6052,17 +5272,14 @@ themeLineOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeThemeLineKey = preset.key;
-  closeSettingsMenus();
-  applyWorkbenchThemeState();
-  syncThemeUi();
-  persistThemeSettings();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.THEME_LINES, () => {
+    activeThemeLineKey = preset.key;
+  });
 });
 
 interfaceFontButton?.addEventListener("click", () => {
   closeSettingsMenus(interfaceFontMenuOpen ? "" : "interfaceFont");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 interfaceFontOptions?.addEventListener("click", (event) => {
@@ -6076,11 +5293,9 @@ interfaceFontOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeInterfaceFontKey = preset.key;
-  closeSettingsMenus();
-  applyWorkbenchThemeState();
-  syncThemeUi();
-  persistThemeSettings();
+  dispatchSurfaceAction(SURFACE_ACTIONS.INTERFACE_FONT, () => {
+    activeInterfaceFontKey = preset.key;
+  });
 });
 
 interfaceSizeDecrease?.addEventListener("click", () => {
@@ -6092,40 +5307,16 @@ interfaceSizeIncrease?.addEventListener("click", () => {
 });
 
 editorModeDark?.addEventListener("click", () => {
-  if (editorMode === "dark") {
-    return;
-  }
-
-  editorMode = "dark";
-  const nextPalette = defaultEditorPaletteForMode(editorMode);
-  if (nextPalette) {
-    applyEditorPaletteSelection(nextPalette.key);
-  }
-  syncSettingsUi();
-  persistEditorPreferences();
-  persistGlyphHighlights();
-  renderEditor();
+  switchSurfaceMode(SURFACE_KEYS.EDITOR, "dark");
 });
 
 editorModeLight?.addEventListener("click", () => {
-  if (editorMode === "light") {
-    return;
-  }
-
-  editorMode = "light";
-  const nextPalette = defaultEditorPaletteForMode(editorMode);
-  if (nextPalette) {
-    applyEditorPaletteSelection(nextPalette.key);
-  }
-  syncSettingsUi();
-  persistEditorPreferences();
-  persistGlyphHighlights();
-  renderEditor();
+  switchSurfaceMode(SURFACE_KEYS.EDITOR, "light");
 });
 
 editorFontButton?.addEventListener("click", () => {
   closeSettingsMenus(editorFontMenuOpen ? "" : "editorFont");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 editorFontOptions?.addEventListener("click", (event) => {
@@ -6139,12 +5330,9 @@ editorFontOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeEditorFontKey = preset.key;
-  closeSettingsMenus();
-  applyEditorFontTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_FONT, () => {
+    activeEditorFontKey = preset.key;
+  });
 });
 
 editorFontSizeDecrease?.addEventListener("click", () => {
@@ -6157,7 +5345,7 @@ editorFontSizeIncrease?.addEventListener("click", () => {
 
 highlightPaletteButton.addEventListener("click", () => {
   closeSettingsMenus(paletteMenuOpen ? "" : "palette");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 highlightPaletteOptions.addEventListener("click", (event) => {
@@ -6166,17 +5354,13 @@ highlightPaletteOptions.addEventListener("click", (event) => {
     return;
   }
 
-  applyEditorPaletteSelection(option.dataset.paletteKey);
   closeSettingsMenus();
-  syncSettingsUi();
-  persistEditorPreferences();
-  persistGlyphHighlights();
-  renderEditor();
+  selectSurfacePalette(SURFACE_KEYS.EDITOR, option.dataset.paletteKey);
 });
 
 editorBackgroundButton?.addEventListener("click", () => {
   closeSettingsMenus(editorBackgroundMenuOpen ? "" : "editorBackground");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 editorBackgroundOptions?.addEventListener("click", (event) => {
@@ -6190,17 +5374,14 @@ editorBackgroundOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeEditorBackgroundKey = preset.key;
-  closeSettingsMenus();
-  applyEditorBackgroundTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_BACKGROUND, () => {
+    activeEditorBackgroundKey = preset.key;
+  });
 });
 
 textColorButton?.addEventListener("click", () => {
   closeSettingsMenus(textColorMenuOpen ? "" : "textColor");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 textColorOptions?.addEventListener("click", (event) => {
@@ -6214,17 +5395,14 @@ textColorOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeEditorTextColorKey = preset.key;
-  closeSettingsMenus();
-  applyEditorTextColorTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_TEXT_COLOR, () => {
+    activeEditorTextColorKey = preset.key;
+  });
 });
 
 textHighlightButton?.addEventListener("click", () => {
   closeSettingsMenus(textHighlightMenuOpen ? "" : "textHighlight");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 textHighlightOptions?.addEventListener("click", (event) => {
@@ -6238,20 +5416,15 @@ textHighlightOptions?.addEventListener("click", (event) => {
     return;
   }
 
-  activeEditorTextHighlightKey = preset.key;
-  applySharedGlyphColor(preset.color);
-  closeSettingsMenus();
-  applyEditorTextHighlightTheme();
-  applyGlyphColors();
-  syncSettingsUi();
-  persistEditorPreferences();
-  persistGlyphHighlights();
-  renderEditor();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_TEXT_HIGHLIGHT, () => {
+    activeEditorTextHighlightKey = preset.key;
+    applySharedGlyphColor(preset.color);
+  });
 });
 
 blockSurfaceButton.addEventListener("click", () => {
   closeSettingsMenus(blockSurfaceMenuOpen ? "" : "block");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 blockSurfaceOptions.addEventListener("click", (event) => {
@@ -6265,26 +5438,24 @@ blockSurfaceOptions.addEventListener("click", (event) => {
     return;
   }
 
-  activeBlockSurfaceKey = preset.key;
-  closeSettingsMenus();
-  applyBlockSurfaceTheme();
-  syncSettingsUi();
-  persistGlyphHighlights();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_BLOCK_STYLE, () => {
+    activeBlockSurfaceKey = preset.key;
+  });
 });
 
 lineHighlightButton.addEventListener("click", () => {
   closeSettingsMenus(lineHighlightMenuOpen ? "" : "line");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 selectionHighlightButton.addEventListener("click", () => {
   closeSettingsMenus(selectionHighlightMenuOpen ? "" : "selection");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 autoSaveModeButton?.addEventListener("click", () => {
   closeSettingsMenus(autoSaveMenuOpen ? "" : "autoSave");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 autoSaveModeOptions?.addEventListener("click", (event) => {
@@ -6323,7 +5494,7 @@ autoSaveDelayInput?.addEventListener("change", () => {
 
 languageModeButton?.addEventListener("click", () => {
   closeSettingsMenus(languageMenuOpen ? "" : "language");
-  syncSettingsUi();
+  requestSettingsStateRender();
 });
 
 languageModeOptions?.addEventListener("click", (event) => {
@@ -6336,12 +5507,7 @@ languageModeOptions?.addEventListener("click", (event) => {
   closeSettingsMenus();
   persistLanguageState();
   applyLanguageUi();
-  renderAutoSaveOptions();
-  renderThemeControls();
-  renderEditorPreferenceControls();
-  renderGlyphHighlightControls();
-  syncLanguageUi();
-  renderEditor();
+  flushFullAppRender();
 });
 
 lineHighlightOptions.addEventListener("click", (event) => {
@@ -6355,11 +5521,9 @@ lineHighlightOptions.addEventListener("click", (event) => {
     return;
   }
 
-  activeLineHighlightKey = preset.key;
-  closeSettingsMenus();
-  applyLineHighlightTheme();
-  syncSettingsUi();
-  persistGlyphHighlights();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_LINE_STYLE, () => {
+    activeLineHighlightKey = preset.key;
+  });
 });
 
 selectionHighlightOptions.addEventListener("click", (event) => {
@@ -6373,11 +5537,9 @@ selectionHighlightOptions.addEventListener("click", (event) => {
     return;
   }
 
-  activeSelectionHighlightKey = preset.key;
-  closeSettingsMenus();
-  applySelectionHighlightTheme();
-  syncSettingsUi();
-  persistGlyphHighlights();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_SELECTION_STYLE, () => {
+    activeSelectionHighlightKey = preset.key;
+  });
 });
 
 glyphColorList.addEventListener("click", (event) => {
@@ -6386,7 +5548,7 @@ glyphColorList.addEventListener("click", (event) => {
     const key = toggle.dataset.glyphToggle;
     openGlyphColorMenu = openGlyphColorMenu === key ? null : key;
     closeSettingsMenus("glyphColor");
-    syncSettingsUi();
+    requestSettingsStateRender();
     return;
   }
 
@@ -6396,11 +5558,10 @@ glyphColorList.addEventListener("click", (event) => {
   }
 
   const key = option.dataset.glyphOptionKey;
-  glyphColors[key] = normalizeHexColor(option.dataset.glyphOption, glyphColors[key]);
-  openGlyphColorMenu = null;
-  applyGlyphColors();
-  syncSettingsUi();
-  persistGlyphHighlights();
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_GLYPH_COLOR, () => {
+    glyphColors[key] = normalizeHexColor(option.dataset.glyphOption, glyphColors[key]);
+    openGlyphColorMenu = null;
+  });
 });
 
 glyphColorList.addEventListener("input", (event) => {
@@ -6415,10 +5576,13 @@ glyphColorList.addEventListener("input", (event) => {
     return;
   }
 
-  glyphColors[key] = normalized;
-  applyGlyphColors();
-  syncSettingsUi();
-  persistGlyphHighlights();
+  dispatchSurfaceAction(
+    SURFACE_ACTIONS.EDITOR_GLYPH_COLOR,
+    () => {
+      glyphColors[key] = normalized;
+    },
+    { closeMenus: false },
+  );
 });
 
 glyphColorList.addEventListener("change", (event) => {
@@ -6473,14 +5637,14 @@ document.addEventListener("click", (event) => {
 
   if (!insideAnySettingsMenu) {
     closeSettingsMenus();
-    syncSettingsUi();
+    requestSettingsStateRender();
   }
 
   if (!event.target.closest("#fileTree")) {
     if (openFileActionMenu !== null || pendingDeleteFile !== null) {
       openFileActionMenu = null;
       pendingDeleteFile = null;
-      renderEditor();
+      requestSidebarRender();
     }
   }
 });
@@ -6495,11 +5659,12 @@ editorInput.addEventListener("input", () => {
   fileSources[currentFile] = editorInput.value;
   fileDirty[currentFile] = true;
   scheduleAutoSave();
-  renderEditor();
+  requestSidebarRender();
+  requestEditorContentRender();
 });
 
 editorInput.addEventListener("select", () => {
-  renderEditor();
+  requestEditorSelectionRender();
 });
 
 editorInput.addEventListener("scroll", () => {
@@ -6507,7 +5672,7 @@ editorInput.addEventListener("scroll", () => {
 });
 
 editorInput.addEventListener("click", () => {
-  renderEditor();
+  requestEditorSelectionRender();
 });
 
 editorInput.addEventListener("blur", () => {
@@ -6517,7 +5682,7 @@ editorInput.addEventListener("blur", () => {
 });
 
 editorInput.addEventListener("keyup", () => {
-  renderEditor();
+  requestEditorSelectionRender();
 });
 
 editorInput.addEventListener("copy", (event) => {
@@ -6571,7 +5736,7 @@ codeStage.addEventListener("mousedown", (event) => {
   if (event.detail >= 3) {
     const { start, end } = lineSelectionRangeForOffset(editorInput.value, anchor);
     editorInput.setSelectionRange(start, end);
-    renderEditor();
+    requestEditorSelectionRender();
     return;
   }
 
@@ -6579,13 +5744,13 @@ codeStage.addEventListener("mousedown", (event) => {
     const charOffset = characterOffsetForPointer(event, latestAnalysis);
     const { start, end } = wordSelectionRangeForOffset(editorInput.value, charOffset);
     editorInput.setSelectionRange(start, end);
-    renderEditor();
+    requestEditorSelectionRender();
     return;
   }
 
   pointerSelectionAnchor = anchor;
   setSelectionFromAnchor(anchor, anchor);
-  renderEditor();
+  requestEditorSelectionRender();
 
   const handlePointerMove = (moveEvent) => {
     if (!latestAnalysis || pointerSelectionAnchor === null) {
@@ -6594,7 +5759,7 @@ codeStage.addEventListener("mousedown", (event) => {
 
     const focus = rawOffsetForPointer(moveEvent, latestAnalysis);
     setSelectionFromAnchor(pointerSelectionAnchor, focus);
-    renderEditor();
+    requestEditorSelectionRender();
   };
 
   const handlePointerUp = (upEvent) => {
@@ -6605,7 +5770,7 @@ codeStage.addEventListener("mousedown", (event) => {
 
     const focus = rawOffsetForPointer(upEvent, latestAnalysis);
     setSelectionFromAnchor(pointerSelectionAnchor, focus);
-    renderEditor();
+    requestEditorSelectionRender();
     stopPointerSelection();
   };
 
@@ -6704,23 +5869,12 @@ async function bootstrap() {
 
   loadLanguageState();
   applyLanguageUi();
-  renderLanguageOptions();
   loadThemeSettings();
   loadAutoSaveState();
   loadGlyphHighlightState();
   loadEditorPreferences();
   loadCustomPaletteConfigState();
-  applyWorkbenchThemeState();
-  renderThemeControls();
-  renderAutoSaveOptions();
   document.body.classList.toggle("glyphs-off", !glyphsOn);
-  applyEditorFontTheme();
-  applyEditorFontSizeTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  renderEditorPreferenceControls();
-  renderGlyphHighlightControls();
   toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
   toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
   toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
@@ -6729,7 +5883,7 @@ async function bootstrap() {
   await loadWorkspace();
   activeTreePath = "";
   editorInput.value = fileSources[currentFile] ?? "";
-  renderEditor();
+  flushFullAppRender();
 }
 
 bootstrap();

@@ -14,6 +14,7 @@
 5. `workspace/*.styio`: 原型编辑器真实加载和保存的本地文件
 6. `CHANGELOG.md`: 每轮页面可见变化记录
 7. `editor.html` / `editor.css` / `editor.js`: 当前人工维护的 focused Web Editor 页面
+8. `editor-modules/*.js`: focused editor 的配置、枚举、主题模板、渲染调度与默认状态模块
 
 ## Current Focus
 
@@ -55,6 +56,26 @@
 20. 当前默认视觉基线为 `Graphite` 壳层，并以 `#F4C76A` 作为默认强调色和 symbol 高亮色
 21. 当前原型支持导入 / 编辑一份参考 VS Code 结构的 JSONC 调色盘配置，示例见 `theme-config.example.jsonc`
 22. 当前 canonical 配置存放在浏览器 `localStorage` 的 `styio-view:custom-palette-config`
+23. 手写 Web IDE 的设计理念、分层规则和标准工作流，见 `../docs/specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md`
+
+## Module Structure
+
+1. `editor.js`: 事件、状态流、渲染与工作区交互主入口
+2. `editor-modules/runtime-config.js`: 运行时默认配置、存储 key、初始状态模板
+3. `editor-modules/enums.js`: 语言、自动保存、主题模式、抽屉页签等枚举
+4. `editor-modules/theme-presets.js`: Theme / Editor 相关字体、字号、背景、文字和 palette 模板
+5. `editor-modules/glyph-presets.js`: glyph、symbol color、block / line / selection 与 palette 模板
+6. `editor-modules/render-pipeline.js`: 渲染切片枚举与分模块批量调度器，避免编辑器、侧边栏和设置区互相直接整刷
+7. `editor-modules/surface-actions.js`: `Theme / Editor` 风格行为的层级定义，区分 `surface / section / leaf`
+
+`editor.js` 中和 `Theme / Editor` 相关的模式切换、palette 切换，应优先通过 surface controller 入口处理，再由渲染切片调度对应区域刷新；不要在事件处理器里直接串行调用多个 UI 同步函数。
+
+`Theme / Editor` 的风格控件现在按三层动作建模：
+1. `surface`: 例如 `Theme/Editor` 的 `Dark / Light` 和 `Palette`，会统一下发到整块 surface
+2. `section`: 例如 `Font / Color`，只刷新该 section 对应的 appearance slice
+3. `leaf`: 例如 `Block / Line / Selection / Symbol Colors`，只刷新对应叶子样式，不再误走整块 editor 流程
+
+动作定义集中在 `editor-modules/surface-actions.js`，按钮层只负责传 action，不负责拼接渲染管线。
 
 ## Maintenance Rule
 
