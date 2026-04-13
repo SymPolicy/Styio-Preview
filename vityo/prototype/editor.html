@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Styio Editor</title>
-    <link rel="stylesheet" href="./editor.css?v=20260413-title4" />
+    <link rel="stylesheet" href="./editor.css?v=20260413-styiogold1" />
   </head>
   <body>
     <div class="workspace-shell" id="workspaceShell">
@@ -83,19 +83,26 @@
                 <p class="setting-copy" id="workspacePathHint" hidden></p>
               </div>
               <div class="workspace-tool-row">
-                <label class="glyph-color-field workspace-path-field">
-                  <input
-                    class="glyph-color-value workspace-path-input"
-                    id="workspacePathInput"
-                    type="text"
-                    spellcheck="false"
-                    autocapitalize="none"
-                    autocomplete="off"
-                    autocorrect="off"
-                    aria-label="Workspace path"
-                  />
-                </label>
-                <button class="action ghost workspace-tool-button" id="workspacePathApply">Open</button>
+                <div class="workspace-path-stack">
+                  <div class="workspace-path-display" id="workspacePathDisplay" aria-label="Workspace path" tabindex="0">
+                    <div class="workspace-path-viewport" id="workspacePathViewport">
+                      <div class="workspace-path-track" id="workspacePathTrack">
+                        <span class="workspace-path-text" id="workspacePathText"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="workspace-path-scroll-shell">
+                    <div class="workspace-path-scroll-visual" id="workspacePathScrollVisual" aria-hidden="true">
+                      <div class="workspace-path-scroll-thumb" id="workspacePathScrollThumb"></div>
+                    </div>
+                  </div>
+                </div>
+                <button class="workspace-tool-button workspace-tool-icon-button" id="workspacePathApply" type="button" aria-label="Open workspace" title="Open workspace">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3.75 7.75A1.75 1.75 0 0 1 5.5 6h4.05c.4 0 .79.16 1.07.44l1.24 1.24c.28.28.66.44 1.06.44h5.58a1.75 1.75 0 0 1 1.75 1.75v6.38A1.75 1.75 0 0 1 18.5 18H5.5a1.75 1.75 0 0 1-1.75-1.75z"></path>
+                    <path d="M3.75 10h16.5"></path>
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -182,34 +189,10 @@
               </div>
             </div>
 
-            <div class="setting-row">
-              <div>
-                <p class="setting-title" id="glyphCompositionTitle">Glyph Composition</p>
-              </div>
-              <button
-                class="toggle-icon-button"
-                id="toggleGlyphs"
-                aria-pressed="true"
-                aria-label="Toggle glyph rendering"
-                title="Toggle glyph rendering"
-              >
-                <span class="toggle-track">
-                  <span class="toggle-thumb">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M8 7h3"></path>
-                      <path d="M8 12h8"></path>
-                      <path d="M8 17h5"></path>
-                      <path d="M17 8l3 4-3 4"></path>
-                    </svg>
-                  </span>
-                </span>
-              </button>
-            </div>
-
-            <details class="setting-disclosure" id="highlightDisclosure">
+            <details class="setting-disclosure" id="themeDisclosure" open>
               <summary class="setting-disclosure-summary">
                 <div>
-                  <p class="setting-title" id="glyphHighlightTitle">Glyph Highlight</p>
+                  <p class="setting-title" id="themeTitle">Theme</p>
                 </div>
                 <div class="setting-disclosure-actions">
                   <span class="disclosure-chevron" aria-hidden="true"></span>
@@ -217,64 +200,201 @@
               </summary>
 
               <div class="disclosure-body">
-                <div class="palette-control">
-                  <button class="pill palette-button" id="highlightPaletteButton" type="button" aria-expanded="false">
-                    PALETTE: Styio
-                  </button>
-                  <div class="palette-option-list palette-option-list-compact" id="highlightPaletteOptions"></div>
-                </div>
-
-                <div class="palette-control">
-                  <button class="pill palette-button" id="blockSurfaceButton" type="button" aria-expanded="false">
-                    BLOCK: Graphite
-                  </button>
-                  <div class="palette-option-list palette-option-list-compact" id="blockSurfaceOptions"></div>
-                </div>
-
-                <div class="palette-control">
-                  <button class="pill palette-button" id="lineHighlightButton" type="button" aria-expanded="false">
-                    LINE: Graphite
-                  </button>
-                  <div class="palette-option-list palette-option-list-compact" id="lineHighlightOptions"></div>
-                </div>
-
-                <div class="palette-control">
-                  <button class="pill palette-button" id="selectionHighlightButton" type="button" aria-expanded="false">
-                    SELECTION: Graphite
-                  </button>
-                  <div class="palette-option-list palette-option-list-compact" id="selectionHighlightOptions"></div>
-                </div>
-
-                <div class="setting-stack">
-                  <div class="stack-head">
-                    <p class="setting-subtitle" id="symbolColorsTitle">Symbol Colors</p>
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="themeColorTitle">Theme Color</p>
                   </div>
-                  <div class="glyph-color-list" id="glyphColorList"></div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="themeColorButton" type="button" aria-expanded="false">Styio Gold</button>
+                    <div class="palette-option-list palette-option-list-compact" id="themeColorOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="themeBackgroundTitle">Background</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="themeBackgroundButton" type="button" aria-expanded="false">Graphite</button>
+                    <div class="palette-option-list palette-option-list-compact" id="themeBackgroundOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="interfaceFontTitle">Interface Font</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="interfaceFontButton" type="button" aria-expanded="false">Styio Sans</button>
+                    <div class="palette-option-list palette-option-list-compact" id="interfaceFontOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="interfaceSizeTitle">Interface Size</p>
+                  </div>
+                  <div class="palette-control palette-control-compact">
+                    <button class="pill palette-button" id="interfaceSizeButton" type="button" aria-expanded="false">Default</button>
+                    <div class="palette-option-list palette-option-list-compact" id="interfaceSizeOptions"></div>
+                  </div>
                 </div>
               </div>
             </details>
 
-            <div class="setting-row">
-              <div>
-                <p class="setting-title" id="tabIndentationTitle">Tab Indentation</p>
+            <details class="setting-disclosure" id="editorDisclosure" open>
+              <summary class="setting-disclosure-summary">
+                <div>
+                  <p class="setting-title" id="editorTitle">Editor</p>
+                </div>
+                <div class="setting-disclosure-actions">
+                  <span class="disclosure-chevron" aria-hidden="true"></span>
+                </div>
+              </summary>
+
+              <div class="disclosure-body">
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="glyphCompositionTitle">Glyph Composition</p>
+                  </div>
+                  <button
+                    class="toggle-icon-button"
+                    id="toggleGlyphs"
+                    aria-pressed="true"
+                    aria-label="Toggle glyph rendering"
+                    title="Toggle glyph rendering"
+                  >
+                    <span class="toggle-track">
+                      <span class="toggle-thumb">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M8 7h3"></path>
+                          <path d="M8 12h8"></path>
+                          <path d="M8 17h5"></path>
+                          <path d="M17 8l3 4-3 4"></path>
+                        </svg>
+                      </span>
+                    </span>
+                  </button>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="tabSizeTitle">Tab Size</p>
+                  </div>
+                  <div class="segment-control" id="indentControl" role="group" aria-label="Indentation width">
+                    <button class="segment-button is-active" type="button" data-indent-size="2">2</button>
+                    <button class="segment-button" type="button" data-indent-size="4">4</button>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="editorFontTitle">Editor Font</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="editorFontButton" type="button" aria-expanded="false">SF Mono</button>
+                    <div class="palette-option-list palette-option-list-compact" id="editorFontOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="editorFontSizeTitle">Editor Font Size</p>
+                  </div>
+                  <div class="palette-control palette-control-compact">
+                    <button class="pill palette-button" id="editorFontSizeButton" type="button" aria-expanded="false">Default</button>
+                    <div class="palette-option-list palette-option-list-compact" id="editorFontSizeOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="editorPaletteTitle">Palette</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="highlightPaletteButton" type="button" aria-expanded="false">Styio</button>
+                    <div class="palette-option-list palette-option-list-compact" id="highlightPaletteOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="editorBackgroundTitle">Editor Background</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="editorBackgroundButton" type="button" aria-expanded="false">Graphite</button>
+                    <div class="palette-option-list palette-option-list-compact" id="editorBackgroundOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="textColorTitle">Text Color</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="textColorButton" type="button" aria-expanded="false">Mist</button>
+                    <div class="palette-option-list palette-option-list-compact" id="textColorOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="textHighlightTitle">Text Highlight</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="textHighlightButton" type="button" aria-expanded="false">Styio Gold</button>
+                    <div class="palette-option-list palette-option-list-compact" id="textHighlightOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="blockTitle">Block</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="blockSurfaceButton" type="button" aria-expanded="false">Graphite</button>
+                    <div class="palette-option-list palette-option-list-compact" id="blockSurfaceOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="lineTitle">Line</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="lineHighlightButton" type="button" aria-expanded="false">Graphite</button>
+                    <div class="palette-option-list palette-option-list-compact" id="lineHighlightOptions"></div>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <p class="setting-title" id="selectionTitle">Selection</p>
+                  </div>
+                  <div class="palette-control">
+                    <button class="pill palette-button" id="selectionHighlightButton" type="button" aria-expanded="false">Graphite</button>
+                    <div class="palette-option-list palette-option-list-compact" id="selectionHighlightOptions"></div>
+                  </div>
+                </div>
+
+                <details class="setting-disclosure setting-disclosure-nested" id="symbolColorsDisclosure">
+                  <summary class="setting-disclosure-summary">
+                    <div>
+                      <p class="setting-title" id="symbolColorsTitle">Symbol Colors</p>
+                    </div>
+                    <div class="setting-disclosure-actions">
+                      <span class="disclosure-chevron" aria-hidden="true"></span>
+                    </div>
+                  </summary>
+
+                  <div class="disclosure-body">
+                    <div class="glyph-color-list" id="glyphColorList"></div>
+                  </div>
+                </details>
               </div>
-              <div class="segment-control" id="indentControl" role="group" aria-label="Indentation width">
-                <button class="segment-button is-active" type="button" data-indent-size="2">2</button>
-                <button class="segment-button" type="button" data-indent-size="4">4</button>
-              </div>
-            </div>
+            </details>
           </div>
 
-          <div class="status-grid">
-            <span class="pill" id="saveState" data-save-state="volatile">disk: loading</span>
-            <span class="pill" id="autoSaveState">autosave: loading</span>
-            <span class="pill" id="glyphState">glyphs: loading</span>
-            <span class="pill" id="indentState">indent: loading</span>
-            <span class="pill" id="unitState">unit: loading</span>
-            <span class="pill" id="cursorState">selection: line 01</span>
-            <span class="pill" id="issueState">diagnostics: loading</span>
-            <span class="pill" id="renderState">projection: loading</span>
-          </div>
         </div>
       </aside>
     </div>
@@ -360,6 +480,6 @@
       </div>
     </div>
 
-    <script src="./editor.js?v=20260413-title4"></script>
+    <script src="./editor.js?v=20260413-styiogold1"></script>
   </body>
 </html>
