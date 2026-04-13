@@ -67,6 +67,7 @@
 5. `editor-modules/glyph-presets.js`: glyph、symbol color、block / line / selection 与 palette 模板
 6. `editor-modules/render-pipeline.js`: 渲染切片枚举与分模块批量调度器，避免编辑器、侧边栏和设置区互相直接整刷
 7. `editor-modules/surface-actions.js`: `Theme / Editor` 风格行为的层级定义，区分 `surface / section / leaf`
+8. `scripts/check-editor-load.mjs`: focused editor 页面加载自测，覆盖页面启动、侧边栏展开、设置区渲染、Theme 切换和 `Symbol Highlight` 展开
 
 `editor.js` 中和 `Theme / Editor` 相关的模式切换、palette 切换，应优先通过 surface controller 入口处理，再由渲染切片调度对应区域刷新；不要在事件处理器里直接串行调用多个 UI 同步函数。
 
@@ -76,6 +77,18 @@
 3. `leaf`: 例如 `Block / Line / Selection / Symbol Colors`，只刷新对应叶子样式，不再误走整块 editor 流程
 
 动作定义集中在 `editor-modules/surface-actions.js`，按钮层只负责传 action，不负责拼接渲染管线。
+
+## Self-Test
+
+1. 在 `prototype/` 下运行 `npm run selftest:editor`
+2. 这条脚本会自动检查 `editor.html` 是否可打开，并在需要时自动启动 `dev_server.py`
+3. 自测会覆盖：
+   - 页面基础资源加载
+   - 侧边栏展开
+   - 设置页切换
+   - `Theme` 的 `Palette` 和 `Light / Dark`
+   - `Symbol Highlight` 展开
+4. 若失败，会在 `prototype/.artifacts/editor-load-failure.png` 写出失败截图
 
 ## Maintenance Rule
 

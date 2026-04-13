@@ -20,9 +20,34 @@
   },
 
   "styioView": {
+    "style": "grid",
+    "language": "zhCn",
     "glyphComposition": true,
     "themeMode": "dark",
     "editorMode": "dark",
+    "visualTokens": {
+      "title": {
+        "color": "#F4C76A",
+        "glow": "rgba(244, 199, 106, 0.10)",
+        "fontSize": "24px"
+      },
+      "radius": {
+        "ui": "12px",
+        "toggle": "10px",
+        "pill": "10px"
+      },
+      "border": {
+        "width": "1px",
+        "color": "rgba(255, 255, 255, 0.07)",
+        "strongColor": "rgba(255, 255, 255, 0.12)"
+      },
+      "shadow": {
+        "card": "0 22px 58px rgba(0, 0, 0, 0.24)"
+      },
+      "settings": {
+        "titleSize": "15px"
+      }
+    }
   },
 
   "editor.tokenColorCustomizations": {

@@ -2,7 +2,7 @@
 
 **Purpose:** 定义 `styio-view` 原型当前支持的主题 / 编辑器调色盘配置文件格式，结构参考 VS Code 的 `settings.json`、`workbench.colorCustomizations` 和 `editor.tokenColorCustomizations`。
 
-**Last updated:** 2026-04-13
+**Last updated:** 2026-04-14
 
 ## 1. 结构
 
@@ -43,9 +43,56 @@
 
 ### 2.3 `styioView`
 
-1. `glyphComposition`
-2. `themeMode`
-3. `editorMode`
+1. `style`
+2. `language`
+3. `glyphComposition`
+4. `themeMode`
+5. `editorMode`
+6. `visualTokens`
+
+`style` 当前支持：
+
+1. `dynamic`
+2. `flat`
+3. `grid`
+
+默认值当前为 `grid`。
+
+`language` 当前支持：
+
+1. `zhCn`
+2. `en`
+
+`visualTokens` 是一层“最终视觉覆盖”，会在 preset 应用完成后最后生效，因此优先级高于 `Theme / Editor / Style` 预设本身。当前支持的 group 包括：
+
+1. `title`
+2. `accent`
+3. `text`
+4. `radius`
+5. `border`
+6. `shadow`
+7. `surface`
+8. `font`
+9. `editor`
+10. `settings`
+
+典型例子：
+
+1. `title.color`
+2. `title.fontSize`
+3. `radius.ui`
+4. `border.width`
+5. `border.color`
+6. `shadow.card`
+7. `font.ui.family`
+8. `font.ui.size`
+9. `font.editor.family`
+10. `font.editor.size`
+11. `editor.background`
+12. `editor.selection`
+13. `settings.titleSize`
+
+未知字段会被忽略，不会报错。
 
 ### 2.4 `editor.tokenColorCustomizations`
 
@@ -87,6 +134,8 @@
 2. 配置保存在浏览器本地存储中
 3. 当前 localStorage key 为 `styio-view:custom-palette-config`
 4. 普通 UI 设置改动会同步回这份 canonical 配置
+
+如果存在 `styioView.visualTokens`，这些 token 也会被持久化进同一份 canonical 配置。
 
 这和 VS Code 的“设置文件驱动 UI 状态”思路保持一致；后续若引入 workspace-scoped 配置，再扩展到工作区级文件。
 

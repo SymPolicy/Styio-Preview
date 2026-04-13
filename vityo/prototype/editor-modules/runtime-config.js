@@ -1,4 +1,4 @@
-import { AUTO_SAVE_MODES, DRAWER_TABS, LANGUAGE_KEYS, THEME_MODES } from "./enums.js";
+import { AUTO_SAVE_MODES, DRAWER_TABS, LANGUAGE_KEYS, SURFACE_KEYS, THEME_MODES } from "./enums.js";
 
 export const workspaceApiBase = "/api/workspace";
 export const primaryFile = "main.styio";
@@ -24,6 +24,7 @@ export const storageKeys = {
   glyphHighlight: "styio-view:glyph-highlights",
   autoSave: "styio-view:auto-save",
   language: "styio-view:language",
+  uiStyle: "styio-view:ui-style",
   themeSettings: "styio-view:theme-settings",
   editorSettings: "styio-view:editor-settings",
   customPaletteConfig: "styio-view:custom-palette-config",
@@ -46,9 +47,13 @@ export function createInitialRuntimeState() {
     latestAnalysis: null,
     sidebarOpen: false,
     activeDrawerTab: DRAWER_TABS.FILES,
+    linkedSurfaceActiveTab: SURFACE_KEYS.THEME,
+    editorModeLinkedToTheme: true,
     indentSize: 2,
     activeLanguageKey: LANGUAGE_KEYS.ZH_CN,
     languageMenuOpen: false,
+    activeUiStyleKey: "grid",
+    styleMenuOpen: false,
     autoSaveMode: AUTO_SAVE_MODES.AFTER_DELAY,
     autoSaveDelay: 1000,
     autoSaveMenuOpen: false,
@@ -85,6 +90,7 @@ export function createInitialRuntimeState() {
     activeBlockSurfaceKey: "graphite",
     activeLineHighlightKey: "graphite",
     activeSelectionHighlightKey: "graphite",
+    visualTokenOverrides: {},
     workspacePickerPath: "",
     workspacePickerParentPath: null,
     workspacePickerMode: "directory",
