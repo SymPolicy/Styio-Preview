@@ -82,6 +82,8 @@ const blockSurfaceButton = document.getElementById("blockSurfaceButton");
 const blockSurfaceOptions = document.getElementById("blockSurfaceOptions");
 const lineHighlightButton = document.getElementById("lineHighlightButton");
 const lineHighlightOptions = document.getElementById("lineHighlightOptions");
+const selectionHighlightButton = document.getElementById("selectionHighlightButton");
+const selectionHighlightOptions = document.getElementById("selectionHighlightOptions");
 const glyphHighlightTitle = document.getElementById("glyphHighlightTitle");
 const symbolColorsTitle = document.getElementById("symbolColorsTitle");
 const tabIndentationTitle = document.getElementById("tabIndentationTitle");
@@ -120,9 +122,11 @@ let openGlyphColorMenu = null;
 let paletteMenuOpen = false;
 let blockSurfaceMenuOpen = false;
 let lineHighlightMenuOpen = false;
+let selectionHighlightMenuOpen = false;
 let activePaletteKey = "styio";
 let activeBlockSurfaceKey = "graphite";
 let activeLineHighlightKey = "graphite";
+let activeSelectionHighlightKey = "graphite";
 let pointerSelectionAnchor = null;
 let pointerSelectionCleanup = null;
 let pendingNativeRenderFrame = 0;
@@ -178,7 +182,7 @@ const languageOptionsList = [
 const translations = {
   zhCn: {
     documentTitle: "Styio 编辑器",
-    appTitle: "Styio Editor",
+    appTitle: "styio",
     openSidebar: "打开侧边栏",
     closeSidebar: "关闭侧边栏",
     fileTree: "文件树",
@@ -243,7 +247,7 @@ const translations = {
   },
   en: {
     documentTitle: "Styio Editor",
-    appTitle: "Styio Editor",
+    appTitle: "styio",
     openSidebar: "Open sidebar",
     closeSidebar: "Close sidebar",
     fileTree: "File tree",
@@ -626,6 +630,13 @@ const lineHighlightPresets = [
   { key: "blueTint", label: "Blue Tint", value: "rgba(96, 165, 250, 0.12)" },
   { key: "amberSoft", label: "Amber Soft", value: "rgba(255, 138, 87, 0.11)" },
 ];
+const selectionHighlightPresets = [
+  { key: "graphite", label: "Graphite", value: "rgba(255, 255, 255, 0.12)" },
+  { key: "glassWhite", label: "Glass White", value: "rgba(255, 255, 255, 0.18)" },
+  { key: "violetMist", label: "Violet Mist", value: "rgba(139, 92, 246, 0.22)" },
+  { key: "blueTint", label: "Blue Tint", value: "rgba(96, 165, 250, 0.22)" },
+  { key: "amberSoft", label: "Amber Soft", value: "rgba(255, 138, 87, 0.22)" },
+];
 const defaultGlyphColor = glyphPaletteOptions[0].color;
 let glyphColors = Object.fromEntries(glyphColorSpecs.map((spec) => [spec.key, defaultGlyphColor]));
 
@@ -770,6 +781,7 @@ function persistGlyphHighlights() {
         paletteKey: activePaletteKey,
         blockSurfaceKey: activeBlockSurfaceKey,
         lineHighlightKey: activeLineHighlightKey,
+        selectionHighlightKey: activeSelectionHighlightKey,
         colors: glyphColors,
       }),
     );
@@ -801,6 +813,13 @@ function currentLineHighlight() {
   );
 }
 
+function currentSelectionHighlight() {
+  return (
+    selectionHighlightPresets.find((preset) => preset.key === activeSelectionHighlightKey) ??
+    selectionHighlightPresets[0]
+  );
+}
+
 function applyEditorTheme() {
   Object.entries(currentPalette().editorTheme).forEach(([cssVar, value]) => {
     document.documentElement.style.setProperty(cssVar, value);
@@ -815,6 +834,10 @@ function applyBlockSurfaceTheme() {
 
 function applyLineHighlightTheme() {
   document.documentElement.style.setProperty("--editor-line-selected", currentLineHighlight().value);
+}
+
+function applySelectionHighlightTheme() {
+  document.documentElement.style.setProperty("--editor-selection", currentSelectionHighlight().value);
 }
 
 function syncGlyphHighlightUi() {
@@ -844,6 +867,16 @@ function syncGlyphHighlightUi() {
 
   lineHighlightOptions.querySelectorAll("[data-line-highlight-key]").forEach((button) => {
     const active = activeLineHighlightKey === button.dataset.lineHighlightKey;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+
+  selectionHighlightButton.textContent = `SELECTION: ${currentSelectionHighlight().label}`;
+  selectionHighlightButton.setAttribute("aria-expanded", String(selectionHighlightMenuOpen));
+  selectionHighlightOptions.classList.toggle("is-open", selectionHighlightMenuOpen);
+
+  selectionHighlightOptions.querySelectorAll("[data-selection-highlight-key]").forEach((button) => {
+    const active = activeSelectionHighlightKey === button.dataset.selectionHighlightKey;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
@@ -901,6 +934,16 @@ function renderGlyphHighlightControls() {
     .map(
       (preset) => `
         <button class="palette-option" type="button" data-line-highlight-key="${preset.key}">
+          ${preset.label}
+        </button>
+      `,
+    )
+    .join("");
+
+  selectionHighlightOptions.innerHTML = selectionHighlightPresets
+    .map(
+      (preset) => `
+        <button class="palette-option" type="button" data-selection-highlight-key="${preset.key}">
           ${preset.label}
         </button>
       `,
@@ -975,7 +1018,13 @@ function loadGlyphHighlightState() {
     const raw = window.localStorage.getItem(glyphHighlightStorageKey);
     if (!raw) {
       activePaletteKey = glyphPaletteOptions[0].key;
+      activeBlockSurfaceKey = blockSurfacePresets[0].key;
+      activeLineHighlightKey = lineHighlightPresets[0].key;
+      activeSelectionHighlightKey = selectionHighlightPresets[0].key;
       applyEditorTheme();
+      applyBlockSurfaceTheme();
+      applyLineHighlightTheme();
+      applySelectionHighlightTheme();
       applyGlyphColors();
       return;
     }
@@ -992,6 +1041,11 @@ function loadGlyphHighlightState() {
     )
       ? parsed.lineHighlightKey
       : lineHighlightPresets[0].key;
+    activeSelectionHighlightKey = selectionHighlightPresets.some(
+      (preset) => preset.key === parsed?.selectionHighlightKey,
+    )
+      ? parsed.selectionHighlightKey
+      : selectionHighlightPresets[0].key;
     const candidateColors = Object.fromEntries(
       glyphColorSpecs.map((spec) => [spec.key, defaultGlyphColor]),
     );
@@ -1010,6 +1064,7 @@ function loadGlyphHighlightState() {
   applyEditorTheme();
   applyBlockSurfaceTheme();
   applyLineHighlightTheme();
+  applySelectionHighlightTheme();
   applyGlyphColors();
 }
 
@@ -1319,6 +1374,94 @@ function rawOffsetForPointer(event, analysis) {
   const lineText = analysis.lines[lineIndex];
   const lineStart = analysis.lineStarts[lineIndex];
   return findRawOffsetForX(lineText, lineStart, Math.max(0, localX));
+}
+
+function characterOffsetForPointer(event, analysis) {
+  const stageRect = codeStage.getBoundingClientRect();
+  const padY = getCssNumber("--editor-pad-y");
+  const padX = getCssNumber("--editor-pad-x");
+  const lineHeight = getCssNumber("--editor-line-height");
+  const localY = event.clientY - stageRect.top + editorInput.scrollTop - padY;
+  const localX = event.clientX - stageRect.left + editorInput.scrollLeft - padX;
+  const lineIndex = Math.max(
+    0,
+    Math.min(analysis.lines.length - 1, Math.floor(localY / lineHeight)),
+  );
+  const lineText = analysis.lines[lineIndex];
+  const lineStart = analysis.lineStarts[lineIndex];
+
+  if (!lineText.length) {
+    return lineStart;
+  }
+
+  const targetX = Math.max(0, localX);
+  for (let index = 0; index < lineText.length; index += 1) {
+    const next = getCaretCoordinates(lineText, lineStart, lineStart + index + 1).x;
+    if (targetX < next) {
+      return lineStart + index;
+    }
+  }
+
+  return lineStart + lineText.length - 1;
+}
+
+function classifySelectionChar(char) {
+  if (!char) {
+    return "none";
+  }
+  if (/\s/.test(char)) {
+    return "whitespace";
+  }
+  if (/[\p{L}\p{N}_]/u.test(char)) {
+    return "word";
+  }
+  return "symbol";
+}
+
+function wordSelectionRangeForOffset(value, rawOffset) {
+  if (!value.length) {
+    return { start: 0, end: 0 };
+  }
+
+  const clampedOffset = Math.max(0, Math.min(value.length, rawOffset));
+  const rightChar = value[clampedOffset] ?? "";
+  const leftChar = clampedOffset > 0 ? value[clampedOffset - 1] ?? "" : "";
+
+  let anchorIndex = clampedOffset;
+  let selectionKind = classifySelectionChar(rightChar);
+
+  if (selectionKind === "none" || selectionKind === "whitespace") {
+    const leftKind = classifySelectionChar(leftChar);
+    if (leftKind !== "none" && leftKind !== "whitespace") {
+      anchorIndex = clampedOffset - 1;
+      selectionKind = leftKind;
+    }
+  }
+
+  if (selectionKind === "none" || selectionKind === "whitespace") {
+    return { start: clampedOffset, end: clampedOffset };
+  }
+
+  let start = anchorIndex;
+  let end = anchorIndex + 1;
+
+  while (start > 0 && classifySelectionChar(value[start - 1]) === selectionKind) {
+    start -= 1;
+  }
+
+  while (end < value.length && classifySelectionChar(value[end]) === selectionKind) {
+    end += 1;
+  }
+
+  return { start, end };
+}
+
+function lineSelectionRangeForOffset(value, rawOffset) {
+  const clampedOffset = Math.max(0, Math.min(value.length, rawOffset));
+  const lineStart = currentLineStart(value, clampedOffset);
+  const lineEnd = currentLineEnd(value, clampedOffset);
+  const terminalEnd = lineEnd < value.length ? lineEnd + 1 : lineEnd;
+  return { start: lineStart, end: terminalEnd };
 }
 
 function setSelectionFromAnchor(anchor, focus) {
@@ -3174,6 +3317,7 @@ highlightPaletteButton.addEventListener("click", () => {
   autoSaveMenuOpen = false;
   blockSurfaceMenuOpen = false;
   lineHighlightMenuOpen = false;
+  selectionHighlightMenuOpen = false;
   syncGlyphHighlightUi();
 });
 
@@ -3193,6 +3337,8 @@ highlightPaletteOptions.addEventListener("click", (event) => {
   paletteMenuOpen = false;
   applyEditorTheme();
   applyBlockSurfaceTheme();
+  applyLineHighlightTheme();
+  applySelectionHighlightTheme();
   applyGlyphColors();
   syncGlyphHighlightUi();
   persistGlyphHighlights();
@@ -3203,6 +3349,7 @@ blockSurfaceButton.addEventListener("click", () => {
   autoSaveMenuOpen = false;
   paletteMenuOpen = false;
   lineHighlightMenuOpen = false;
+  selectionHighlightMenuOpen = false;
   syncGlyphHighlightUi();
 });
 
@@ -3229,6 +3376,16 @@ lineHighlightButton.addEventListener("click", () => {
   autoSaveMenuOpen = false;
   paletteMenuOpen = false;
   blockSurfaceMenuOpen = false;
+  selectionHighlightMenuOpen = false;
+  syncGlyphHighlightUi();
+});
+
+selectionHighlightButton.addEventListener("click", () => {
+  selectionHighlightMenuOpen = !selectionHighlightMenuOpen;
+  autoSaveMenuOpen = false;
+  paletteMenuOpen = false;
+  blockSurfaceMenuOpen = false;
+  lineHighlightMenuOpen = false;
   syncGlyphHighlightUi();
 });
 
@@ -3238,6 +3395,7 @@ autoSaveModeButton?.addEventListener("click", () => {
   paletteMenuOpen = false;
   blockSurfaceMenuOpen = false;
   lineHighlightMenuOpen = false;
+  selectionHighlightMenuOpen = false;
   openGlyphColorMenu = null;
   syncLanguageUi();
   syncAutoSaveUi();
@@ -3284,6 +3442,7 @@ languageModeButton?.addEventListener("click", () => {
   paletteMenuOpen = false;
   blockSurfaceMenuOpen = false;
   lineHighlightMenuOpen = false;
+  selectionHighlightMenuOpen = false;
   openGlyphColorMenu = null;
   syncLanguageUi();
   syncAutoSaveUi();
@@ -3319,6 +3478,24 @@ lineHighlightOptions.addEventListener("click", (event) => {
   activeLineHighlightKey = preset.key;
   lineHighlightMenuOpen = false;
   applyLineHighlightTheme();
+  syncGlyphHighlightUi();
+  persistGlyphHighlights();
+});
+
+selectionHighlightOptions.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-selection-highlight-key]");
+  if (!option) {
+    return;
+  }
+
+  const preset = selectionHighlightPresets.find((entry) => entry.key === option.dataset.selectionHighlightKey);
+  if (!preset) {
+    return;
+  }
+
+  activeSelectionHighlightKey = preset.key;
+  selectionHighlightMenuOpen = false;
+  applySelectionHighlightTheme();
   syncGlyphHighlightUi();
   persistGlyphHighlights();
 });
@@ -3405,6 +3582,13 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#lineHighlightButton") && !event.target.closest("#lineHighlightOptions")) {
     if (lineHighlightMenuOpen) {
       lineHighlightMenuOpen = false;
+      syncGlyphHighlightUi();
+    }
+  }
+
+  if (!event.target.closest("#selectionHighlightButton") && !event.target.closest("#selectionHighlightOptions")) {
+    if (selectionHighlightMenuOpen) {
+      selectionHighlightMenuOpen = false;
       syncGlyphHighlightUi();
     }
   }
@@ -3505,9 +3689,23 @@ codeStage.addEventListener("mousedown", (event) => {
 
   stopPointerSelection();
   const anchor = rawOffsetForPointer(event, latestAnalysis);
-  pointerSelectionAnchor = anchor;
-
   editorInput.focus();
+  if (event.detail >= 3) {
+    const { start, end } = lineSelectionRangeForOffset(editorInput.value, anchor);
+    editorInput.setSelectionRange(start, end);
+    renderEditor();
+    return;
+  }
+
+  if (event.detail === 2) {
+    const charOffset = characterOffsetForPointer(event, latestAnalysis);
+    const { start, end } = wordSelectionRangeForOffset(editorInput.value, charOffset);
+    editorInput.setSelectionRange(start, end);
+    renderEditor();
+    return;
+  }
+
+  pointerSelectionAnchor = anchor;
   setSelectionFromAnchor(anchor, anchor);
   renderEditor();
 

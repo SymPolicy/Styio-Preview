@@ -102,6 +102,7 @@ p {
 }
 
 .workspace-shell {
+  position: relative;
   width: min(1520px, 100%);
   height: calc(100vh - 36px);
   max-height: calc(100vh - 36px);
@@ -130,6 +131,7 @@ p {
 }
 
 .main-editor-card {
+  position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
@@ -156,7 +158,15 @@ p {
 }
 
 .editor-card-head {
+  justify-content: center;
   margin-bottom: 12px;
+}
+
+.editor-card-head > div {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
 }
 
 .eyebrow,
@@ -168,8 +178,14 @@ p {
 }
 
 h1 {
-  font-size: 26px;
-  font-weight: 650;
+  font-size: 24px;
+  font-family: var(--sans);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: none;
+  text-align: center;
+  color: rgba(244, 199, 106, 0.96);
+  text-shadow: 0 0 18px rgba(244, 199, 106, 0.08);
 }
 
 .editor-tabs {
@@ -388,6 +404,14 @@ h1 {
   color: var(--text);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.025);
+}
+
+#toggleSidebar,
+#closeSidebar {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 3;
 }
 
 .icon-button svg {
@@ -670,7 +694,11 @@ h1 {
 }
 
 .editor-input::selection {
-  background: var(--editor-selection);
+  background: transparent;
+}
+
+.editor-input::-moz-selection {
+  background: transparent;
 }
 
 .code-text {
@@ -821,6 +849,7 @@ body.glyphs-off .token-define {
 }
 
 .side-drawer {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -851,9 +880,14 @@ body.sidebar-open #toggleSidebar {
   flex: 0 0 auto;
   margin-bottom: 14px;
   justify-content: space-between;
+  min-height: 44px;
+  padding-right: 56px;
 }
 
 .drawer-tabs {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
   padding: 4px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -881,9 +915,9 @@ body.sidebar-open #toggleSidebar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 42px;
-  padding: 10px;
+  width: 34px;
+  height: 34px;
+  padding: 8px;
 }
 
 .drawer-tab.is-active {
