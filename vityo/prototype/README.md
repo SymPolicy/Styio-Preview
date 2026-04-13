@@ -59,3 +59,4 @@
 1. 后续需要人工调整网页版 IDE 时，优先修改 `editor.html` / `editor.css` / `editor.js`
 2. `build/web/*` 不接受人工维护；它只是 Flutter 构建产物
 3. 若 Flutter Web 行为需要回归到手写页，先在这里验证交互，再考虑是否同步回 Flutter 主壳
+4. 任何内部组件都不得超过外部容器；若空间不足，优先收紧盒模型、加 `min-width: 0`、改成内部滚动或重排，而不是允许内容溢出父容器
