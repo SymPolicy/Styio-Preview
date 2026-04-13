@@ -9,4 +9,3 @@ fn main(input) {
   when input.ready -> state running
   emit staged
 }
-

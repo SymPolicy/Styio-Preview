@@ -52,7 +52,9 @@
 17. 访问 `http://127.0.0.1:4173/editor.html` 可以打开只保留单一编辑面的 focused editor 版本
 18. focused editor 右上角按钮会呼出右侧抽屉，里面分成 `目录树` 和 `设置` 两个 Tab
 19. focused editor 当前固定只维护 `main.styio`，不再混入其它非主线示例文件
-20. 当前 `Styio` 默认视觉基线为 `Graphite` 壳层，并以 `#FF8A57` 作为默认强调色和 symbol 高亮色
+20. 当前默认视觉基线为 `Graphite` 壳层，并以 `#F4C76A` 作为默认强调色和 symbol 高亮色
+21. 当前原型支持导入 / 编辑一份参考 VS Code 结构的 JSONC 调色盘配置，示例见 `theme-config.example.jsonc`
+22. 当前 canonical 配置存放在浏览器 `localStorage` 的 `styio-view:custom-palette-config`
 
 ## Maintenance Rule
 
@@ -60,3 +62,4 @@
 2. `build/web/*` 不接受人工维护；它只是 Flutter 构建产物
 3. 若 Flutter Web 行为需要回归到手写页，先在这里验证交互，再考虑是否同步回 Flutter 主壳
 4. 任何内部组件都不得超过外部容器；若空间不足，优先收紧盒模型、加 `min-width: 0`、改成内部滚动或重排，而不是允许内容溢出父容器
+5. 默认界面字体、编辑器字体、数学 glyph 字体和用户可见主题预设名必须优先采用开源、低争议来源；不得把商业专有字体作为默认值，也不得把第三方商业产品名直接当作默认主题标签

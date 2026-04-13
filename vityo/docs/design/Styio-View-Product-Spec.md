@@ -165,7 +165,7 @@
 3. 语义块表面、面板、运行图区和 AI 面板的独立主题层
 4. 后续与用户 profile 同步
 5. `ProfileSyncAdapter` 未挂载时仍能完整使用本地 profile
-6. `Styio` 内建默认主题以 `Graphite` 表面基线为主，并以 `#FF8A57` 作为默认强调色与 symbol 高亮色
+6. 内建默认主题以 `Graphite` 表面基线为主，并以 `#F4C76A` 作为默认强调色与 symbol 高亮色
 
 ### 6.7 模块系统与交付
 

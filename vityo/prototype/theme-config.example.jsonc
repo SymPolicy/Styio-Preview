@@ -1,0 +1,49 @@
+{
+  // VS Code-inspired customizations for the current prototype.
+  "$schema": "https://styio.dev/schemas/theme-customizations.json",
+  "name": "Custom Palette",
+
+  "workbench.colorCustomizations": {
+    "styio.themePalette": "graphiteGold",
+    "styio.themeColor": "defaultGold",
+    "styio.themeText": "mist",
+    "styio.background": "graphite",
+    "styio.themeLines": "soft",
+    "styio.interfaceFont": "defaultSans",
+    "styio.interfaceSize": 15,
+  },
+
+  "editor": {
+    "tabSize": 2,
+    "fontFamily": "jetbrainsMono",
+    "fontSize": 15,
+  },
+
+  "styioView": {
+    "glyphComposition": true,
+    "themeMode": "dark",
+    "editorMode": "dark",
+  },
+
+  "editor.tokenColorCustomizations": {
+    "styio.palette": "default",
+    "styio.editorBackground": "graphite",
+    "styio.textColor": "mist",
+    "styio.textHighlight": "defaultGold",
+    "styio.block": "graphite",
+    "styio.line": "graphite",
+    "styio.selection": "graphite",
+    "styio.symbolColors": {
+      "#": "#F4C76A",
+      "@": "#F4C76A",
+      ">_": "#F4C76A",
+      "|>": "#F4C76A",
+      "<|": "#F4C76A",
+      "->": "#F4C76A",
+      "<-": "#F4C76A",
+      "=>": "#F4C76A",
+      "<=": "#F4C76A",
+      ":=": "#F4C76A",
+    },
+  },
+}
