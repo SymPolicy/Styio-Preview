@@ -4,7 +4,7 @@ let routeOut = staged -> render
 let routeIn = source <- bridge
 let promote = state => running
 let fallback = state <= idle
-fn main(input) {
+fn main(input) {  
   state idle
   when input.ready -> state running
   emit staged

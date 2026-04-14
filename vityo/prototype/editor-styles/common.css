@@ -1,0 +1,35 @@
+body[data-ui-style="grid"] .editorial-main-title,
+body[data-ui-style="grid"] #editorialSideDrawer,
+body[data-ui-style="grid"] #editorialSidebarRail {
+  display: none !important;
+}
+
+body[data-ui-style="editorial"] #gridMainHead,
+body[data-ui-style="editorial"] #gridMainToolbar,
+body[data-ui-style="editorial"] #gridMainToolbarSpacer,
+body[data-ui-style="editorial"] #gridFileTabs,
+body[data-ui-style="editorial"] #gridSideDrawer {
+  display: none !important;
+}
+
+#sharedDrawerContent {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+#sharedDrawerContent > .drawer-list-shell {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.grid-drawer-mount,
+.editorial-drawer-mount {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}

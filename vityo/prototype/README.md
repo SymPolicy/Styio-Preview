@@ -15,6 +15,8 @@
 6. `CHANGELOG.md`: 每轮页面可见变化记录
 7. `editor.html` / `editor.css` / `editor.js`: 当前人工维护的 focused Web Editor 页面
 8. `editor-modules/*.js`: focused editor 的配置、枚举、主题模板、渲染调度与默认状态模块
+9. `GRID-STYLE-REFERENCE.md`: `Grid` 风格的布局结构、共享变量、几何约束与自测规则
+10. `GRID-STYLE-PRACTICE.md`: `Grid` 风格在重构、调样和验证过程中沉淀下来的工程经验与维护方法
 
 ## Current Focus
 
@@ -67,7 +69,10 @@
 5. `editor-modules/glyph-presets.js`: glyph、symbol color、block / line / selection 与 palette 模板
 6. `editor-modules/render-pipeline.js`: 渲染切片枚举与分模块批量调度器，避免编辑器、侧边栏和设置区互相直接整刷
 7. `editor-modules/surface-actions.js`: `Theme / Editor` 风格行为的层级定义，区分 `surface / section / leaf`
-8. `scripts/check-editor-load.mjs`: focused editor 页面加载自测，覆盖页面启动、侧边栏展开、设置区渲染、Theme 切换和 `Symbol Highlight` 展开
+8. `editor-modules/grid-style/layout-config-store.js`: `Grid` 风格的单例布局配置源，负责配置持有、订阅更新与页面自动同步
+9. `editor-modules/grid-style/layout-manager.js`: `Grid` 风格的纯布局推导器，负责把配置换算成 CSS 变量
+10. `scripts/check-editor-load.mjs`: focused editor 页面加载自测，覆盖页面启动、侧边栏展开、设置区渲染、Theme 切换、`Symbol Highlight` 展开与 `Grid` 运行时布局配置更新
+11. `GRID-STYLE-PRACTICE.md`: `Grid` 风格这一轮重构和调样的经验文档，和规则文档配套维护
 
 `editor.js` 中和 `Theme / Editor` 相关的模式切换、palette 切换，应优先通过 surface controller 入口处理，再由渲染切片调度对应区域刷新；不要在事件处理器里直接串行调用多个 UI 同步函数。
 

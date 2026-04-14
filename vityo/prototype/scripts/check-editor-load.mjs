@@ -18,6 +18,7 @@ const CHROME_PATH =
 const ARTIFACT_DIR = path.join(PROTOTYPE_ROOT, ".artifacts");
 const SCREENSHOT_PATH = path.join(ARTIFACT_DIR, "editor-load-failure.png");
 const SERVER_READY_TIMEOUT_MS = 15000;
+const SIDEBAR_TOGGLE_SELECTOR = '[data-shell-sidebar-toggle="true"]';
 
 function log(message) {
   process.stdout.write(`${message}\n`);
@@ -100,11 +101,150 @@ async function runSelfTest() {
   const requestFailures = [];
   const pageErrors = [];
   let currentStep = "boot";
+  const expectedStyles = [
+    { key: "grid", label: "Grid", cssVar: "--style-toggle-radius", expectedValue: "10px" },
+    {
+      key: "editorial",
+      label: "Editorial",
+      cssVar: "--title-font-family",
+      expectedValue: "\"Iowan Old Style\", \"Palatino Linotype\", \"Book Antiqua\", serif",
+    },
+  ];
 
   async function runStep(name, fn) {
     currentStep = name;
     log(`step: ${name}`);
     return await fn();
+  }
+
+  async function openStyleMenu() {
+    const isOpen = await page.evaluate(() => document.getElementById("styleOptions")?.classList.contains("is-open") === true);
+    if (!isOpen) {
+      await page.click("#styleButton");
+    }
+    await page.waitForFunction(() => document.getElementById("styleOptions")?.classList.contains("is-open"), null, {
+      timeout: 10000,
+    });
+  }
+
+  async function selectStyle(styleSpec) {
+    await openStyleMenu();
+    await page.click(`[data-setting-option-for="style"][data-setting-option-value="${styleSpec.key}"]`);
+    await page.waitForFunction(
+      ({ key, label, cssVar, expectedValue }) => {
+        const buttonLabel = document.getElementById("styleButton")?.textContent?.trim();
+        const activeStyle = document.body.dataset.uiStyle;
+        const cssValue = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
+        return buttonLabel === label && activeStyle === key && cssValue === expectedValue;
+      },
+      styleSpec,
+      { timeout: 10000 },
+    );
+  }
+
+  async function clickVisibleSidebarToggle() {
+    const toggles = page.locator(SIDEBAR_TOGGLE_SELECTOR);
+    const count = await toggles.count();
+    for (let index = 0; index < count; index += 1) {
+      const toggle = toggles.nth(index);
+      if (await toggle.isVisible()) {
+        await toggle.click();
+        return;
+      }
+    }
+    throw new Error(`no visible sidebar toggle matched ${SIDEBAR_TOGGLE_SELECTOR}`);
+  }
+
+  async function captureGridShellGeometry() {
+    return await page.evaluate(() => {
+      const rect = (selector) => {
+        const node = document.querySelector(selector);
+        if (!node) {
+          return null;
+        }
+        const box = node.getBoundingClientRect();
+        return {
+          selector,
+          top: box.top,
+          right: box.right,
+          bottom: box.bottom,
+          left: box.left,
+          width: box.width,
+          height: box.height,
+        };
+      };
+      const insetTop = (outer, inner) => inner.top - outer.top;
+      const insetRight = (outer, inner) => outer.right - inner.right;
+      const centerTopInset = (outer, inner) => inner.top + inner.height / 2 - outer.top;
+      const centerRightInset = (outer, inner) => outer.right - (inner.left + inner.width / 2);
+      const bodyStyle = getComputedStyle(document.body);
+      const cssPxVar = (name) => Number.parseFloat(bodyStyle.getPropertyValue(name)) || 0;
+      const cssNumberVar = (name) => Number.parseFloat(bodyStyle.getPropertyValue(name)) || 0;
+
+      const mainCard = rect(".main-editor-card");
+      const toolbar = rect("#gridMainToolbar");
+      const toolbarSpacer = rect("#gridMainToolbarSpacer");
+      const fileTabs = rect("#gridFileTabs");
+      const openButton = rect("#gridToggleSidebar");
+      const editorFrame = rect(".main-editor-card .editor-frame");
+      const sideDrawer = rect("#gridSideDrawer");
+      const drawerHeader = rect("#gridDrawerHeader");
+      const drawerHeaderSpacer = rect("#gridDrawerHeaderSpacer");
+      const drawerTabs = rect("#sharedDrawerTabs");
+      const closeButton = rect("#gridCloseSidebar");
+      const drawerMount = rect("#gridDrawerMount");
+
+      if (
+        !mainCard ||
+        !toolbar ||
+        !toolbarSpacer ||
+        !fileTabs ||
+        !openButton ||
+        !editorFrame ||
+        !sideDrawer ||
+        !drawerHeader ||
+        !drawerHeaderSpacer ||
+        !drawerTabs ||
+        !closeButton ||
+        !drawerMount
+      ) {
+        return null;
+      }
+
+      return {
+        expectedBlockStartInset: cssPxVar("--grid-shell-block-start-inset"),
+        expectedInlineInset: cssPxVar("--grid-shell-inline-inset"),
+        expectedSectionGap: cssPxVar("--grid-shell-section-gap"),
+        innerOuterMarginConsistent: cssNumberVar("--grid-shell-inner-outer-margin-consistent") === 1,
+        innerMarginScale: cssNumberVar("--grid-shell-inner-margin-scale"),
+        outerMarginScale: cssNumberVar("--grid-shell-outer-margin-scale"),
+        toolbarHeight: toolbar.height,
+        fileTabsHeight: fileTabs.height,
+        toolbarTopInset: insetTop(mainCard, toolbar),
+        fileTabsCenterTopInset: centerTopInset(mainCard, fileTabs),
+        toolbarSpacerHeight: toolbarSpacer.height,
+        openButtonTopInset: insetTop(mainCard, openButton),
+        openButtonRightInset: insetRight(mainCard, openButton),
+        openButtonCenterTopInset: centerTopInset(mainCard, openButton),
+        openButtonCenterRightInset: centerRightInset(mainCard, openButton),
+        editorLeftInset: editorFrame.left - mainCard.left,
+        editorRightInset: mainCard.right - editorFrame.right,
+        editorBottomInset: mainCard.bottom - editorFrame.bottom,
+        drawerWidth: sideDrawer.width,
+        headerHeight: drawerHeader.height,
+        headerChildHeight: Math.max(drawerTabs.height, closeButton.height),
+        headerTopInset: insetTop(sideDrawer, drawerHeader),
+        headerSpacerHeight: drawerHeaderSpacer.height,
+        drawerTabsCenterTopInset: centerTopInset(sideDrawer, drawerTabs),
+        closeButtonTopInset: insetTop(sideDrawer, closeButton),
+        closeButtonRightInset: insetRight(sideDrawer, closeButton),
+        closeButtonCenterTopInset: centerTopInset(sideDrawer, closeButton),
+        closeButtonCenterRightInset: centerRightInset(sideDrawer, closeButton),
+        drawerContentLeftInset: drawerMount.left - sideDrawer.left,
+        drawerContentRightInset: sideDrawer.right - drawerMount.right,
+        drawerContentBottomInset: sideDrawer.bottom - drawerMount.bottom,
+      };
+    });
   }
 
   page.on("console", (message) => {
@@ -140,14 +280,19 @@ async function runSelfTest() {
     }
 
     await runStep("wait-shell", () => page.waitForSelector("#workspaceShell", { timeout: 10000 }));
-    await runStep("wait-toggle-sidebar", () => page.waitForSelector("#toggleSidebar", { timeout: 10000 }));
+    await runStep("wait-toggle-sidebar", () =>
+      page.waitForSelector(SIDEBAR_TOGGLE_SELECTOR, { state: "visible", timeout: 10000 }),
+    );
     await runStep("wait-render-layer", () => page.waitForSelector("#renderLayer", { timeout: 10000 }));
     await runStep("wait-settings-root-attached", () =>
       page.waitForSelector("#settingsFactoryRoot", { state: "attached", timeout: 10000 }),
     );
 
     await runStep("open-sidebar", async () => {
-      await page.click("#toggleSidebar");
+      const alreadyOpen = await page.evaluate(() => document.body.classList.contains("sidebar-open"));
+      if (!alreadyOpen) {
+        await clickVisibleSidebarToggle();
+      }
       await page.waitForFunction(() => document.body.classList.contains("sidebar-open"), null, { timeout: 10000 });
     });
 
@@ -169,57 +314,231 @@ async function runSelfTest() {
       await page.waitForSelector("#interfaceFontButton", { timeout: 10000 });
     });
 
-    await runStep("switch-style-flat", async () => {
-      await page.click("#styleButton");
-      await page.waitForFunction(() => document.getElementById("styleOptions")?.classList.contains("is-open"), null, {
-        timeout: 10000,
-      });
-      await page.click('[data-setting-option-for="style"][data-setting-option-value="flat"]');
-      await page.waitForFunction(() => document.getElementById("styleButton")?.textContent?.trim() === "Flat", null, {
-        timeout: 10000,
-      });
-    });
-
-    await runStep("switch-style-dynamic", async () => {
-      await page.click("#styleButton");
-      await page.waitForFunction(() => document.getElementById("styleOptions")?.classList.contains("is-open"), null, {
-        timeout: 10000,
-      });
-      await page.click('[data-setting-option-for="style"][data-setting-option-value="dynamic"]');
-      await page.waitForFunction(() => document.getElementById("styleButton")?.textContent?.trim() === "Dynamic", null, {
-        timeout: 10000,
-      });
-    });
-
-    await runStep("switch-style-grid", async () => {
-      await page.click("#styleButton");
-      await page.waitForFunction(() => document.getElementById("styleOptions")?.classList.contains("is-open"), null, {
-        timeout: 10000,
-      });
-      await page.click('[data-setting-option-for="style"][data-setting-option-value="grid"]');
+    await runStep("verify-style-options", async () => {
+      await openStyleMenu();
       await page.waitForFunction(
-        () =>
-          document.getElementById("styleButton")?.textContent?.trim() === "Grid" &&
-          document.body.dataset.uiStyle === "grid" &&
-          getComputedStyle(document.documentElement).getPropertyValue("--style-toggle-radius").trim() === "10px",
-        null,
+        (styles) => {
+          const options = Array.from(document.querySelectorAll('[data-setting-option-for="style"]'));
+          if (options.length !== styles.length) {
+            return false;
+          }
+          return options.every((option, index) => option.dataset.settingOptionValue === styles[index].key);
+        },
+        expectedStyles,
         { timeout: 10000 },
       );
     });
 
-    await runStep("restore-style-dynamic", async () => {
-      await page.click("#styleButton");
-      await page.waitForFunction(() => document.getElementById("styleOptions")?.classList.contains("is-open"), null, {
+    await runStep("cycle-style-presets", async () => {
+      for (const styleSpec of expectedStyles) {
+        await selectStyle(styleSpec);
+      }
+
+      await selectStyle(expectedStyles[1]);
+    });
+
+    await runStep("verify-grid-shell-geometry", async () => {
+      await selectStyle(expectedStyles[0]);
+      await page.waitForFunction(() => document.body.dataset.uiStyle === "grid", null, { timeout: 10000 });
+
+      if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+        await page.click("#gridCloseSidebar");
+        await page.waitForFunction(() => !document.body.classList.contains("sidebar-open"), null, { timeout: 10000 });
+      }
+
+      const collapsed = await captureGridShellGeometry();
+      if (!collapsed) {
+        throw new Error("failed to capture collapsed grid shell geometry");
+      }
+
+      await page.click("#gridToggleSidebar");
+      await page.waitForFunction(() => document.body.classList.contains("sidebar-open"), null, { timeout: 10000 });
+
+      const expanded = await captureGridShellGeometry();
+      if (!expanded) {
+        throw new Error("failed to capture expanded grid shell geometry");
+      }
+
+      const tolerance = 0.6;
+      const checks = [
+        ["toolbar/file-tabs height", collapsed.toolbarHeight, collapsed.fileTabsHeight],
+        ["toolbar top inset", collapsed.toolbarTopInset, collapsed.expectedBlockStartInset],
+        ["header top inset", expanded.headerTopInset, expanded.expectedBlockStartInset],
+        ["toolbar spacer height", collapsed.toolbarSpacerHeight, collapsed.expectedSectionGap],
+        ["header spacer height", expanded.headerSpacerHeight, expanded.expectedSectionGap],
+        ["header child height", expanded.headerHeight, expanded.headerChildHeight],
+        ["toolbar/header top inset", collapsed.toolbarTopInset, expanded.headerTopInset],
+        ["open button top inset", collapsed.openButtonTopInset, collapsed.expectedBlockStartInset],
+        ["close button top inset", expanded.closeButtonTopInset, expanded.expectedBlockStartInset],
+        ["open/close top inset", collapsed.openButtonTopInset, expanded.closeButtonTopInset],
+        ["open button right inset", collapsed.openButtonRightInset, collapsed.expectedInlineInset],
+        ["close button right inset", expanded.closeButtonRightInset, expanded.expectedInlineInset],
+        ["open/close right inset", collapsed.openButtonRightInset, expanded.closeButtonRightInset],
+        ["open/close center-top inset", collapsed.openButtonCenterTopInset, expanded.closeButtonCenterTopInset],
+        ["open/close center-right inset", collapsed.openButtonCenterRightInset, expanded.closeButtonCenterRightInset],
+        ["tabs center-top inset", collapsed.fileTabsCenterTopInset, expanded.drawerTabsCenterTopInset],
+        ["editor left inset", collapsed.editorLeftInset, collapsed.expectedInlineInset],
+        ["editor right inset", collapsed.editorRightInset, collapsed.expectedInlineInset],
+        ["editor bottom inset", collapsed.editorBottomInset, collapsed.expectedBlockStartInset],
+        ["drawer content left inset", expanded.drawerContentLeftInset, expanded.expectedInlineInset],
+        ["drawer content right inset", expanded.drawerContentRightInset, expanded.expectedInlineInset],
+        ["drawer content bottom inset", expanded.drawerContentBottomInset, expanded.expectedBlockStartInset],
+      ];
+      if (collapsed.innerOuterMarginConsistent || expanded.innerOuterMarginConsistent) {
+        checks.push(["consistent section gap", collapsed.expectedSectionGap, collapsed.expectedBlockStartInset]);
+        checks.push(["consistent section gap expanded", expanded.expectedSectionGap, expanded.expectedBlockStartInset]);
+      }
+      const failures = checks
+        .filter(([, actual, expected]) => Math.abs(actual - expected) > tolerance)
+        .map(([label, actual, expected]) => `${label}: ${actual.toFixed(2)} vs ${expected.toFixed(2)}`);
+
+      if (expanded.drawerWidth <= 0) {
+        failures.push(`drawer width: ${expanded.drawerWidth.toFixed(2)} vs > 0`);
+      }
+
+      if (failures.length) {
+        throw new Error(`grid shell geometry drifted\n- ${failures.join("\n- ")}`);
+      }
+
+      await page.click('[data-drawer-tab="settings"]');
+      await page.waitForFunction(() => document.getElementById("drawerPanelSettings")?.classList.contains("is-active"), null, {
         timeout: 10000,
       });
-      await page.click('[data-setting-option-for="style"][data-setting-option-value="dynamic"]');
+    });
+
+    await runStep("verify-grid-layout-config-store", async () => {
+      await selectStyle(expectedStyles[0]);
+      await page.waitForFunction(() => document.body.dataset.uiStyle === "grid", null, { timeout: 10000 });
+
+      if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+        await page.click("#gridCloseSidebar");
+        await page.waitForFunction(() => !document.body.classList.contains("sidebar-open"), null, { timeout: 10000 });
+      }
+
+      const baseline = await captureGridShellGeometry();
+      if (!baseline) {
+        throw new Error("failed to capture baseline grid shell geometry");
+      }
+
+      const updatedState = await page.evaluate(() => {
+        const api = window.__styioGridLayoutConfig;
+        if (!api) {
+          return null;
+        }
+
+        const before = api.getSnapshot();
+        const after = api.update({
+          outer_margin: before.outer_margin * 1.1,
+        });
+        return {
+          before,
+          after,
+        };
+      });
+
+      if (!updatedState) {
+        throw new Error("grid layout config store debug api unavailable");
+      }
+
+      const expectedUpdated = {
+        blockStartInset: updatedState.after.shell_vertical_inset_base * updatedState.after.outer_margin,
+        inlineInset: updatedState.after.shell_inline_inset_base * updatedState.after.outer_margin,
+        sectionGap:
+          updatedState.after.shell_vertical_inset_base *
+          (updatedState.after.inner_outer_margin_consistent ? updatedState.after.outer_margin : updatedState.after.inner_margin),
+      };
+
       await page.waitForFunction(
-        () =>
-          document.getElementById("styleButton")?.textContent?.trim() === "Dynamic" &&
-          document.body.dataset.uiStyle === "dynamic",
-        null,
+        (expected) => {
+          const style = getComputedStyle(document.body);
+          const blockStartInset = Number.parseFloat(style.getPropertyValue("--grid-shell-block-start-inset")) || 0;
+          const inlineInset = Number.parseFloat(style.getPropertyValue("--grid-shell-inline-inset")) || 0;
+          const sectionGap = Number.parseFloat(style.getPropertyValue("--grid-shell-section-gap")) || 0;
+          return (
+            Math.abs(blockStartInset - expected.blockStartInset) < 0.2 &&
+            Math.abs(inlineInset - expected.inlineInset) < 0.2 &&
+            Math.abs(sectionGap - expected.sectionGap) < 0.2
+          );
+        },
+        expectedUpdated,
         { timeout: 10000 },
       );
+
+      const updatedGeometry = await captureGridShellGeometry();
+      if (!updatedGeometry) {
+        throw new Error("failed to capture updated grid shell geometry");
+      }
+
+      const updatedFailures = [
+        ["updated toolbar top inset", updatedGeometry.toolbarTopInset, expectedUpdated.blockStartInset],
+        ["updated toolbar spacer", updatedGeometry.toolbarSpacerHeight, expectedUpdated.sectionGap],
+        ["updated open button top inset", updatedGeometry.openButtonTopInset, expectedUpdated.blockStartInset],
+        ["updated open button right inset", updatedGeometry.openButtonRightInset, expectedUpdated.inlineInset],
+      ]
+        .filter(([, actual, expected]) => Math.abs(actual - expected) > 0.6)
+        .map(([label, actual, expected]) => `${label}: ${actual.toFixed(2)} vs ${expected.toFixed(2)}`);
+
+      if (updatedFailures.length) {
+        throw new Error(`grid layout config update drifted\n- ${updatedFailures.join("\n- ")}`);
+      }
+
+      const resetState = await page.evaluate(() => {
+        const api = window.__styioGridLayoutConfig;
+        return api?.reset() ?? null;
+      });
+
+      if (!resetState) {
+        throw new Error("grid layout config store reset unavailable");
+      }
+
+      const expectedReset = {
+        blockStartInset: resetState.shell_vertical_inset_base * resetState.outer_margin,
+        inlineInset: resetState.shell_inline_inset_base * resetState.outer_margin,
+        sectionGap:
+          resetState.shell_vertical_inset_base *
+          (resetState.inner_outer_margin_consistent ? resetState.outer_margin : resetState.inner_margin),
+      };
+
+      await page.waitForFunction(
+        (expected) => {
+          const style = getComputedStyle(document.body);
+          const blockStartInset = Number.parseFloat(style.getPropertyValue("--grid-shell-block-start-inset")) || 0;
+          const inlineInset = Number.parseFloat(style.getPropertyValue("--grid-shell-inline-inset")) || 0;
+          const sectionGap = Number.parseFloat(style.getPropertyValue("--grid-shell-section-gap")) || 0;
+          return (
+            Math.abs(blockStartInset - expected.blockStartInset) < 0.2 &&
+            Math.abs(inlineInset - expected.inlineInset) < 0.2 &&
+            Math.abs(sectionGap - expected.sectionGap) < 0.2
+          );
+        },
+        expectedReset,
+        { timeout: 10000 },
+      );
+
+      const resetGeometry = await captureGridShellGeometry();
+      if (!resetGeometry) {
+        throw new Error("failed to capture reset grid shell geometry");
+      }
+
+      const resetFailures = [
+        ["reset toolbar top inset", resetGeometry.toolbarTopInset, baseline.toolbarTopInset],
+        ["reset toolbar spacer", resetGeometry.toolbarSpacerHeight, baseline.toolbarSpacerHeight],
+        ["reset open button top inset", resetGeometry.openButtonTopInset, baseline.openButtonTopInset],
+        ["reset open button right inset", resetGeometry.openButtonRightInset, baseline.openButtonRightInset],
+      ]
+        .filter(([, actual, expected]) => Math.abs(actual - expected) > 0.6)
+        .map(([label, actual, expected]) => `${label}: ${actual.toFixed(2)} vs ${expected.toFixed(2)}`);
+
+      if (resetFailures.length) {
+        throw new Error(`grid layout config reset drifted\n- ${resetFailures.join("\n- ")}`);
+      }
+
+      await page.click("#gridToggleSidebar");
+      await page.waitForFunction(() => document.body.classList.contains("sidebar-open"), null, { timeout: 10000 });
+      await page.click('[data-drawer-tab="settings"]');
+      await page.waitForFunction(() => document.getElementById("drawerPanelSettings")?.classList.contains("is-active"), null, {
+        timeout: 10000,
+      });
     });
 
     await runStep("open-theme-palette", async () => {

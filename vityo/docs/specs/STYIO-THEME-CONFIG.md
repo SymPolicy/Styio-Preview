@@ -52,9 +52,8 @@
 
 `style` 当前支持：
 
-1. `dynamic`
-2. `flat`
-3. `grid`
+1. `grid`
+2. `editorial`
 
 默认值当前为 `grid`。
 

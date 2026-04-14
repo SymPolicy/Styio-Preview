@@ -20,6 +20,7 @@
   },
 
   "styioView": {
+    // Supported styles: grid, editorial
     "style": "grid",
     "language": "zhCn",
     "glyphComposition": true,

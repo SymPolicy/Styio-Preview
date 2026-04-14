@@ -52,7 +52,18 @@ import { createRenderPipeline, RenderSlice } from "./editor-modules/render-pipel
 import { settingsCardsSchema } from "./editor-modules/settings-schema.js";
 import { createCardFactory, createSettingsNodes } from "./editor-modules/settings-factory.js";
 import { settingsFactoryTokens, serializeSettingsFactoryTokens } from "./editor-modules/settings-tokens.js";
-import { createUiStyleFactory, uiStyleOptionsList } from "./editor-modules/style-strategies.js";
+import { createUiStyleFactory, uiStyleOptionsList } from "./editor-modules/style-strategies.js?v=20260414-editorial-block-contrast";
+import {
+  applyStyleShellLabels,
+  bindStyleShellBridgeEvents,
+  createStyleShellBridge,
+  syncStyleShellLayout,
+  syncStyleShellTitles,
+} from "./editor-modules/common/style-shell-bridge.js";
+import {
+  bindGridLayoutConfigTarget,
+  installGridLayoutConfigDebugApi,
+} from "./editor-modules/grid-style/layout-config-store.js";
 import {
   applyVisualTokenOverrides,
   buildVisualTokenConfigObject,
@@ -60,13 +71,17 @@ import {
   normalizeVisualTokenOverrides,
 } from "./editor-modules/visual-token-config.js";
 
+const legacyUiStyleKeyMap = Object.freeze({
+  carbon: "editorial",
+});
+
 const workspaceShell = document.getElementById("workspaceShell");
-const currentFileTitle = document.getElementById("currentFileTitle");
-const toggleSidebar = document.getElementById("toggleSidebar");
-const closeSidebar = document.getElementById("closeSidebar");
+const styleShellBridge = createStyleShellBridge(document);
+const {
+  gridRefs: { fileTabs },
+} = styleShellBridge;
 const drawerTabs = Array.from(document.querySelectorAll("[data-drawer-tab]"));
 const settingsFactoryRoot = document.getElementById("settingsFactoryRoot");
-const fileTabs = document.getElementById("fileTabs");
 const fileTree = document.getElementById("fileTree");
 const saveState = document.getElementById("saveState");
 const autoSaveState = document.getElementById("autoSaveState");
@@ -116,6 +131,7 @@ const appDialogTextarea = document.getElementById("appDialogTextarea");
 const appDialogList = document.getElementById("appDialogList");
 const appDialogCancel = document.getElementById("appDialogCancel");
 const appDialogConfirm = document.getElementById("appDialogConfirm");
+let detachGridLayoutConfigBinding = null;
 
 if (settingsFactoryRoot) {
   const initialUiStyleFactory = createUiStyleFactory(createInitialRuntimeState().activeUiStyleKey, settingsFactoryTokens);
@@ -1009,12 +1025,7 @@ function loadLanguageState() {
 function applyLanguageUi() {
   document.documentElement.lang = activeLanguageKey === "zhCn" ? "zh-CN" : "en";
   document.title = t("documentTitle");
-  currentFileTitle.textContent = t("appTitle");
-
-  toggleSidebar.setAttribute("aria-label", t("openSidebar"));
-  toggleSidebar.setAttribute("title", t("openSidebar"));
-  closeSidebar.setAttribute("aria-label", t("closeSidebar"));
-  closeSidebar.setAttribute("title", t("closeSidebar"));
+  applyStyleShellLabels(styleShellBridge, t);
 
   document.querySelector('[data-drawer-tab="files"]')?.setAttribute("aria-label", t("fileTree"));
   document.querySelector('[data-drawer-tab="files"]')?.setAttribute("title", t("fileTree"));
@@ -1367,7 +1378,9 @@ function parseCustomPaletteConfig(rawText) {
 
   const config = {
     name: typeof parsed.name === "string" ? parsed.name.trim() : "",
-    styleKey: findPresetByKeyOrLabel(uiStyleOptionsList, styioView?.style)?.key ?? null,
+    styleKey:
+      findPresetByKeyOrLabel(uiStyleOptionsList, normalizeLegacyPresetValue(styioView?.style, legacyUiStyleKeyMap))
+        ?.key ?? null,
     languageKey: findPresetByKeyOrLabel(languageOptionsList, styioView?.language)?.key ?? null,
     themeMode: ["dark", "light"].includes(styioView?.themeMode) ? styioView.themeMode : null,
     editorMode: ["dark", "light"].includes(styioView?.editorMode) ? styioView.editorMode : null,
@@ -1997,6 +2010,8 @@ function applyThemeLineTheme() {
 
 function applyWorkbenchThemeState() {
   document.documentElement.style.colorScheme = themeMode;
+  document.body.dataset.themeMode = themeMode;
+  document.body.dataset.editorMode = editorMode;
   applyThemeBackgroundTheme();
   applyThemeTextTheme();
   applyThemeColorTheme();
@@ -3206,16 +3221,30 @@ function scheduleLayoutRender() {
   }, 260);
 }
 
+function ensureGridLayoutConfigBinding() {
+  if (detachGridLayoutConfigBinding || !document.body) {
+    return;
+  }
+
+  detachGridLayoutConfigBinding = bindGridLayoutConfigTarget(document.body, {
+    onAfterApply: () => {
+      if (document.body.dataset.uiStyle === "grid") {
+        scheduleLayoutRender();
+      }
+    },
+  });
+}
+
 function syncSidebar() {
   document.body.classList.toggle("sidebar-open", sidebarOpen);
   workspaceShell.classList.toggle("sidebar-open", sidebarOpen);
-  toggleSidebar.setAttribute("aria-expanded", String(sidebarOpen));
-  toggleSidebar.setAttribute("aria-label", t("openSidebar"));
-  toggleSidebar.setAttribute("title", t("openSidebar"));
-  toggleSidebar.innerHTML = sidebarToggleSvg(false);
-  closeSidebar.innerHTML = sidebarToggleSvg(false);
-  closeSidebar.setAttribute("aria-label", t("closeSidebar"));
-  closeSidebar.setAttribute("title", t("closeSidebar"));
+  syncStyleShellLayout(styleShellBridge, {
+    activeUiStyleKey,
+    sidebarOpen,
+    toggleIconMarkup: sidebarToggleSvg(false),
+    closeIconMarkup: sidebarToggleSvg(false),
+    t,
+  });
 
   drawerTabs.forEach((button) => {
     const active = button.dataset.drawerTab === activeDrawerTab;
@@ -3307,6 +3336,12 @@ function activeTreeEntry() {
 function parentDirectoryOf(path) {
   const index = String(path || "").lastIndexOf("/");
   return index >= 0 ? path.slice(0, index) : "";
+}
+
+function formatTabFileLabel(path) {
+  const baseName = String(path || "").split("/").pop() || String(path || "");
+  const extensionIndex = baseName.lastIndexOf(".");
+  return extensionIndex > 0 ? baseName.slice(0, extensionIndex) : baseName;
 }
 
 function joinRelativePath(basePath, leafName) {
@@ -3418,6 +3453,15 @@ function applyUiStyleStrategy() {
     document.documentElement.style.setProperty(cssVar, value);
   });
   document.body.dataset.uiStyle = styleFactory.key;
+  document.body.dataset.themeMode = themeMode;
+  document.body.dataset.editorMode = editorMode;
+  syncStyleShellLayout(styleShellBridge, {
+    activeUiStyleKey: styleFactory.key,
+    sidebarOpen,
+    toggleIconMarkup: sidebarToggleSvg(false),
+    closeIconMarkup: sidebarToggleSvg(false),
+    t,
+  });
   settingsFactoryRoot?.setAttribute("style", serializeSettingsFactoryTokens(styleFactory.settingsTokens));
   applyVisualTokenOverrides(visualTokenOverrides, {
     root: document.documentElement,
@@ -3441,8 +3485,9 @@ function loadUiStyleState() {
       return;
     }
     const parsed = JSON.parse(raw);
-    if (uiStyleOptionsList.some((option) => option.key === parsed?.style)) {
-      activeUiStyleKey = parsed.style;
+    const migratedStyleKey = legacyUiStyleKeyMap[parsed?.style] ?? parsed?.style;
+    if (uiStyleOptionsList.some((option) => option.key === migratedStyleKey)) {
+      activeUiStyleKey = migratedStyleKey;
     }
   } catch (error) {
     console.warn("failed to restore ui style state", error);
@@ -3826,13 +3871,12 @@ function syncWorkspacePathScrollerMetrics() {
   }
 
   window.requestAnimationFrame(() => {
-    const maxScroll = Math.max(0, workspacePathText.scrollWidth - workspacePathViewport.clientWidth);
-    workspacePathViewport.scrollLeft = maxScroll;
+    workspacePathViewport.scrollLeft = 0;
     syncWorkspacePathVisual();
   });
 }
 
-function scrollWorkspacePathDisplayToEnd() {
+function scrollWorkspacePathDisplayToStart() {
   syncWorkspacePathScrollerMetrics();
 }
 
@@ -3845,7 +3889,7 @@ function syncWorkspaceControls() {
     workspacePathDisplay.title = workspaceRootPath;
   }
 
-  scrollWorkspacePathDisplayToEnd();
+  scrollWorkspacePathDisplayToStart();
 
   if (workspacePathHint) {
     workspacePathHint.hidden = true;
@@ -3865,10 +3909,11 @@ function renderFileTabs() {
   fileTabs.innerHTML = fileOrder
     .map((fileName) => {
       const dirty = Boolean(fileDirty[fileName]);
+      const tabLabel = formatTabFileLabel(fileName);
       return `
         <div class="editor-tab ${fileName === currentFile ? "is-active" : ""} ${dirty ? "is-dirty" : ""}" data-tab-item="${escapeHtml(fileName)}">
           <button class="editor-tab-main" data-tab-file="${escapeHtml(fileName)}" type="button">
-            <span class="editor-tab-label">${escapeHtml(fileName.split("/").pop() || fileName)}</span>
+            <span class="editor-tab-label">${escapeHtml(tabLabel)}</span>
           </button>
           <button class="editor-tab-close" data-tab-close="${escapeHtml(fileName)}" type="button" aria-label="${escapeHtml(`${activeLanguageKey === "zhCn" ? "关闭 " : "Close "}${fileName}`)}" title="${escapeHtml(activeLanguageKey === "zhCn" ? "关闭标签页" : "Close tab")}">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -4679,7 +4724,10 @@ function updateIndentUi() {
 
 function updateStatusbar(analysis) {
   latestAnalysis = analysis;
-  currentFileTitle.textContent = t("appTitle");
+  syncStyleShellTitles(styleShellBridge, {
+    appTitle: t("appTitle"),
+    workspaceTitle: t("workspace"),
+  });
   workspacePathHint.hidden = true;
   workspacePathHint.textContent = "";
   if (glyphState) {
@@ -5097,14 +5145,29 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-toggleSidebar.addEventListener("click", () => {
-  sidebarOpen = !sidebarOpen;
-  syncSidebar();
-});
-
-closeSidebar.addEventListener("click", () => {
-  sidebarOpen = false;
-  syncSidebar();
+bindStyleShellBridgeEvents(styleShellBridge, {
+  onGridToggle: () => {
+    sidebarOpen = !sidebarOpen;
+    syncSidebar();
+  },
+  onGridClose: () => {
+    sidebarOpen = false;
+    syncSidebar();
+  },
+  onEditorialToggle: () => {
+    sidebarOpen = !sidebarOpen;
+    syncSidebar();
+  },
+  onEditorialFiles: () => {
+    activeDrawerTab = "files";
+    sidebarOpen = true;
+    syncSidebar();
+  },
+  onEditorialSettings: () => {
+    activeDrawerTab = "settings";
+    sidebarOpen = true;
+    syncSidebar();
+  },
 });
 
 drawerTabs.forEach((button) => {
@@ -5857,6 +5920,7 @@ async function bootstrap() {
     fileDirty[fileName] = false;
   });
 
+  installGridLayoutConfigDebugApi(window);
   loadLanguageState();
   applyLanguageUi();
   loadUiStyleState();
@@ -5869,6 +5933,7 @@ async function bootstrap() {
     syncEditorModeToThemeSurface({ persist: false, requestRender: false });
   }
   document.body.classList.toggle("glyphs-off", !glyphsOn);
+  ensureGridLayoutConfigBinding();
   applyUiStyleStrategy();
   toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
   toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
