@@ -201,14 +201,16 @@ def resolve_browser_path(raw_path: str | None) -> Path:
     else:
         candidate = current_workspace().resolve()
 
-    if not candidate.exists() or not candidate.is_dir():
-        raise ValueError("browser path must point to an existing directory")
+    if not candidate.exists():
+        raise ValueError("browser path must point to an existing file or directory")
 
-    return candidate
+    return candidate.resolve()
 
 
-def browser_directory_snapshot(raw_path: str | None) -> dict:
-    current = resolve_browser_path(raw_path)
+def browser_entry_snapshot(raw_path: str | None, *, include_files: bool = False) -> dict:
+    target = resolve_browser_path(raw_path)
+    selected_file = target if target.is_file() else None
+    current = target.parent if selected_file else target
     parent = current.parent if current.parent != current else None
     breadcrumbs = []
 
@@ -229,16 +231,23 @@ def browser_directory_snapshot(raw_path: str | None) -> dict:
         breadcrumbs.append({"name": segment, "path": str(cursor)})
 
     directories = []
+    files = []
     for child in sorted(current.iterdir(), key=lambda item: item.name):
-        if not child.is_dir() or is_ignored(child):
+        if is_ignored(child):
             continue
-        directories.append({"name": child.name, "path": str(child.resolve())})
+        if child.is_dir():
+            directories.append({"name": child.name, "path": str(child.resolve())})
+            continue
+        if include_files and child.is_file():
+            files.append({"name": child.name, "path": str(child.resolve())})
 
     return {
         "currentPath": str(current),
         "parentPath": str(parent) if parent else None,
         "breadcrumbs": breadcrumbs,
         "directories": directories,
+        "files": files,
+        "selectedFilePath": str(selected_file) if selected_file else None,
     }
 
 
@@ -283,13 +292,39 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
             self.end_json(workspace_snapshot())
             return
 
-        if parsed.path == "/api/browser/directories":
+        if parsed.path == "/api/browser/entries":
             query = parse_qs(parsed.query)
             raw_path = query.get("path", [None])[0]
+            include_files = query.get("includeFiles", ["0"])[0] == "1"
             try:
-                self.end_json(browser_directory_snapshot(raw_path))
+                self.end_json(browser_entry_snapshot(raw_path, include_files=include_files))
             except ValueError as error:
                 self.end_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        if parsed.path == "/api/browser/file":
+            query = parse_qs(parsed.query)
+            raw_path = query.get("path", [None])[0]
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                self.end_json({"error": "path must be a non-empty string"}, HTTPStatus.BAD_REQUEST)
+                return
+
+            try:
+                target = resolve_browser_path(raw_path)
+                if not target.is_file():
+                    raise ValueError("path must point to a file")
+                content = target.read_text(encoding="utf-8")
+            except ValueError as error:
+                self.end_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                return
+            except FileNotFoundError:
+                self.end_json({"error": "file not found"}, HTTPStatus.NOT_FOUND)
+                return
+            except UnicodeDecodeError:
+                self.end_json({"error": "file is not utf-8 text"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+                return
+
+            self.end_json({"ok": True, "path": str(target), "content": content})
             return
 
         if parsed.path.startswith("/api/workspace/file/"):

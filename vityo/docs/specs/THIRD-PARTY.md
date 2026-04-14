@@ -2,7 +2,7 @@
 
 **Purpose:** 记录 `styio-view` 当前接受、计划或明确暂缓的第三方依赖与运行时边界；第一方上游 `styio` 也在此登记，便于实现期核对。
 
-**Last updated:** 2026-04-12
+**Last updated:** 2026-04-13
 
 ## 1. 已接受依赖
 
@@ -12,6 +12,23 @@
 | Dart SDK | Accepted | Flutter 语言运行时 | 作为 Flutter 的直接依赖。 |
 | `styio` upstream repository | Accepted (first-party upstream) | 语言与编译器核心 | 非第三方，但属于本仓依赖边界。 |
 | LLVM | Accepted (via `styio`) | CodeGen / JIT / IR 后端 | 由上游 `styio` 维护。 |
+
+## 1.1 UI 字体与预设来源
+
+| Asset | Status | Role | Notes |
+|-------|--------|------|-------|
+| IBM Plex Sans / IBM Plex Mono | Accepted | 默认界面 / 编辑器字体族的一部分 | 开源字体，允许作为默认 fallback。 |
+| Inter | Accepted | 默认界面字体族的一部分 | 开源字体，允许作为默认 fallback。 |
+| JetBrains Mono | Accepted | 默认编辑器等宽字体 | 开源字体，允许作为默认 fallback。 |
+| Recursive | Accepted | 默认界面 / 编辑器备选字体 | 开源字体，允许作为默认 fallback。 |
+| Noto Sans / Noto Sans Math | Accepted | 多语言与数学 glyph fallback | 开源字体，允许作为默认 fallback。 |
+| STIX Two Math | Accepted | 数学 glyph fallback | 开源字体，允许作为默认 fallback。 |
+
+## 1.2 UI 预设命名策略
+
+1. 用户可见的主题、调色盘和高亮预设标签优先使用中性命名，例如 `Studio Dark`、`Graphite Blue`、`Amber Night`。
+2. 不把第三方产品品牌名直接作为默认 UI 标签，即使对应调色思路来自开源社区主题。
+3. 色值本身视为功能性配置数据；风险控制重点放在字体许可和用户可见命名上，而不是十六进制数值本身。
 
 ## 2. 计划中但未冻结
 

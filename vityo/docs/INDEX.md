@@ -30,3 +30,4 @@
 6. [for-styio/Styio-Integration-Overview.md](./for-styio/Styio-Integration-Overview.md)
 7. [for-spio/Spio-Integration-Overview.md](./for-spio/Spio-Integration-Overview.md)
 8. [review/Logic-Conflicts.md](./review/Logic-Conflicts.md)
+9. [specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md](./specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md)

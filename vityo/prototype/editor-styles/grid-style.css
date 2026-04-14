@@ -1,0 +1,299 @@
+body[data-ui-style="grid"] {
+  /*
+   * Grid layout spacing is maintained by the singleton store in
+   * editor-modules/grid-style/layout-config-store.js. Adjust the config there first.
+   */
+  --grid-page-edge-x: 18px;
+  --grid-page-edge-bottom: 18px;
+  --grid-page-head-height: 42px;
+  --grid-page-head-pad-x: 18px;
+  --grid-page-head-font-size: 22px;
+  --grid-shell-inline-inset: 18px;
+  --grid-shell-vertical-inset: 14px;
+  --grid-shell-block-start-inset: var(--grid-shell-vertical-inset);
+  --grid-shell-control-size: 44px;
+  --grid-shell-control-row-height: var(--grid-shell-control-size);
+  --grid-shell-control-gap: 18px;
+  --grid-shell-section-gap: var(--grid-shell-vertical-inset);
+  --grid-sidebar-width-closed: 0px;
+  --grid-sidebar-width-open: 368px;
+  --grid-sidebar-width: var(--grid-sidebar-width-closed);
+  padding: 0;
+}
+
+body.sidebar-open[data-ui-style="grid"] {
+  --grid-sidebar-width: var(--grid-sidebar-width-open);
+}
+
+body[data-ui-style="grid"] .workspace-shell {
+  width: auto;
+  height: calc(100vh - var(--grid-page-head-height) - var(--grid-page-edge-bottom));
+  max-height: calc(100vh - var(--grid-page-head-height) - var(--grid-page-edge-bottom));
+  margin: 0 var(--grid-page-edge-x) var(--grid-page-edge-bottom);
+  grid-template-columns: minmax(0, 1fr) var(--grid-sidebar-width);
+}
+
+body[data-ui-style="grid"] #gridMainHead {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--grid-page-head-height);
+  padding: 0 var(--grid-page-head-pad-x);
+  margin: 0;
+  pointer-events: none;
+}
+
+body[data-ui-style="grid"] #gridMainHead > div {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+}
+
+body[data-ui-style="grid"] #gridMainHead h1 {
+  font-size: var(--grid-page-head-font-size);
+  line-height: 1;
+}
+
+body[data-ui-style="grid"] .main-editor-card {
+  display: grid;
+  grid-template-rows: auto var(--grid-shell-section-gap) minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+/*
+ * Grid keeps the open/close sidebar buttons on the same geometry by sharing
+ * one top inset, one inline inset, one section gap, and one control height
+ * across both sides. The self-test measures those offsets numerically to catch drift.
+ */
+body[data-ui-style="grid"] #gridMainToolbar,
+body[data-ui-style="grid"] #gridDrawerHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  width: 100%;
+  height: var(--grid-shell-control-row-height);
+  margin-top: var(--grid-shell-block-start-inset);
+  padding-inline: var(--grid-shell-inline-inset);
+  box-sizing: border-box;
+  column-gap: var(--grid-shell-control-gap);
+}
+
+body[data-ui-style="grid"] #gridMainToolbarSpacer {
+  height: var(--grid-shell-section-gap);
+  min-height: var(--grid-shell-section-gap);
+}
+
+body[data-ui-style="grid"] #gridEditorPane {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--grid-shell-inline-inset) var(--grid-shell-block-start-inset);
+  box-sizing: border-box;
+}
+
+body[data-ui-style="grid"] #gridEditorPane .editor-frame {
+  flex: 1 1 auto;
+  height: 100%;
+  margin: 0;
+}
+
+body[data-ui-style="grid"] #gridFileTabs.grid-editor-tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: var(--grid-shell-control-row-height);
+  gap: 8px;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0;
+  border-bottom: 0;
+}
+
+body[data-ui-style="grid"] #gridSideDrawer.grid-side-drawer {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto var(--grid-shell-section-gap) minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body.sidebar-open[data-ui-style="grid"] #gridSideDrawer.grid-side-drawer {
+  padding: 0;
+}
+
+body[data-ui-style="grid"] #gridDrawerTabsDock {
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  height: var(--grid-shell-control-row-height);
+}
+
+body[data-ui-style="grid"] #gridDrawerTabsDock > .drawer-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  height: var(--grid-shell-control-row-height);
+  width: max-content;
+  gap: 0;
+  padding: 1px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--style-tab-group-radius);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+body[data-ui-style="grid"] #gridDrawerHeaderSpacer {
+  height: var(--grid-shell-section-gap);
+  min-height: var(--grid-shell-section-gap);
+}
+
+body[data-ui-style="grid"] #gridDrawerContent {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 var(--grid-shell-inline-inset) var(--grid-shell-block-start-inset);
+  box-sizing: border-box;
+}
+
+body[data-ui-style="grid"] #gridDrawerMount {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body[data-ui-style="grid"] #drawerPanelFiles {
+  padding-top: 0;
+  gap: 10px;
+}
+
+body[data-ui-style="grid"] #gridToggleSidebar,
+body[data-ui-style="grid"] #gridCloseSidebar {
+  z-index: 3;
+  width: var(--grid-shell-control-size);
+  height: var(--grid-shell-control-size);
+  border: var(--ui-border);
+  border-radius: var(--radius-ui);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+  margin: 0;
+}
+
+body[data-ui-style="grid"] #gridToggleSidebar {
+  position: static;
+}
+
+body[data-ui-style="grid"] #gridCloseSidebar {
+  position: static;
+}
+
+body[data-ui-style="grid"] #gridToggleSidebar svg,
+body[data-ui-style="grid"] #gridCloseSidebar svg {
+  width: 18px;
+  height: 18px;
+}
+
+body.sidebar-open[data-ui-style="grid"] #gridToggleSidebar {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab {
+  max-width: 260px;
+  min-height: var(--grid-shell-control-row-height);
+  height: var(--grid-shell-control-row-height);
+  border: 1px var(--style-card-border-style) var(--style-card-border);
+  border-radius: var(--radius-ui);
+  background: var(--style-tab-surface);
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab:hover {
+  background: var(--style-tab-hover-surface);
+  border-color: var(--style-card-border-strong);
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab.is-active {
+  background: var(--style-tab-active-surface);
+  border-color: var(--style-card-border-strong);
+  box-shadow: none;
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab.is-active::after {
+  display: none;
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab-main {
+  min-height: 100%;
+  padding: 10px 36px 10px 14px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab-label {
+  width: 100%;
+}
+
+body[data-ui-style="grid"] #gridFileTabs .editor-tab-close {
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+}
+
+body[data-ui-style="grid"] #gridSideDrawer .drawer-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: var(--style-tab-item-radius);
+  color: var(--muted);
+  background: transparent;
+}
+
+body[data-ui-style="grid"] #gridSideDrawer .drawer-tab svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body[data-ui-style="grid"] #gridSideDrawer .drawer-tab-icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+body[data-ui-style="grid"] #gridSideDrawer .drawer-tab.is-active {
+  color: #201713;
+  background: linear-gradient(135deg, var(--accent), var(--accent-3));
+  box-shadow: none;
+}
+
+body[data-ui-style="grid"] #gridSideDrawer .workspace-action-row {
+  padding: 2px 0;
+}

@@ -30,6 +30,7 @@
 8. 产品合同入口：[contracts/INDEX.md](./contracts/INDEX.md)
 9. `styio` 对接入口：[for-styio/INDEX.md](./for-styio/INDEX.md)
 10. `spio` 对接入口：[for-spio/INDEX.md](./for-spio/INDEX.md)
+11. 手写 Web IDE 工程手册：[specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md](./specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md)
 
 ## Maintenance Rules
 

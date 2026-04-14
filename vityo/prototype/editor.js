@@ -1,29 +1,87 @@
-const workspaceApiBase = "/api/workspace";
-const primaryFile = "main.styio";
-const defaultCreateLeafNames = {
-  file: "new_file.styio",
-  folder: "new_folder",
-};
-const fallbackSources = {
-  "main.styio": `pipeline mainFlow
-let staged := source |> normalize
-let routeOut = staged -> render
-let routeIn = source <- bridge
-let promote = state => running
-let fallback = state <= idle
-fn main(input) {
-  state idle
-  when input.ready -> state running
-  emit staged
-}`,
-};
+import {
+  workspaceApiBase,
+  primaryFile,
+  defaultCreateLeafNames,
+  fallbackSources,
+  storageKeys,
+  customPaletteConfigSchema,
+  createInitialRuntimeState,
+} from "./editor-modules/runtime-config.js";
+import { autoSaveModeOptionsList, languageOptionsList, SURFACE_KEYS } from "./editor-modules/enums.js";
+import {
+  SURFACE_ACTIONS,
+  SURFACE_PERSIST_TARGETS,
+  SURFACE_RENDER_TARGETS,
+} from "./editor-modules/surface-actions.js";
+import {
+  themeColorPresets,
+  themeBackgroundPresets,
+  themeTextPresets,
+  themeLinePresets,
+  themePalettePresets,
+  interfaceFontOptionsList,
+  interfaceSizeOptionsList,
+  editorFontOptionsList,
+  editorFontSizePresets,
+  legacyInterfaceSizeKeyMap,
+  legacyThemeColorKeyMap,
+  legacyInterfaceFontKeyMap,
+  legacyEditorFontSizeKeyMap,
+  legacyEditorTextHighlightKeyMap,
+  legacyDefaultGlyphPaletteKeyMap,
+  editorBackgroundPresets,
+  editorTextColorPresets,
+  editorTextHighlightPresets,
+} from "./editor-modules/theme-presets.js";
+import {
+  operatorGlyphs,
+  glyphOperators,
+  glyphOperatorPattern,
+  glyphColorSpecs,
+  glyphColorOptions,
+  glyphPaletteOptions,
+  editorPaletteMeta,
+  legacyGlyphPaletteKeyMap,
+  blockSurfacePresets,
+  lineHighlightPresets,
+  selectionHighlightPresets,
+  defaultGlyphColor,
+} from "./editor-modules/glyph-presets.js";
+import { styioKeywordTokens } from "./editor-modules/styio-language-config.js";
+import { createRenderPipeline, RenderSlice } from "./editor-modules/render-pipeline.js";
+import { settingsCardsSchema } from "./editor-modules/settings-schema.js";
+import { createCardFactory, createSettingsNodes } from "./editor-modules/settings-factory.js";
+import { settingsFactoryTokens, serializeSettingsFactoryTokens } from "./editor-modules/settings-tokens.js";
+import { createUiStyleFactory, uiStyleOptionsList } from "./editor-modules/style-strategies.js?v=20260414-editorial-block-contrast";
+import {
+  applyStyleShellLabels,
+  bindStyleShellBridgeEvents,
+  createStyleShellBridge,
+  syncStyleShellLayout,
+  syncStyleShellTitles,
+} from "./editor-modules/common/style-shell-bridge.js";
+import {
+  bindGridLayoutConfigTarget,
+  installGridLayoutConfigDebugApi,
+} from "./editor-modules/grid-style/layout-config-store.js";
+import {
+  applyVisualTokenOverrides,
+  buildVisualTokenConfigObject,
+  hasVisualTokenOverrides,
+  normalizeVisualTokenOverrides,
+} from "./editor-modules/visual-token-config.js";
+
+const legacyUiStyleKeyMap = Object.freeze({
+  carbon: "editorial",
+});
 
 const workspaceShell = document.getElementById("workspaceShell");
-const currentFileTitle = document.getElementById("currentFileTitle");
-const toggleSidebar = document.getElementById("toggleSidebar");
-const closeSidebar = document.getElementById("closeSidebar");
+const styleShellBridge = createStyleShellBridge(document);
+const {
+  gridRefs: { fileTabs },
+} = styleShellBridge;
 const drawerTabs = Array.from(document.querySelectorAll("[data-drawer-tab]"));
-const fileTabs = document.getElementById("fileTabs");
+const settingsFactoryRoot = document.getElementById("settingsFactoryRoot");
 const fileTree = document.getElementById("fileTree");
 const saveState = document.getElementById("saveState");
 const autoSaveState = document.getElementById("autoSaveState");
@@ -60,26 +118,99 @@ const workspacePickerCurrent = document.getElementById("workspacePickerCurrent")
 const workspacePickerBreadcrumbs = document.getElementById("workspacePickerBreadcrumbs");
 const workspacePickerList = document.getElementById("workspacePickerList");
 const workspacePickerConfirm = document.getElementById("workspacePickerConfirm");
+const appToast = document.getElementById("appToast");
+const appToastText = document.getElementById("appToastText");
 const appDialogOverlay = document.getElementById("appDialogOverlay");
 const appDialogClose = document.getElementById("appDialogClose");
 const appDialogTitle = document.getElementById("appDialogTitle");
 const appDialogMessage = document.getElementById("appDialogMessage");
 const appDialogInputField = document.getElementById("appDialogInputField");
 const appDialogInput = document.getElementById("appDialogInput");
+const appDialogTextareaField = document.getElementById("appDialogTextareaField");
+const appDialogTextarea = document.getElementById("appDialogTextarea");
 const appDialogList = document.getElementById("appDialogList");
 const appDialogCancel = document.getElementById("appDialogCancel");
 const appDialogConfirm = document.getElementById("appDialogConfirm");
+let detachGridLayoutConfigBinding = null;
+
+if (settingsFactoryRoot) {
+  const initialUiStyleFactory = createUiStyleFactory(createInitialRuntimeState().activeUiStyleKey, settingsFactoryTokens);
+  const settingsFactory = createCardFactory({
+    nodes: settingsCardsSchema,
+    tokens: initialUiStyleFactory.settingsTokens,
+  });
+  settingsFactoryRoot.setAttribute("style", settingsFactory.style);
+  settingsFactoryRoot.innerHTML = settingsFactory.markup;
+}
+
+function flattenSettingsNodes(nodes, acc = []) {
+  for (const node of nodes ?? []) {
+    if (!node) {
+      continue;
+    }
+    acc.push(node);
+    if (node.headAccessory) {
+      flattenSettingsNodes([node.headAccessory], acc);
+    }
+    if (node.themeChildren?.length) {
+      flattenSettingsNodes(node.themeChildren, acc);
+    }
+    if (node.editorChildren?.length) {
+      flattenSettingsNodes(node.editorChildren, acc);
+    }
+    if (node.children?.length) {
+      flattenSettingsNodes(node.children, acc);
+    }
+  }
+  return acc;
+}
+
+const flatSettingsNodes = flattenSettingsNodes(settingsCardsSchema);
+const settingsNodesById = new Map(flatSettingsNodes.map((node) => [node.id, node]));
+const settingsDropdownNodesByButtonId = new Map(
+  flatSettingsNodes
+    .filter((node) => node.kind === "dropdown" && node.buttonId)
+    .map((node) => [node.buttonId, node]),
+);
+const settingsDropdownNodesByOptionsId = new Map(
+  flatSettingsNodes
+    .filter((node) => node.kind === "dropdown" && node.optionsId)
+    .map((node) => [node.optionsId, node]),
+);
+const settingsDialogActionsById = new Map(
+  flatSettingsNodes.flatMap((node) =>
+    (node.dialogSpec?.actions ?? []).map((action) => [
+      action.id,
+      {
+        node,
+        action,
+      },
+    ]),
+  ),
+);
+
 const toggleGlyphs = document.getElementById("toggleGlyphs");
 const languageTitle = document.getElementById("languageTitle");
+const styleTitle = document.getElementById("styleTitle");
 const indentControl = document.getElementById("indentControl");
 const saveFile = document.getElementById("saveFile");
 const autoSaveTitle = document.getElementById("autoSaveTitle");
 const themeTitle = document.getElementById("themeTitle");
+const themeModeTitle = document.getElementById("themeModeTitle");
+const themeColorCardTitle = document.getElementById("themeColorCardTitle");
+const themeFontCardTitle = document.getElementById("themeFontCardTitle");
+const themeConfigTitle = document.getElementById("themeConfigTitle");
+const themePaletteTitle = document.getElementById("themePaletteTitle");
+const themeTextTitle = document.getElementById("themeTextTitle");
 const themeColorTitle = document.getElementById("themeColorTitle");
 const themeBackgroundTitle = document.getElementById("themeBackgroundTitle");
+const themeLineTitle = document.getElementById("themeLineTitle");
 const interfaceFontTitle = document.getElementById("interfaceFontTitle");
 const interfaceSizeTitle = document.getElementById("interfaceSizeTitle");
 const editorTitle = document.getElementById("editorTitle");
+const editorFontCardTitle = document.getElementById("editorFontCardTitle");
+const editorColorCardTitle = document.getElementById("editorColorCardTitle");
+const editorConfigTitle = document.getElementById("editorConfigTitle");
 const tabSizeTitle = document.getElementById("tabSizeTitle");
 const editorFontTitle = document.getElementById("editorFontTitle");
 const editorFontSizeTitle = document.getElementById("editorFontSizeTitle");
@@ -90,26 +221,57 @@ const textHighlightTitle = document.getElementById("textHighlightTitle");
 const blockTitle = document.getElementById("blockTitle");
 const lineTitle = document.getElementById("lineTitle");
 const selectionTitle = document.getElementById("selectionTitle");
+const linkedSurfaceModeTitle = document.getElementById("linkedSurfaceModeTitle");
+const linkedSurfaceThemeTab = document.getElementById("linkedSurfaceThemeTab");
+const linkedSurfaceEditorTab = document.getElementById("linkedSurfaceEditorTab");
+const linkedSurfaceThemePanel = document.getElementById("linkedSurfaceThemePanel");
+const linkedSurfaceEditorPanel = document.getElementById("linkedSurfaceEditorPanel");
+const linkedEditorModeLinkButton = document.getElementById("linkedEditorModeLinkButton");
+const linkedSurfaceModeToggle = document.getElementById("linkedSurfaceModeToggle");
+const linkedSurfaceModeDark = document.getElementById("linkedSurfaceModeDark");
+const linkedSurfaceModeLight = document.getElementById("linkedSurfaceModeLight");
+const importThemeConfigButton = document.getElementById("importThemeConfigButton");
+const editThemeConfigButton = document.getElementById("editThemeConfigButton");
+const importEditorConfigButton = document.getElementById("importEditorConfigButton");
+const editEditorConfigButton = document.getElementById("editEditorConfigButton");
 const languageModeButton = document.getElementById("languageModeButton");
 const languageModeOptions = document.getElementById("languageModeOptions");
+const styleButton = document.getElementById("styleButton");
+const styleOptions = document.getElementById("styleOptions");
 const autoSaveModeButton = document.getElementById("autoSaveModeButton");
 const autoSaveModeOptions = document.getElementById("autoSaveModeOptions");
 const autoSaveDelayField = document.getElementById("autoSaveDelayField");
 const autoSaveDelayInput = document.getElementById("autoSaveDelayInput");
 const autoSaveDelayLabel = document.getElementById("autoSaveDelayLabel");
+const themeModeToggle = document.getElementById("themeModeToggle");
+const themeModeDark = document.getElementById("themeModeDark");
+const themeModeLight = document.getElementById("themeModeLight");
+const themePaletteButton = document.getElementById("themePaletteButton");
+const themePaletteOptionsMenu = document.getElementById("themePaletteOptions");
+const themeTextButton = document.getElementById("themeTextButton");
+const themeTextOptions = document.getElementById("themeTextOptions");
 const themeColorButton = document.getElementById("themeColorButton");
 const themeColorOptions = document.getElementById("themeColorOptions");
 const themeBackgroundButton = document.getElementById("themeBackgroundButton");
 const themeBackgroundOptions = document.getElementById("themeBackgroundOptions");
+const themeLineButton = document.getElementById("themeLineButton");
+const themeLineOptions = document.getElementById("themeLineOptions");
 const interfaceFontButton = document.getElementById("interfaceFontButton");
 const interfaceFontOptions = document.getElementById("interfaceFontOptions");
-const interfaceSizeButton = document.getElementById("interfaceSizeButton");
-const interfaceSizeOptions = document.getElementById("interfaceSizeOptions");
+const interfaceSizeControl = document.getElementById("interfaceSizeControl");
+const interfaceSizeDecrease = document.getElementById("interfaceSizeDecrease");
+const interfaceSizeIncrease = document.getElementById("interfaceSizeIncrease");
+const interfaceSizeValue = document.getElementById("interfaceSizeValue");
 const glyphCompositionTitle = document.getElementById("glyphCompositionTitle");
 const editorFontButton = document.getElementById("editorFontButton");
 const editorFontOptions = document.getElementById("editorFontOptions");
-const editorFontSizeButton = document.getElementById("editorFontSizeButton");
-const editorFontSizeOptions = document.getElementById("editorFontSizeOptions");
+const editorFontSizeControl = document.getElementById("editorFontSizeControl");
+const editorFontSizeDecrease = document.getElementById("editorFontSizeDecrease");
+const editorFontSizeIncrease = document.getElementById("editorFontSizeIncrease");
+const editorFontSizeValue = document.getElementById("editorFontSizeValue");
+const editorModeToggle = document.getElementById("editorModeToggle");
+const editorModeDark = document.getElementById("editorModeDark");
+const editorModeLight = document.getElementById("editorModeLight");
 const highlightPaletteButton = document.getElementById("highlightPaletteButton");
 const highlightPaletteOptions = document.getElementById("highlightPaletteOptions");
 const editorBackgroundButton = document.getElementById("editorBackgroundButton");
@@ -134,73 +296,461 @@ const caretLayer = document.getElementById("caretLayer");
 const caretIndicator = document.getElementById("caretIndicator");
 const editorInput = document.getElementById("editorInput");
 
+const initialRuntimeState = createInitialRuntimeState();
 const fileSources = { ...fallbackSources };
 const fileDirty = {};
-let fileOrder = [primaryFile];
-let currentFile = primaryFile;
-let glyphsOn = true;
-let workspaceApiAvailable = false;
-let workspaceRootPath = "";
-let workspaceName = "workspace";
-let workspaceEntries = [];
-let workspaceFiles = [primaryFile];
-let workspaceLoadedFiles = new Set();
-let saveInFlight = false;
-let latestAnalysis = null;
-let sidebarOpen = false;
-let activeDrawerTab = "files";
-let indentSize = 2;
-let activeLanguageKey = "zhCn";
-let languageMenuOpen = false;
-let autoSaveMode = "afterDelay";
-let autoSaveDelay = 1000;
-let autoSaveMenuOpen = false;
+let fileOrder = [...initialRuntimeState.fileOrder];
+let currentFile = initialRuntimeState.currentFile;
+let glyphsOn = initialRuntimeState.glyphsOn;
+let workspaceApiAvailable = initialRuntimeState.workspaceApiAvailable;
+let workspaceRootPath = initialRuntimeState.workspaceRootPath;
+let workspaceName = initialRuntimeState.workspaceName;
+let workspaceEntries = [...initialRuntimeState.workspaceEntries];
+let workspaceFiles = [...initialRuntimeState.workspaceFiles];
+let workspaceLoadedFiles = initialRuntimeState.workspaceLoadedFiles;
+let saveInFlight = initialRuntimeState.saveInFlight;
+let latestAnalysis = initialRuntimeState.latestAnalysis;
+let sidebarOpen = initialRuntimeState.sidebarOpen;
+let activeDrawerTab = initialRuntimeState.activeDrawerTab;
+let linkedSurfaceActiveTab = initialRuntimeState.linkedSurfaceActiveTab;
+let editorModeLinkedToTheme = initialRuntimeState.editorModeLinkedToTheme;
+let indentSize = initialRuntimeState.indentSize;
+let activeLanguageKey = initialRuntimeState.activeLanguageKey;
+let languageMenuOpen = initialRuntimeState.languageMenuOpen;
+let activeUiStyleKey = initialRuntimeState.activeUiStyleKey;
+let styleMenuOpen = initialRuntimeState.styleMenuOpen;
+let autoSaveMode = initialRuntimeState.autoSaveMode;
+let autoSaveDelay = initialRuntimeState.autoSaveDelay;
+let autoSaveMenuOpen = initialRuntimeState.autoSaveMenuOpen;
 let autoSaveTimer = null;
-let themeColorMenuOpen = false;
-let themeBackgroundMenuOpen = false;
-let interfaceFontMenuOpen = false;
-let interfaceSizeMenuOpen = false;
-let editorFontMenuOpen = false;
-let editorFontSizeMenuOpen = false;
-let openGlyphColorMenu = null;
-let paletteMenuOpen = false;
-let editorBackgroundMenuOpen = false;
-let textColorMenuOpen = false;
-let textHighlightMenuOpen = false;
-let blockSurfaceMenuOpen = false;
-let lineHighlightMenuOpen = false;
-let selectionHighlightMenuOpen = false;
-let activeThemeColorKey = "styioGold";
-let activeThemeBackgroundKey = "graphite";
-let activeInterfaceFontKey = "styioSans";
-let activeInterfaceSizeKey = "default";
-let activeEditorFontKey = "sfMono";
-let activeEditorFontSizeKey = "default";
-let activePaletteKey = "styio";
-let activeEditorBackgroundKey = "graphite";
-let activeEditorTextColorKey = "mist";
-let activeEditorTextHighlightKey = "styioGold";
-let activeBlockSurfaceKey = "graphite";
-let activeLineHighlightKey = "graphite";
-let activeSelectionHighlightKey = "graphite";
+let themeMode = initialRuntimeState.themeMode;
+let themePaletteMenuOpen = initialRuntimeState.themePaletteMenuOpen;
+let themeColorMenuOpen = initialRuntimeState.themeColorMenuOpen;
+let themeBackgroundMenuOpen = initialRuntimeState.themeBackgroundMenuOpen;
+let interfaceFontMenuOpen = initialRuntimeState.interfaceFontMenuOpen;
+let themeTextMenuOpen = initialRuntimeState.themeTextMenuOpen;
+let themeLineMenuOpen = initialRuntimeState.themeLineMenuOpen;
+let editorFontMenuOpen = initialRuntimeState.editorFontMenuOpen;
+let openGlyphColorMenu = initialRuntimeState.openGlyphColorMenu;
+let paletteMenuOpen = initialRuntimeState.paletteMenuOpen;
+let editorBackgroundMenuOpen = initialRuntimeState.editorBackgroundMenuOpen;
+let textColorMenuOpen = initialRuntimeState.textColorMenuOpen;
+let textHighlightMenuOpen = initialRuntimeState.textHighlightMenuOpen;
+let blockSurfaceMenuOpen = initialRuntimeState.blockSurfaceMenuOpen;
+let lineHighlightMenuOpen = initialRuntimeState.lineHighlightMenuOpen;
+let selectionHighlightMenuOpen = initialRuntimeState.selectionHighlightMenuOpen;
+let editorMode = initialRuntimeState.editorMode;
+let activeThemePaletteKey = initialRuntimeState.activeThemePaletteKey;
+let activeThemeColorKey = initialRuntimeState.activeThemeColorKey;
+let activeThemeBackgroundKey = initialRuntimeState.activeThemeBackgroundKey;
+let activeThemeTextKey = initialRuntimeState.activeThemeTextKey;
+let activeInterfaceFontKey = initialRuntimeState.activeInterfaceFontKey;
+let activeInterfaceSizeKey = initialRuntimeState.activeInterfaceSizeKey;
+let activeEditorFontKey = initialRuntimeState.activeEditorFontKey;
+let activeEditorFontSizeKey = initialRuntimeState.activeEditorFontSizeKey;
+let activePaletteKey = initialRuntimeState.activePaletteKey;
+let activeEditorBackgroundKey = initialRuntimeState.activeEditorBackgroundKey;
+let activeEditorTextColorKey = initialRuntimeState.activeEditorTextColorKey;
+let activeEditorTextHighlightKey = initialRuntimeState.activeEditorTextHighlightKey;
+let activeThemeLineKey = initialRuntimeState.activeThemeLineKey;
+let activeBlockSurfaceKey = initialRuntimeState.activeBlockSurfaceKey;
+let activeLineHighlightKey = initialRuntimeState.activeLineHighlightKey;
+let activeSelectionHighlightKey = initialRuntimeState.activeSelectionHighlightKey;
+let visualTokenOverrides = { ...initialRuntimeState.visualTokenOverrides };
 let pointerSelectionAnchor = null;
 let pointerSelectionCleanup = null;
-let pendingNativeRenderFrame = 0;
-let workspacePickerPath = "";
-let workspacePickerParentPath = null;
-let openFileActionMenu = null;
-let pendingDeleteFile = null;
-let bulkDeleteMode = false;
-let selectedTreePaths = new Set();
-let activeTreePath = "";
-let expandedTreePaths = new Set();
+let pendingLayoutRenderTimeout = 0;
+let latestAnalysisFile = "";
+let latestAnalysisSource = "";
+let workspacePickerPath = initialRuntimeState.workspacePickerPath;
+let workspacePickerParentPath = initialRuntimeState.workspacePickerParentPath;
+let workspacePickerMode = initialRuntimeState.workspacePickerMode;
+let workspacePickerIncludeFiles = initialRuntimeState.workspacePickerIncludeFiles;
+let workspacePickerSelectedFilePath = initialRuntimeState.workspacePickerSelectedFilePath;
+let workspacePickerConfirmAction = initialRuntimeState.workspacePickerConfirmAction;
+let workspacePickerTitleText = initialRuntimeState.workspacePickerTitleText;
+let workspacePickerDefaultCaptionText = initialRuntimeState.workspacePickerDefaultCaptionText;
+let workspacePickerConfirmText = initialRuntimeState.workspacePickerConfirmText;
+let openFileActionMenu = initialRuntimeState.openFileActionMenu;
+let pendingDeleteFile = initialRuntimeState.pendingDeleteFile;
+let bulkDeleteMode = initialRuntimeState.bulkDeleteMode;
+let selectedTreePaths = initialRuntimeState.selectedTreePaths;
+let activeTreePath = initialRuntimeState.activeTreePath;
+let expandedTreePaths = initialRuntimeState.expandedTreePaths;
 let workspacePathDrag = null;
 let activeDialogResolver = null;
-const glyphHighlightStorageKey = "styio-view:glyph-highlights";
-const autoSaveStorageKey = "styio-view:auto-save";
-const languageStorageKey = "styio-view:language";
-const themeSettingsStorageKey = "styio-view:theme-settings";
-const editorSettingsStorageKey = "styio-view:editor-settings";
+let appToastTimer = null;
+const {
+  glyphHighlight: glyphHighlightStorageKey,
+  autoSave: autoSaveStorageKey,
+  language: languageStorageKey,
+  themeSettings: themeSettingsStorageKey,
+  editorSettings: editorSettingsStorageKey,
+  customPaletteConfig: customPaletteConfigStorageKey,
+} = storageKeys;
+
+const renderGroups = Object.freeze({
+  themeAppearance: [RenderSlice.themeAppearance],
+  settingsState: [RenderSlice.settingsState],
+  settingsControls: [RenderSlice.settingsControls, RenderSlice.settingsState],
+  sidebar: [RenderSlice.sidebar],
+  themeSurface: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  themeFont: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  themeColor: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorSurface: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorFont: [
+    RenderSlice.themeAppearance,
+    RenderSlice.settingsState,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+  ],
+  editorColor: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorBlock: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorLine: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorSelectionStyle: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorGlyph: [RenderSlice.themeAppearance, RenderSlice.settingsState],
+  editorContent: [
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+    RenderSlice.saveUi,
+  ],
+  editorSelection: [RenderSlice.editorLines, RenderSlice.editorCaret, RenderSlice.statusbar],
+  editorLayout: [
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+  ],
+  editorTheme: [
+    RenderSlice.themeAppearance,
+    RenderSlice.settingsState,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+  ],
+  fullEditor: [
+    RenderSlice.sidebar,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+    RenderSlice.saveUi,
+  ],
+  fullApp: [
+    RenderSlice.themeAppearance,
+    RenderSlice.settingsControls,
+    RenderSlice.sidebar,
+    RenderSlice.editorLines,
+    RenderSlice.editorLayout,
+    RenderSlice.editorBlocks,
+    RenderSlice.editorCaret,
+    RenderSlice.statusbar,
+    RenderSlice.saveUi,
+  ],
+});
+
+const renderPipeline = createRenderPipeline({ flush: flushRenderSlices });
+const surfaceRenderTargets = Object.freeze({
+  [SURFACE_RENDER_TARGETS.THEME_SURFACE]: renderGroups.themeSurface,
+  [SURFACE_RENDER_TARGETS.THEME_FONT]: renderGroups.themeFont,
+  [SURFACE_RENDER_TARGETS.THEME_COLOR]: renderGroups.themeColor,
+  [SURFACE_RENDER_TARGETS.EDITOR_SURFACE]: renderGroups.editorSurface,
+  [SURFACE_RENDER_TARGETS.EDITOR_FONT]: renderGroups.editorFont,
+  [SURFACE_RENDER_TARGETS.EDITOR_COLOR]: renderGroups.editorColor,
+  [SURFACE_RENDER_TARGETS.EDITOR_BLOCK]: renderGroups.editorBlock,
+  [SURFACE_RENDER_TARGETS.EDITOR_LINE]: renderGroups.editorLine,
+  [SURFACE_RENDER_TARGETS.EDITOR_SELECTION]: renderGroups.editorSelectionStyle,
+  [SURFACE_RENDER_TARGETS.EDITOR_GLYPH]: renderGroups.editorGlyph,
+});
+
+function hasRenderSlice(slices, slice) {
+  return slices.has(slice);
+}
+
+function requestRender(...slices) {
+  renderPipeline.request(...slices);
+}
+
+function flushRender(...slices) {
+  renderPipeline.flushNow(...slices);
+}
+
+function getCurrentAnalysis() {
+  const source = fileSources[currentFile] ?? "";
+  if (latestAnalysis && latestAnalysisFile === currentFile && latestAnalysisSource === source) {
+    return latestAnalysis;
+  }
+
+  latestAnalysis = analyzeSource(source);
+  latestAnalysisFile = currentFile;
+  latestAnalysisSource = source;
+  return latestAnalysis;
+}
+
+function renderSidebarModule() {
+  syncBulkDeleteButton();
+  syncRefreshWorkspaceButton();
+  renderFileTabs();
+  renderFileTree();
+}
+
+function flushRenderSlices(requestedSlices) {
+  if (hasRenderSlice(requestedSlices, RenderSlice.themeAppearance)) {
+    applyWorkbenchThemeState();
+    applyEditorFontTheme();
+    applyEditorFontSizeTheme();
+    applyEditorTheme();
+    applyEditorBackgroundTheme();
+    applyEditorTextColorTheme();
+    applyEditorTextHighlightTheme();
+    applyBlockSurfaceTheme();
+    applyLineHighlightTheme();
+    applySelectionHighlightTheme();
+    applyGlyphColors();
+    applyVisualTokenOverrides(visualTokenOverrides, {
+      root: document.documentElement,
+      settingsRoot: settingsFactoryRoot,
+    });
+  }
+
+  if (hasRenderSlice(requestedSlices, RenderSlice.settingsControls)) {
+    renderLanguageOptions();
+    renderStyleOptions();
+    renderAutoSaveOptions();
+    renderThemeControls();
+    renderEditorPreferenceControls();
+    renderGlyphHighlightControls();
+  } else if (hasRenderSlice(requestedSlices, RenderSlice.settingsState)) {
+    syncSettingsUi();
+  }
+
+  if (hasRenderSlice(requestedSlices, RenderSlice.sidebar)) {
+    renderSidebarModule();
+  }
+
+  const needsAnalysis =
+    hasRenderSlice(requestedSlices, RenderSlice.editorLines) ||
+    hasRenderSlice(requestedSlices, RenderSlice.editorLayout) ||
+    hasRenderSlice(requestedSlices, RenderSlice.editorBlocks) ||
+    hasRenderSlice(requestedSlices, RenderSlice.editorCaret) ||
+    hasRenderSlice(requestedSlices, RenderSlice.statusbar);
+  const analysis = needsAnalysis ? getCurrentAnalysis() : latestAnalysis;
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorLines)) {
+    renderGutter(analysis);
+    renderLines(analysis);
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorLayout)) {
+    syncOverlayMetrics();
+    syncScroll();
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorBlocks)) {
+    renderBlocks(analysis);
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.editorCaret)) {
+    syncCaretIndicator(analysis);
+  }
+
+  if (analysis && hasRenderSlice(requestedSlices, RenderSlice.statusbar)) {
+    updateStatusbar(analysis);
+  }
+
+  if (hasRenderSlice(requestedSlices, RenderSlice.saveUi)) {
+    updateSaveUi();
+  }
+}
+
+function requestSettingsStateRender() {
+  requestRender(renderGroups.settingsState);
+}
+
+function requestSettingsControlsRender() {
+  requestRender(renderGroups.settingsControls);
+}
+
+function requestSidebarRender() {
+  requestRender(renderGroups.sidebar);
+}
+
+function requestEditorContentRender() {
+  requestRender(renderGroups.editorContent);
+}
+
+function requestEditorSelectionRender() {
+  requestRender(renderGroups.editorSelection);
+}
+
+function requestEditorThemeRender() {
+  requestRender(renderGroups.editorTheme);
+}
+
+function flushFullAppRender() {
+  flushRender(renderGroups.fullApp);
+}
+
+function persistEditorSurfaceState() {
+  persistEditorPreferences();
+  persistGlyphHighlights();
+}
+
+function persistSurfaceTarget(persistTarget) {
+  if (persistTarget === SURFACE_PERSIST_TARGETS.THEME) {
+    persistThemeSettings();
+    return;
+  }
+
+  if (persistTarget === SURFACE_PERSIST_TARGETS.EDITOR) {
+    persistEditorSurfaceState();
+    return;
+  }
+
+  if (persistTarget === SURFACE_PERSIST_TARGETS.EDITOR_PREFERENCES) {
+    persistEditorPreferences();
+    return;
+  }
+
+  if (persistTarget === SURFACE_PERSIST_TARGETS.EDITOR_GLYPHS) {
+    persistGlyphHighlights();
+  }
+}
+
+function requestSurfaceRenderTarget(renderTarget) {
+  const slices = surfaceRenderTargets[renderTarget];
+  if (!slices) {
+    requestEditorThemeRender();
+    return;
+  }
+  requestRender(slices);
+}
+
+function dispatchSurfaceAction(action, applyState, options = {}) {
+  if (!action || typeof applyState !== "function") {
+    return;
+  }
+
+  const { closeMenus: shouldCloseMenus = true } = options;
+  applyState();
+  if (shouldCloseMenus) {
+    closeSettingsMenus();
+  }
+  persistSurfaceTarget(action.persistTarget);
+  requestSurfaceRenderTarget(action.renderTarget);
+}
+
+function themeSurfaceController() {
+  return {
+    getMode() {
+      return themeMode;
+    },
+    setMode(nextMode) {
+      themeMode = nextMode;
+    },
+    defaultPaletteForMode: defaultThemePaletteForMode,
+    applyPaletteSelection: applyThemePaletteSelection,
+  };
+}
+
+function editorSurfaceController() {
+  return {
+    getMode() {
+      return editorMode;
+    },
+    setMode(nextMode) {
+      editorMode = nextMode;
+    },
+    defaultPaletteForMode: defaultEditorPaletteForMode,
+    applyPaletteSelection: applyEditorPaletteSelection,
+  };
+}
+
+function getSurfaceController(surfaceKey) {
+  if (surfaceKey === SURFACE_KEYS.THEME) {
+    return themeSurfaceController();
+  }
+  if (surfaceKey === SURFACE_KEYS.EDITOR) {
+    return editorSurfaceController();
+  }
+  throw new Error(`unknown surface controller: ${surfaceKey}`);
+}
+
+function syncEditorModeToThemeSurface({ persist = true, requestRender = true } = {}) {
+  const controller = editorSurfaceController();
+  controller.setMode(themeMode);
+  const nextPalette = controller.defaultPaletteForMode(themeMode);
+  if (nextPalette) {
+    controller.applyPaletteSelection(nextPalette.key);
+  }
+  if (persist) {
+    persistSurfaceTarget(SURFACE_PERSIST_TARGETS.EDITOR);
+  }
+  if (requestRender) {
+    requestSurfaceRenderTarget(SURFACE_ACTIONS.EDITOR_MODE.renderTarget);
+  }
+}
+
+function setEditorModeLinkState(nextLinked, { syncToTheme = nextLinked } = {}) {
+  if (editorModeLinkedToTheme === nextLinked) {
+    if (!nextLinked || !syncToTheme) {
+      requestSettingsStateRender();
+      return;
+    }
+  }
+
+  editorModeLinkedToTheme = nextLinked;
+  if (editorModeLinkedToTheme && syncToTheme) {
+    syncEditorModeToThemeSurface();
+    return;
+  }
+  requestSettingsStateRender();
+}
+
+function switchSurfaceMode(surfaceKey, nextMode) {
+  if (surfaceKey === SURFACE_KEYS.EDITOR && editorModeLinkedToTheme) {
+    requestSettingsStateRender();
+    return;
+  }
+
+  const controller = getSurfaceController(surfaceKey);
+  if (controller.getMode() === nextMode) {
+    return;
+  }
+
+  const action =
+    surfaceKey === SURFACE_KEYS.THEME ? SURFACE_ACTIONS.THEME_MODE : SURFACE_ACTIONS.EDITOR_MODE;
+  dispatchSurfaceAction(action, () => {
+    controller.setMode(nextMode);
+    const nextPalette = controller.defaultPaletteForMode(controller.getMode());
+    if (nextPalette) {
+      controller.applyPaletteSelection(nextPalette.key);
+    }
+  });
+
+  if (surfaceKey === SURFACE_KEYS.THEME && editorModeLinkedToTheme) {
+    syncEditorModeToThemeSurface();
+  }
+}
+
+function selectSurfacePalette(surfaceKey, paletteKey) {
+  const controller = getSurfaceController(surfaceKey);
+  const action =
+    surfaceKey === SURFACE_KEYS.THEME ? SURFACE_ACTIONS.THEME_PALETTE : SURFACE_ACTIONS.EDITOR_PALETTE;
+  dispatchSurfaceAction(action, () => {
+    controller.applyPaletteSelection(paletteKey);
+  });
+}
+
 const refreshWorkspaceSvg = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
@@ -228,262 +778,6 @@ function sidebarToggleSvg(isOpen) {
     </svg>
   `;
 }
-const autoSaveModeOptionsList = [
-  { key: "off", label: "Off" },
-  { key: "afterDelay", label: "After Delay" },
-  { key: "onFocusChange", label: "On Focus Change" },
-  { key: "onWindowChange", label: "On Window Change" },
-];
-const languageOptionsList = [
-  { key: "zhCn", label: "中文" },
-  { key: "en", label: "English" },
-];
-const themeColorPresets = [
-  {
-    key: "styioGold",
-    label: "Styio Gold",
-    vars: {
-      "--accent": "#f4c76a",
-      "--accent-2": "#ffb15c",
-      "--accent-3": "#f4c76a",
-      "--brand-color": "rgba(244, 199, 106, 0.96)",
-      "--brand-glow": "rgba(244, 199, 106, 0.08)",
-    },
-  },
-  {
-    key: "violet",
-    label: "Violet",
-    vars: {
-      "--accent": "#8b5cf6",
-      "--accent-2": "#a78bfa",
-      "--accent-3": "#c4b5fd",
-      "--brand-color": "rgba(196, 181, 253, 0.96)",
-      "--brand-glow": "rgba(196, 181, 253, 0.08)",
-    },
-  },
-  {
-    key: "ice",
-    label: "Ice Blue",
-    vars: {
-      "--accent": "#60a5fa",
-      "--accent-2": "#7dd3fc",
-      "--accent-3": "#93c5fd",
-      "--brand-color": "rgba(147, 197, 253, 0.96)",
-      "--brand-glow": "rgba(147, 197, 253, 0.08)",
-    },
-  },
-];
-const themeBackgroundPresets = [
-  {
-    key: "graphite",
-    label: "Graphite",
-    vars: {
-      "--bg": "#0f1115",
-      "--bg-2": "#171a21",
-      "--panel": "rgba(19, 21, 26, 0.84)",
-      "--panel-2": "rgba(255, 255, 255, 0.025)",
-      "--shell-bg": "rgba(10, 12, 16, 0.46)",
-      "--line": "rgba(255, 255, 255, 0.07)",
-      "--line-strong": "rgba(255, 255, 255, 0.12)",
-      "--text": "#edf1f4",
-      "--muted": "#98a0aa",
-    },
-  },
-  {
-    key: "midnight",
-    label: "Midnight",
-    vars: {
-      "--bg": "#0b0f16",
-      "--bg-2": "#121822",
-      "--panel": "rgba(13, 17, 24, 0.88)",
-      "--panel-2": "rgba(255, 255, 255, 0.02)",
-      "--shell-bg": "rgba(8, 11, 18, 0.52)",
-      "--line": "rgba(255, 255, 255, 0.065)",
-      "--line-strong": "rgba(255, 255, 255, 0.11)",
-      "--text": "#edf1f4",
-      "--muted": "#92a0b3",
-    },
-  },
-  {
-    key: "carbon",
-    label: "Carbon",
-    vars: {
-      "--bg": "#131313",
-      "--bg-2": "#1a1a1a",
-      "--panel": "rgba(22, 22, 22, 0.86)",
-      "--panel-2": "rgba(255, 255, 255, 0.022)",
-      "--shell-bg": "rgba(14, 14, 14, 0.52)",
-      "--line": "rgba(255, 255, 255, 0.065)",
-      "--line-strong": "rgba(255, 255, 255, 0.105)",
-      "--text": "#f2f2f2",
-      "--muted": "#a0a0a0",
-    },
-  },
-  {
-    key: "fog",
-    label: "Fog",
-    vars: {
-      "--bg": "#101317",
-      "--bg-2": "#181d23",
-      "--panel": "rgba(21, 25, 31, 0.82)",
-      "--panel-2": "rgba(255, 255, 255, 0.03)",
-      "--shell-bg": "rgba(13, 16, 21, 0.48)",
-      "--line": "rgba(255, 255, 255, 0.075)",
-      "--line-strong": "rgba(255, 255, 255, 0.125)",
-      "--text": "#edf1f4",
-      "--muted": "#9aa5b1",
-    },
-  },
-];
-const interfaceFontOptionsList = [
-  { key: "styioSans", label: "Styio Sans", value: '"Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif' },
-  { key: "system", label: "System UI", value: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  { key: "geometric", label: "Geometric", value: '"Avenir Next", "Futura", "Segoe UI", sans-serif' },
-  { key: "humanist", label: "Humanist", value: '"Optima", "Segoe UI", "Helvetica Neue", sans-serif' },
-];
-const interfaceSizeOptionsList = [
-  {
-    key: "compact",
-    label: "Compact",
-    vars: {
-      "--ui-font-size": "14px",
-      "--sidebar-title-size": "14px",
-      "--setting-copy-size": "12px",
-      "--pill-font-size": "10px",
-      "--setting-subtitle-size": "12px",
-      "--tab-label-size": "12px",
-      "--tree-name-size": "12px",
-      "--workspace-path-size": "12px",
-      "--action-font-size": "13px",
-    },
-  },
-  {
-    key: "default",
-    label: "Default",
-    vars: {
-      "--ui-font-size": "15px",
-      "--sidebar-title-size": "15px",
-      "--setting-copy-size": "13px",
-      "--pill-font-size": "11px",
-      "--setting-subtitle-size": "13px",
-      "--tab-label-size": "13px",
-      "--tree-name-size": "13px",
-      "--workspace-path-size": "13px",
-      "--action-font-size": "14px",
-    },
-  },
-  {
-    key: "comfortable",
-    label: "Comfortable",
-    vars: {
-      "--ui-font-size": "16px",
-      "--sidebar-title-size": "16px",
-      "--setting-copy-size": "14px",
-      "--pill-font-size": "12px",
-      "--setting-subtitle-size": "14px",
-      "--tab-label-size": "14px",
-      "--tree-name-size": "14px",
-      "--workspace-path-size": "14px",
-      "--action-font-size": "15px",
-    },
-  },
-];
-const editorFontOptionsList = [
-  { key: "sfMono", label: "SF Mono", value: '"SF Mono", "Roboto Mono", "Menlo", monospace' },
-  { key: "jetbrainsMono", label: "JetBrains Mono", value: '"JetBrains Mono", "SF Mono", "Roboto Mono", "Menlo", monospace' },
-  { key: "ibmPlexMono", label: "IBM Plex Mono", value: '"IBM Plex Mono", "SF Mono", "Roboto Mono", "Menlo", monospace' },
-  { key: "recursive", label: "Recursive", value: '"Recursive", "SF Mono", "Roboto Mono", "Menlo", monospace' },
-];
-const editorFontSizePresets = [
-  { key: "compact", label: "Compact", vars: { "--editor-font-size": "14px", "--editor-line-height": "24px" } },
-  { key: "default", label: "Default", vars: { "--editor-font-size": "15px", "--editor-line-height": "26px" } },
-  { key: "large", label: "Large", vars: { "--editor-font-size": "16px", "--editor-line-height": "28px" } },
-];
-const editorBackgroundPresets = [
-  {
-    key: "graphite",
-    label: "Graphite",
-    vars: {
-      "--editor": "#15171C",
-      "--editor-gutter-bg": "#1C1F26",
-      "--editor-frame-border": "rgba(232, 236, 241, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.012)",
-    },
-  },
-  {
-    key: "midnight",
-    label: "Midnight",
-    vars: {
-      "--editor": "#10141D",
-      "--editor-gutter-bg": "#171C26",
-      "--editor-frame-border": "rgba(232, 236, 241, 0.075)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.008)",
-    },
-  },
-  {
-    key: "carbon",
-    label: "Carbon",
-    vars: {
-      "--editor": "#171717",
-      "--editor-gutter-bg": "#1F1F1F",
-      "--editor-frame-border": "rgba(242, 242, 242, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.018)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.006)",
-    },
-  },
-  {
-    key: "slate",
-    label: "Slate",
-    vars: {
-      "--editor": "#1A2029",
-      "--editor-gutter-bg": "#202733",
-      "--editor-frame-border": "rgba(237, 241, 244, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.026)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-    },
-  },
-];
-const editorTextColorPresets = [
-  {
-    key: "mist",
-    label: "Mist",
-    vars: {
-      "--editor-text": "#E8ECF1",
-      "--editor-muted": "#7F8893",
-    },
-  },
-  {
-    key: "bright",
-    label: "Bright",
-    vars: {
-      "--editor-text": "#F6F8FB",
-      "--editor-muted": "#9CA7B3",
-    },
-  },
-  {
-    key: "soft",
-    label: "Soft",
-    vars: {
-      "--editor-text": "#D7DEE6",
-      "--editor-muted": "#7D8894",
-    },
-  },
-  {
-    key: "warm",
-    label: "Warm",
-    vars: {
-      "--editor-text": "#F1E9DC",
-      "--editor-muted": "#A89883",
-    },
-  },
-];
-const editorTextHighlightPresets = [
-  { key: "styioGold", label: "Styio Gold", color: "#F4C76A", caretShadow: "rgba(244, 199, 106, 0.18)" },
-  { key: "violet", label: "Violet", color: "#8B5CF6", caretShadow: "rgba(139, 92, 246, 0.18)" },
-  { key: "ice", label: "Ice Blue", color: "#60A5FA", caretShadow: "rgba(96, 165, 250, 0.18)" },
-];
 const translations = {
   zhCn: {
     documentTitle: "Styio 编辑器",
@@ -502,26 +796,37 @@ const translations = {
     refreshWorkspace: "刷新工作区",
     moreWorkspaceActions: "更多工作区操作",
     language: "语言",
+    style: "风格",
     autoSave: "自动保存",
     delay: "延迟",
     theme: "主题",
-    themeColor: "主题色",
+    color: "颜色",
+    font: "字体",
+    mode: "模式",
+    themeConfig: "Config",
+    customized: "Customized",
+    linkEditorMode: "链接主题模式",
+    unlinkEditorMode: "解除主题链接",
+    themePalette: "预设",
+    themeText: "文字",
+    themeColor: "图标",
     background: "背景",
-    interfaceFont: "界面字体",
-    interfaceSize: "界面字号",
+    lines: "边框",
+    interfaceFont: "字体",
+    interfaceSize: "字体大小",
     editor: "编辑器",
     glyphComposition: "符号组合渲染",
     tabSize: "Tab Size",
-    editorFont: "编辑器字体",
-    editorFontSize: "编辑器字号",
-    palette: "预选调色盘",
-    editorBackground: "编辑器背景",
-    textColor: "文字默认颜色",
-    textHighlight: "文字高亮颜色",
+    editorFont: "字体",
+    editorFontSize: "字体大小",
+    palette: "预设",
+    editorBackground: "背景",
+    textColor: "文字",
+    textHighlight: "关键词",
     block: "代码块高亮风格",
     line: "行高亮风格",
     selection: "选区高亮风格",
-    symbolColors: "符号颜色",
+    symbolHighlight: "符号",
     usingBrowserStorage: "使用浏览器存储",
     usingBrowserStorageBody: "在你选择真实工作区文件夹之前，文件和编辑器设置会暂存在浏览器缓存中。",
     openWorkspace: "打开工作区",
@@ -532,6 +837,16 @@ const translations = {
     chooseWorkspaceRoot: "选择一个本地文件夹作为当前工作区根目录。",
     goToParentFolder: "返回上级文件夹",
     useThisFolder: "使用此文件夹",
+    importConfigFile: "导入配置文件",
+    chooseConfigFile: "选择一个本地配置文件并导入当前配色设置。",
+    importThisFile: "导入此文件",
+    noFilesFound: "当前位置没有找到文件。",
+    importConfig: "导入配置",
+    editConfig: "编辑配置",
+    configParseFailed: "配置解析失败",
+    configImported: "配置已导入",
+    configSaved: "配置已保存",
+    themeConfigMessage: "编辑一份参考 VS Code 结构的 JSONC 配置。",
     noFilesInWorkspace: "当前工作区还没有文件。",
     previewFile: "预览文件",
     dirty: "未保存",
@@ -581,26 +896,37 @@ const translations = {
     refreshWorkspace: "Refresh workspace",
     moreWorkspaceActions: "More workspace actions",
     language: "Language",
+    style: "Style",
     autoSave: "Auto Save",
     delay: "Delay",
     theme: "Theme",
-    themeColor: "Theme Color",
+    color: "Color",
+    font: "Font",
+    mode: "Mode",
+    themeConfig: "Config",
+    customized: "Customized",
+    linkEditorMode: "Link editor mode to theme",
+    unlinkEditorMode: "Unlink editor mode",
+    themePalette: "Palette",
+    themeText: "Text",
+    themeColor: "Icon",
     background: "Background",
-    interfaceFont: "Interface Font",
-    interfaceSize: "Interface Size",
+    lines: "Lines",
+    interfaceFont: "Font",
+    interfaceSize: "Font Size",
     editor: "Editor",
     glyphComposition: "Glyph Composition",
     tabSize: "Tab Size",
-    editorFont: "Editor Font",
-    editorFontSize: "Editor Font Size",
+    editorFont: "Font",
+    editorFontSize: "Font Size",
     palette: "Palette",
-    editorBackground: "Editor Background",
-    textColor: "Text Color",
-    textHighlight: "Text Highlight",
+    editorBackground: "Background",
+    textColor: "Text",
+    textHighlight: "Keyword",
     block: "Block",
     line: "Line",
     selection: "Selection",
-    symbolColors: "Symbol Colors",
+    symbolHighlight: "Symbols",
     usingBrowserStorage: "Using Browser Storage",
     usingBrowserStorageBody:
       "Files and editor settings are currently staying in browser cache until you choose a real workspace folder.",
@@ -612,6 +938,16 @@ const translations = {
     chooseWorkspaceRoot: "Choose a local folder to use as the current workspace root.",
     goToParentFolder: "Go to parent folder",
     useThisFolder: "Use This Folder",
+    importConfigFile: "Import Config File",
+    chooseConfigFile: "Choose a local config file to import the current palette settings.",
+    importThisFile: "Import This File",
+    noFilesFound: "No files found here.",
+    importConfig: "Import Config",
+    editConfig: "Edit",
+    configParseFailed: "Config parse failed",
+    configImported: "Config imported",
+    configSaved: "Config saved",
+    themeConfigMessage: "Edit a JSONC config inspired by VS Code settings structure.",
     noFilesInWorkspace: "No files in this workspace yet.",
     previewFile: "Preview file",
     dirty: "dirty",
@@ -646,332 +982,8 @@ const translations = {
   },
 };
 
-const operatorGlyphs = {
-  "#": { tokenClass: "token-hash", visual: "#" },
-  "@": { tokenClass: "token-at", visual: "@" },
-  ">_": {
-    tokenClass: "token-prompt",
-    markup: `
-      <svg class="terminal-glyph" viewBox="6 8 12.5 8" aria-hidden="true">
-        <path d="M7 8.75l4.25 3.25L7 15.25"></path>
-        <path d="M13.25 15.25h4.5"></path>
-      </svg>
-    `,
-  },
-  "|>": { tokenClass: "token-pipe", visual: "▸" },
-  "<|": { tokenClass: "token-pipe-left", visual: "◂" },
-  "->": { tokenClass: "token-arrow-right", visual: "→" },
-  "<-": { tokenClass: "token-arrow-left", visual: "←" },
-  "=>": { tokenClass: "token-double-arrow", visual: "⇒" },
-  "<=": { tokenClass: "token-double-arrow-left", visual: "⇐" },
-  ":=": { tokenClass: "token-define", visual: "≔" },
-};
-const glyphOperators = Object.keys(operatorGlyphs).sort((left, right) => right.length - left.length);
-const glyphOperatorPattern = new RegExp(
-  `(${glyphOperators.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
-  "g",
-);
-const glyphColorSpecs = [
-  { key: "hash", token: "#", label: "Heading / Macro", cssVar: "--glyph-color-hash" },
-  { key: "at", token: "@", label: "Attribute / Import", cssVar: "--glyph-color-at" },
-  { key: "prompt", token: ">_", label: "Terminal Prompt", cssVar: "--glyph-color-prompt" },
-  { key: "pipe", token: "|>", label: "Pipeline", cssVar: "--glyph-color-pipe" },
-  { key: "pipeLeft", token: "<|", label: "Pipeline Left", cssVar: "--glyph-color-pipe-left" },
-  { key: "arrowRight", token: "->", label: "Right Arrow", cssVar: "--glyph-color-arrow-right" },
-  { key: "arrowLeft", token: "<-", label: "Left Arrow", cssVar: "--glyph-color-arrow-left" },
-  { key: "doubleArrow", token: "=>", label: "Double Arrow", cssVar: "--glyph-color-double-arrow" },
-  {
-    key: "doubleArrowLeft",
-    token: "<=",
-    label: "Double Arrow Left",
-    cssVar: "--glyph-color-double-arrow-left",
-  },
-  { key: "define", token: ":=", label: "Definition", cssVar: "--glyph-color-define" },
-];
-const glyphColorOptions = [
-  "#569CD6",
-  "#4EC9B0",
-  "#9CDCFE",
-  "#C586C0",
-  "#D7BA7D",
-  "#D19A66",
-  "#E5C07B",
-  "#D2A8FF",
-  "#7EE787",
-  "#58A6FF",
-  "#FFA657",
-  "#FF6188",
-];
-const glyphPaletteOptions = [
-  {
-    key: "styio",
-    label: "Styio",
-    color: "#F4C76A",
-    editorTheme: {
-      "--editor": "#15171C",
-      "--editor-text": "#E8ECF1",
-      "--editor-muted": "#7F8893",
-      "--editor-frame-border": "rgba(232, 236, 241, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.012)",
-      "--editor-gutter-bg": "#1C1F26",
-      "--editor-issue-dot": "#FF7A6A",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.028)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.06)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.034)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.068)",
-      "--editor-block-at-bg": "rgba(244, 246, 248, 0.03)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.064)",
-      "--editor-caret": "#F4C76A",
-      "--editor-caret-shadow": "rgba(244, 199, 106, 0.18)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.045)",
-      "--editor-line-issue": "#FF7A6A",
-      "--editor-selection": "rgba(244, 199, 106, 0.22)",
-    },
-  },
-  {
-    key: "darkPlus",
-    label: "Dark+",
-    color: "#569CD6",
-    editorTheme: {
-      "--editor": "#1E1E1E",
-      "--editor-text": "#D4D4D4",
-      "--editor-muted": "#858585",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.04)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.02)",
-      "--editor-gutter-bg": "#252526",
-      "--editor-issue-dot": "#F14C4C",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.04)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-caret": "#AEAFAD",
-      "--editor-caret-shadow": "rgba(174, 175, 173, 0.18)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.05)",
-      "--editor-line-issue": "#F14C4C",
-      "--editor-selection": "rgba(38, 79, 120, 0.55)",
-    },
-  },
-  {
-    key: "oneDark",
-    label: "One Dark",
-    color: "#61AFEF",
-    editorTheme: {
-      "--editor": "#282C34",
-      "--editor-text": "#ABB2BF",
-      "--editor-muted": "#5C6370",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.03)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.015)",
-      "--editor-gutter-bg": "#21252B",
-      "--editor-issue-dot": "#E06C75",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.035)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-caret": "#528BFF",
-      "--editor-caret-shadow": "rgba(82, 139, 255, 0.2)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.05)",
-      "--editor-line-issue": "#E06C75",
-      "--editor-selection": "rgba(82, 139, 255, 0.3)",
-    },
-  },
-  {
-    key: "monokai",
-    label: "Monokai",
-    color: "#78DCE8",
-    editorTheme: {
-      "--editor": "#272822",
-      "--editor-text": "#F8F8F2",
-      "--editor-muted": "#75715E",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.025)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#221F22",
-      "--editor-issue-dot": "#FF6188",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.035)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.07)",
-      "--editor-caret": "#F8F8F0",
-      "--editor-caret-shadow": "rgba(248, 248, 240, 0.18)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.045)",
-      "--editor-line-issue": "#FF6188",
-      "--editor-selection": "rgba(73, 72, 62, 0.8)",
-    },
-  },
-  {
-    key: "githubDark",
-    label: "GitHub Dark",
-    color: "#79C0FF",
-    editorTheme: {
-      "--editor": "#0D1117",
-      "--editor-text": "#C9D1D9",
-      "--editor-muted": "#8B949E",
-      "--editor-frame-border": "rgba(240, 246, 252, 0.1)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#161B22",
-      "--editor-issue-dot": "#FF7B72",
-      "--editor-block-bg": "rgba(110, 118, 129, 0.12)",
-      "--editor-block-border": "rgba(240, 246, 252, 0.08)",
-      "--editor-caret": "#79C0FF",
-      "--editor-caret-shadow": "rgba(121, 192, 255, 0.18)",
-      "--editor-line-selected": "rgba(56, 139, 253, 0.14)",
-      "--editor-line-issue": "#FF7B72",
-      "--editor-selection": "rgba(56, 139, 253, 0.28)",
-    },
-  },
-  {
-    key: "dracula",
-    label: "Dracula",
-    color: "#BD93F9",
-    editorTheme: {
-      "--editor": "#282A36",
-      "--editor-text": "#F8F8F2",
-      "--editor-muted": "#6272A4",
-      "--editor-frame-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#232530",
-      "--editor-issue-dot": "#FF5555",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.035)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.08)",
-      "--editor-caret": "#F8F8F2",
-      "--editor-caret-shadow": "rgba(248, 248, 242, 0.16)",
-      "--editor-line-selected": "rgba(255, 255, 255, 0.05)",
-      "--editor-line-issue": "#FF5555",
-      "--editor-selection": "rgba(189, 147, 249, 0.22)",
-    },
-  },
-  {
-    key: "nord",
-    label: "Nord",
-    color: "#81A1C1",
-    editorTheme: {
-      "--editor": "#2E3440",
-      "--editor-text": "#D8DEE9",
-      "--editor-muted": "#81A1C1",
-      "--editor-frame-border": "rgba(216, 222, 233, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.02)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.01)",
-      "--editor-gutter-bg": "#3B4252",
-      "--editor-issue-dot": "#BF616A",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.03)",
-      "--editor-block-border": "rgba(216, 222, 233, 0.08)",
-      "--editor-caret": "#88C0D0",
-      "--editor-caret-shadow": "rgba(136, 192, 208, 0.16)",
-      "--editor-line-selected": "rgba(129, 161, 193, 0.15)",
-      "--editor-line-issue": "#BF616A",
-      "--editor-selection": "rgba(94, 129, 172, 0.3)",
-    },
-  },
-  {
-    key: "catppuccinMocha",
-    label: "Catppuccin Mocha",
-    color: "#89B4FA",
-    editorTheme: {
-      "--editor": "#1E1E2E",
-      "--editor-text": "#CDD6F4",
-      "--editor-muted": "#6C7086",
-      "--editor-frame-border": "rgba(205, 214, 244, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.018)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.008)",
-      "--editor-gutter-bg": "#181825",
-      "--editor-issue-dot": "#F38BA8",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.03)",
-      "--editor-block-border": "rgba(205, 214, 244, 0.08)",
-      "--editor-caret": "#F5E0DC",
-      "--editor-caret-shadow": "rgba(245, 224, 220, 0.14)",
-      "--editor-line-selected": "rgba(137, 180, 250, 0.14)",
-      "--editor-line-issue": "#F38BA8",
-      "--editor-selection": "rgba(137, 180, 250, 0.22)",
-    },
-  },
-  {
-    key: "solarized",
-    label: "Solarized",
-    color: "#268BD2",
-    editorTheme: {
-      "--editor": "#002B36",
-      "--editor-text": "#93A1A1",
-      "--editor-muted": "#586E75",
-      "--editor-frame-border": "rgba(147, 161, 161, 0.08)",
-      "--editor-surface-overlay-top": "rgba(255, 255, 255, 0.015)",
-      "--editor-surface-overlay-bottom": "rgba(255, 255, 255, 0.006)",
-      "--editor-gutter-bg": "#073642",
-      "--editor-issue-dot": "#DC322F",
-      "--editor-block-bg": "rgba(255, 255, 255, 0.025)",
-      "--editor-block-border": "rgba(147, 161, 161, 0.08)",
-      "--editor-caret": "#839496",
-      "--editor-caret-shadow": "rgba(131, 148, 150, 0.14)",
-      "--editor-line-selected": "rgba(38, 139, 210, 0.14)",
-      "--editor-line-issue": "#DC322F",
-      "--editor-selection": "rgba(7, 54, 66, 0.95)",
-    },
-  },
-];
-const blockSurfacePresets = [
-  {
-    key: "frost",
-    label: "Frost",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.045)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.085)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.058)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.1)",
-      "--editor-block-at-bg": "rgba(248, 249, 252, 0.052)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.095)",
-    },
-  },
-  {
-    key: "softMist",
-    label: "Soft Mist",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.036)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.072)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.044)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.082)",
-      "--editor-block-at-bg": "rgba(245, 246, 248, 0.04)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.076)",
-    },
-  },
-  {
-    key: "paperGlass",
-    label: "Paper Glass",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.062)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.12)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.074)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.132)",
-      "--editor-block-at-bg": "rgba(250, 250, 252, 0.068)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.124)",
-    },
-  },
-  {
-    key: "graphite",
-    label: "Graphite",
-    vars: {
-      "--editor-block-bg": "rgba(255, 255, 255, 0.028)",
-      "--editor-block-border": "rgba(255, 255, 255, 0.06)",
-      "--editor-block-hash-bg": "rgba(255, 255, 255, 0.034)",
-      "--editor-block-hash-border": "rgba(255, 255, 255, 0.068)",
-      "--editor-block-at-bg": "rgba(244, 246, 248, 0.03)",
-      "--editor-block-at-border": "rgba(255, 255, 255, 0.064)",
-    },
-  },
-];
-const lineHighlightPresets = [
-  { key: "graphite", label: "Graphite", value: "rgba(255, 255, 255, 0.045)" },
-  { key: "glassWhite", label: "Glass White", value: "rgba(255, 255, 255, 0.065)" },
-  { key: "violetMist", label: "Violet Mist", value: "rgba(139, 92, 246, 0.12)" },
-  { key: "blueTint", label: "Blue Tint", value: "rgba(96, 165, 250, 0.12)" },
-  { key: "amberSoft", label: "Amber Soft", value: "rgba(255, 138, 87, 0.11)" },
-];
-const selectionHighlightPresets = [
-  { key: "graphite", label: "Graphite", value: "rgba(255, 255, 255, 0.12)" },
-  { key: "glassWhite", label: "Glass White", value: "rgba(255, 255, 255, 0.18)" },
-  { key: "violetMist", label: "Violet Mist", value: "rgba(139, 92, 246, 0.22)" },
-  { key: "blueTint", label: "Blue Tint", value: "rgba(96, 165, 250, 0.22)" },
-  { key: "amberSoft", label: "Amber Soft", value: "rgba(255, 138, 87, 0.22)" },
-];
-const defaultGlyphColor = glyphPaletteOptions[0].color;
 let glyphColors = Object.fromEntries(glyphColorSpecs.map((spec) => [spec.key, defaultGlyphColor]));
+const styioHighlightKeywords = new Set(styioKeywordTokens);
 
 const measureLine = document.createElement("div");
 measureLine.className = "measure-line";
@@ -996,6 +1008,7 @@ function persistLanguageState() {
   } catch (error) {
     console.warn("failed to persist language state", error);
   }
+  persistCustomPaletteConfigState();
 }
 
 function loadLanguageState() {
@@ -1012,12 +1025,7 @@ function loadLanguageState() {
 function applyLanguageUi() {
   document.documentElement.lang = activeLanguageKey === "zhCn" ? "zh-CN" : "en";
   document.title = t("documentTitle");
-  currentFileTitle.textContent = t("appTitle");
-
-  toggleSidebar.setAttribute("aria-label", t("openSidebar"));
-  toggleSidebar.setAttribute("title", t("openSidebar"));
-  closeSidebar.setAttribute("aria-label", t("closeSidebar"));
-  closeSidebar.setAttribute("title", t("closeSidebar"));
+  applyStyleShellLabels(styleShellBridge, t);
 
   document.querySelector('[data-drawer-tab="files"]')?.setAttribute("aria-label", t("fileTree"));
   document.querySelector('[data-drawer-tab="files"]')?.setAttribute("title", t("fileTree"));
@@ -1037,14 +1045,45 @@ function applyLanguageUi() {
   workspaceMoreButton.setAttribute("title", t("moreWorkspaceActions"));
 
   languageTitle.textContent = t("language");
+  if (styleTitle) {
+    styleTitle.textContent = t("style");
+  }
   autoSaveTitle.textContent = t("autoSave");
   autoSaveDelayLabel.textContent = t("delay");
-  themeTitle.textContent = t("theme");
+  if (themeTitle) {
+    themeTitle.textContent = t("theme");
+  }
+  if (themeColorCardTitle) {
+    themeColorCardTitle.textContent = t("color");
+  }
+  if (themeFontCardTitle) {
+    themeFontCardTitle.textContent = t("font");
+  }
+  if (themeConfigTitle) {
+    themeConfigTitle.textContent = t("themeConfig");
+  }
+  if (themeModeTitle) {
+    themeModeTitle.textContent = t("mode");
+  }
+  themePaletteTitle.textContent = t("themePalette");
+  themeTextTitle.textContent = t("themeText");
   themeColorTitle.textContent = t("themeColor");
   themeBackgroundTitle.textContent = t("background");
+  themeLineTitle.textContent = t("lines");
   interfaceFontTitle.textContent = t("interfaceFont");
   interfaceSizeTitle.textContent = t("interfaceSize");
-  editorTitle.textContent = t("editor");
+  if (editorTitle) {
+    editorTitle.textContent = t("editor");
+  }
+  if (editorFontCardTitle) {
+    editorFontCardTitle.textContent = t("font");
+  }
+  if (editorColorCardTitle) {
+    editorColorCardTitle.textContent = t("color");
+  }
+  if (editorConfigTitle) {
+    editorConfigTitle.textContent = t("themeConfig");
+  }
   glyphCompositionTitle.textContent = t("glyphComposition");
   tabSizeTitle.textContent = t("tabSize");
   editorFontTitle.textContent = t("editorFont");
@@ -1056,7 +1095,9 @@ function applyLanguageUi() {
   blockTitle.textContent = t("block");
   lineTitle.textContent = t("line");
   selectionTitle.textContent = t("selection");
-  symbolColorsTitle.textContent = t("symbolColors");
+  symbolColorsTitle.textContent = t("symbolHighlight");
+  themeModeToggle?.setAttribute("aria-label", `${t("theme")} ${t("mode")}`);
+  editorModeToggle?.setAttribute("aria-label", `${t("editor")} ${t("mode")}`);
   indentControl?.setAttribute("aria-label", t("tabSize"));
 
   workspaceCalloutTitle.textContent = t("usingBrowserStorage");
@@ -1074,7 +1115,18 @@ function applyLanguageUi() {
   workspacePickerUp.setAttribute("aria-label", t("goToParentFolder"));
   workspacePickerUp.setAttribute("title", t("goToParentFolder"));
   workspacePickerCurrent.setAttribute("aria-label", t("workspacePath"));
-  workspacePickerConfirm.textContent = t("useThisFolder");
+  importThemeConfigButton.setAttribute("aria-label", t("importConfig"));
+  importThemeConfigButton.setAttribute("title", t("importConfig"));
+  editThemeConfigButton.setAttribute("aria-label", t("editConfig"));
+  editThemeConfigButton.setAttribute("title", t("editConfig"));
+  importEditorConfigButton.setAttribute("aria-label", t("importConfig"));
+  importEditorConfigButton.setAttribute("title", t("importConfig"));
+  editEditorConfigButton.setAttribute("aria-label", t("editConfig"));
+  editEditorConfigButton.setAttribute("title", t("editConfig"));
+
+  workspacePickerTitle.textContent = workspacePickerTitleText || t("openWorkspaceTitle");
+  workspacePickerCaption.textContent = workspacePickerDefaultCaptionText || t("chooseWorkspaceRoot");
+  workspacePickerConfirm.textContent = workspacePickerConfirmText || t("useThisFolder");
 
   appDialogCancel.textContent = t("cancel");
   toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
@@ -1122,13 +1174,349 @@ function normalizeHexColor(value, fallback) {
   return `#${hex}`;
 }
 
+function findPresetByKeyOrLabel(options, value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  return (
+    options.find((option) => option.key === normalized) ??
+    options.find((option) => option.label.toLowerCase() === normalized.toLowerCase()) ??
+    null
+  );
+}
+
+function stripJsonComments(source) {
+  let result = "";
+  let inString = false;
+  let stringQuote = "";
+  let escaping = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const current = source[index];
+    const next = source[index + 1];
+
+    if (inString) {
+      result += current;
+      if (escaping) {
+        escaping = false;
+      } else if (current === "\\") {
+        escaping = true;
+      } else if (current === stringQuote) {
+        inString = false;
+        stringQuote = "";
+      }
+      continue;
+    }
+
+    if (current === '"' || current === "'") {
+      inString = true;
+      stringQuote = current;
+      result += current;
+      continue;
+    }
+
+    if (current === "/" && next === "/") {
+      while (index < source.length && source[index] !== "\n") {
+        index += 1;
+      }
+      if (index < source.length) {
+        result += source[index];
+      }
+      continue;
+    }
+
+    if (current === "/" && next === "*") {
+      index += 2;
+      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) {
+        index += 1;
+      }
+      index += 1;
+      continue;
+    }
+
+    result += current;
+  }
+
+  return result;
+}
+
+function stripTrailingCommas(source) {
+  let result = "";
+  let inString = false;
+  let stringQuote = "";
+  let escaping = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const current = source[index];
+
+    if (inString) {
+      result += current;
+      if (escaping) {
+        escaping = false;
+      } else if (current === "\\") {
+        escaping = true;
+      } else if (current === stringQuote) {
+        inString = false;
+        stringQuote = "";
+      }
+      continue;
+    }
+
+    if (current === '"' || current === "'") {
+      inString = true;
+      stringQuote = current;
+      result += current;
+      continue;
+    }
+
+    if (current === ",") {
+      let cursor = index + 1;
+      while (cursor < source.length && /\s/.test(source[cursor])) {
+        cursor += 1;
+      }
+      if (source[cursor] === "}" || source[cursor] === "]") {
+        continue;
+      }
+    }
+
+    result += current;
+  }
+
+  return result;
+}
+
+function parseJsonc(source) {
+  const withoutComments = stripJsonComments(source);
+  const withoutTrailingCommas = stripTrailingCommas(withoutComments);
+  return JSON.parse(withoutTrailingCommas);
+}
+
+function glyphSpecFromConfigKey(key) {
+  if (typeof key !== "string") {
+    return null;
+  }
+
+  const normalized = key.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  return (
+    glyphColorSpecs.find((spec) => spec.key === normalized) ??
+    glyphColorSpecs.find((spec) => spec.token === normalized) ??
+    null
+  );
+}
+
+function normalizeEditorFontSizeFromConfig(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    return editorFontSizePresets.find((preset) => preset.size === rounded)?.key ?? null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return (
+      findPresetByKeyOrLabel(editorFontSizePresets, normalized)?.key ??
+      legacyEditorFontSizeKeyMap[normalized] ??
+      null
+    );
+  }
+
+  return null;
+}
+
+function normalizeInterfaceSizeFromConfig(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    return interfaceSizeOptionsList.find((option) => option.size === rounded)?.key ?? null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return (
+      findPresetByKeyOrLabel(interfaceSizeOptionsList, normalized)?.key ??
+      legacyInterfaceSizeKeyMap[normalized] ??
+      null
+    );
+  }
+
+  return null;
+}
+
+function normalizeLegacyPresetValue(value, legacyMap) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = value.trim();
+  return legacyMap[normalized] ?? normalized;
+}
+
+function parseCustomPaletteConfig(rawText) {
+  let parsed;
+  try {
+    parsed = parseJsonc(rawText);
+  } catch (error) {
+    throw new Error(`${t("configParseFailed")}: ${error.message}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${t("configParseFailed")}: root must be an object`);
+  }
+
+  const workbench = parsed["workbench.colorCustomizations"];
+  const editorColors = parsed["editor.tokenColorCustomizations"];
+  const editorConfig = parsed.editor;
+  const styioView = parsed.styioView;
+
+  const config = {
+    name: typeof parsed.name === "string" ? parsed.name.trim() : "",
+    styleKey:
+      findPresetByKeyOrLabel(uiStyleOptionsList, normalizeLegacyPresetValue(styioView?.style, legacyUiStyleKeyMap))
+        ?.key ?? null,
+    languageKey: findPresetByKeyOrLabel(languageOptionsList, styioView?.language)?.key ?? null,
+    themeMode: ["dark", "light"].includes(styioView?.themeMode) ? styioView.themeMode : null,
+    editorMode: ["dark", "light"].includes(styioView?.editorMode) ? styioView.editorMode : null,
+    themePaletteKey:
+      findPresetByKeyOrLabel(themePalettePresets, workbench?.["styio.themePalette"])?.key ?? null,
+    themeColorKey:
+      findPresetByKeyOrLabel(
+        themeColorPresets,
+        normalizeLegacyPresetValue(workbench?.["styio.themeColor"], legacyThemeColorKeyMap),
+      )?.key ?? null,
+    themeTextKey:
+      findPresetByKeyOrLabel(themeTextPresets, workbench?.["styio.themeText"])?.key ?? null,
+    themeBackgroundKey:
+      findPresetByKeyOrLabel(themeBackgroundPresets, workbench?.["styio.background"])?.key ?? null,
+    themeLineKey:
+      findPresetByKeyOrLabel(themeLinePresets, workbench?.["styio.themeLines"])?.key ?? null,
+    interfaceFontKey:
+      findPresetByKeyOrLabel(
+        interfaceFontOptionsList,
+        normalizeLegacyPresetValue(workbench?.["styio.interfaceFont"], legacyInterfaceFontKeyMap),
+      )?.key ?? null,
+    interfaceSizeKey: normalizeInterfaceSizeFromConfig(workbench?.["styio.interfaceSize"]),
+    editorFontKey: findPresetByKeyOrLabel(editorFontOptionsList, editorConfig?.fontFamily)?.key ?? null,
+    editorFontSizeKey: normalizeEditorFontSizeFromConfig(editorConfig?.fontSize),
+    tabSize: [2, 4].includes(editorConfig?.tabSize) ? editorConfig.tabSize : null,
+    glyphComposition:
+      typeof styioView?.glyphComposition === "boolean" ? styioView.glyphComposition : null,
+    editorPaletteKey:
+      findPresetByKeyOrLabel(
+        glyphPaletteOptions,
+        normalizeLegacyPresetValue(editorColors?.["styio.palette"], legacyDefaultGlyphPaletteKeyMap),
+      )?.key ?? null,
+    editorBackgroundKey:
+      findPresetByKeyOrLabel(editorBackgroundPresets, editorColors?.["styio.editorBackground"])?.key ??
+      null,
+    textColorKey:
+      findPresetByKeyOrLabel(editorTextColorPresets, editorColors?.["styio.textColor"])?.key ?? null,
+    textHighlightKey:
+      findPresetByKeyOrLabel(
+        editorTextHighlightPresets,
+        normalizeLegacyPresetValue(editorColors?.["styio.textHighlight"], legacyEditorTextHighlightKeyMap),
+      )?.key ?? null,
+    blockSurfaceKey:
+      findPresetByKeyOrLabel(blockSurfacePresets, editorColors?.["styio.block"])?.key ?? null,
+    lineHighlightKey:
+      findPresetByKeyOrLabel(lineHighlightPresets, editorColors?.["styio.line"])?.key ?? null,
+    selectionHighlightKey:
+      findPresetByKeyOrLabel(selectionHighlightPresets, editorColors?.["styio.selection"])?.key ?? null,
+    symbolColors: {},
+    visualTokens: normalizeVisualTokenOverrides(styioView?.visualTokens),
+    replaceVisualTokens: Object.prototype.hasOwnProperty.call(styioView ?? {}, "visualTokens"),
+  };
+
+  const symbolColors = editorColors?.["styio.symbolColors"];
+  if (symbolColors && typeof symbolColors === "object" && !Array.isArray(symbolColors)) {
+    Object.entries(symbolColors).forEach(([key, value]) => {
+      const spec = glyphSpecFromConfigKey(key);
+      if (!spec || typeof value !== "string") {
+        return;
+      }
+      config.symbolColors[spec.key] = normalizeHexColor(value, glyphColors[spec.key] ?? defaultGlyphColor);
+    });
+  }
+
+  return config;
+}
+
+function buildCustomPaletteConfigObject() {
+  const symbolColors = {};
+  glyphColorSpecs.forEach((spec) => {
+    symbolColors[spec.key] = glyphColors[spec.key];
+  });
+
+  const currentInterfaceSize = currentInterfaceSizeOption();
+  const currentEditorFontSize = currentEditorFontSizePreset();
+  const editorFontSizeValue = Number.parseInt(
+    currentEditorFontSize.vars["--editor-font-size"].replace("px", ""),
+    10,
+  );
+
+  return {
+    $schema: customPaletteConfigSchema,
+    name: "Custom Palette",
+    "workbench.colorCustomizations": {
+      "styio.themePalette": currentThemePaletteSelectionKey(),
+      "styio.themeColor": activeThemeColorKey,
+      "styio.themeText": activeThemeTextKey,
+      "styio.background": activeThemeBackgroundKey,
+      "styio.themeLines": activeThemeLineKey,
+      "styio.interfaceFont": activeInterfaceFontKey,
+      "styio.interfaceSize": currentInterfaceSize.size,
+    },
+    editor: {
+      tabSize: indentSize,
+      fontFamily: activeEditorFontKey,
+      fontSize: Number.isFinite(editorFontSizeValue) ? editorFontSizeValue : currentEditorFontSize.size,
+    },
+    styioView: {
+      style: activeUiStyleKey,
+      language: activeLanguageKey,
+      glyphComposition: glyphsOn,
+      themeMode,
+      editorMode,
+    },
+    "editor.tokenColorCustomizations": {
+      "styio.palette": currentEditorPaletteSelectionKey(),
+      "styio.editorBackground": activeEditorBackgroundKey,
+      "styio.textColor": activeEditorTextColorKey,
+      "styio.textHighlight": activeEditorTextHighlightKey,
+      "styio.block": activeBlockSurfaceKey,
+      "styio.line": activeLineHighlightKey,
+      "styio.selection": activeSelectionHighlightKey,
+      "styio.symbolColors": symbolColors,
+    },
+  };
+}
+
+function buildCustomPaletteConfigText() {
+  const config = buildCustomPaletteConfigObject();
+  if (hasVisualTokenOverrides(visualTokenOverrides)) {
+    config.styioView.visualTokens = buildVisualTokenConfigObject(visualTokenOverrides);
+  }
+  return JSON.stringify(config, null, 2);
+}
+
 function persistThemeSettings() {
   try {
     window.localStorage.setItem(
       themeSettingsStorageKey,
       JSON.stringify({
+        themeMode,
+        themePaletteKey: currentThemePaletteSelectionKey(),
         themeColorKey: activeThemeColorKey,
+        themeTextKey: activeThemeTextKey,
         themeBackgroundKey: activeThemeBackgroundKey,
+        themeLineKey: activeThemeLineKey,
         interfaceFontKey: activeInterfaceFontKey,
         interfaceSizeKey: activeInterfaceSizeKey,
       }),
@@ -1136,6 +1524,7 @@ function persistThemeSettings() {
   } catch (error) {
     console.warn("failed to persist theme settings", error);
   }
+  persistCustomPaletteConfigState();
 }
 
 function loadThemeSettings() {
@@ -1146,18 +1535,38 @@ function loadThemeSettings() {
     }
 
     const parsed = JSON.parse(raw);
-    if (themeColorPresets.some((preset) => preset.key === parsed?.themeColorKey)) {
-      activeThemeColorKey = parsed.themeColorKey;
+    if (parsed?.themeMode === "dark" || parsed?.themeMode === "light") {
+      themeMode = parsed.themeMode;
+    }
+    if (themePalettePresets.some((preset) => preset.key === parsed?.themePaletteKey)) {
+      activeThemePaletteKey = parsed.themePaletteKey;
+      themeMode = themePalettePresets.find((preset) => preset.key === parsed.themePaletteKey)?.mode ?? themeMode;
+    } else {
+      activeThemePaletteKey = defaultThemePaletteForMode(themeMode).key;
+    }
+    const migratedThemeColorKey = legacyThemeColorKeyMap[parsed?.themeColorKey] ?? parsed?.themeColorKey;
+    if (themeColorPresets.some((preset) => preset.key === migratedThemeColorKey)) {
+      activeThemeColorKey = migratedThemeColorKey;
+    }
+    if (themeTextPresets.some((preset) => preset.key === parsed?.themeTextKey)) {
+      activeThemeTextKey = parsed.themeTextKey;
     }
     if (themeBackgroundPresets.some((preset) => preset.key === parsed?.themeBackgroundKey)) {
       activeThemeBackgroundKey = parsed.themeBackgroundKey;
     }
-    if (interfaceFontOptionsList.some((option) => option.key === parsed?.interfaceFontKey)) {
-      activeInterfaceFontKey = parsed.interfaceFontKey;
+    if (themeLinePresets.some((preset) => preset.key === parsed?.themeLineKey)) {
+      activeThemeLineKey = parsed.themeLineKey;
     }
-    if (interfaceSizeOptionsList.some((option) => option.key === parsed?.interfaceSizeKey)) {
-      activeInterfaceSizeKey = parsed.interfaceSizeKey;
+    const migratedInterfaceFontKey =
+      legacyInterfaceFontKeyMap[parsed?.interfaceFontKey] ?? parsed?.interfaceFontKey;
+    if (interfaceFontOptionsList.some((option) => option.key === migratedInterfaceFontKey)) {
+      activeInterfaceFontKey = migratedInterfaceFontKey;
     }
+    const migratedInterfaceSizeKey = legacyInterfaceSizeKeyMap[parsed?.interfaceSizeKey] ?? parsed?.interfaceSizeKey;
+    if (interfaceSizeOptionsList.some((option) => option.key === migratedInterfaceSizeKey)) {
+      activeInterfaceSizeKey = migratedInterfaceSizeKey;
+    }
+    coerceThemeSelectionsForMode();
   } catch (error) {
     console.warn("failed to restore theme settings", error);
   }
@@ -1168,17 +1577,129 @@ function persistEditorPreferences() {
     window.localStorage.setItem(
       editorSettingsStorageKey,
       JSON.stringify({
+        editorMode,
         glyphsOn,
         indentSize,
         editorFontKey: activeEditorFontKey,
         editorFontSizeKey: activeEditorFontSizeKey,
+        paletteKey: currentEditorPaletteSelectionKey(),
         editorBackgroundKey: activeEditorBackgroundKey,
         editorTextColorKey: activeEditorTextColorKey,
         editorTextHighlightKey: activeEditorTextHighlightKey,
+        blockSurfaceKey: activeBlockSurfaceKey,
+        lineHighlightKey: activeLineHighlightKey,
+        selectionHighlightKey: activeSelectionHighlightKey,
       }),
     );
   } catch (error) {
     console.warn("failed to persist editor settings", error);
+  }
+  persistCustomPaletteConfigState();
+}
+
+function persistCustomPaletteConfigState() {
+  try {
+    window.localStorage.setItem(customPaletteConfigStorageKey, buildCustomPaletteConfigText());
+  } catch (error) {
+    console.warn("failed to persist custom palette config", error);
+  }
+}
+
+function applyCustomPaletteConfig(config) {
+  if (config.styleKey) {
+    activeUiStyleKey = config.styleKey;
+  }
+  if (config.languageKey) {
+    activeLanguageKey = config.languageKey;
+  }
+  if (config.themeMode === "dark" || config.themeMode === "light") {
+    themeMode = config.themeMode;
+  }
+  if (config.editorMode === "dark" || config.editorMode === "light") {
+    editorMode = config.editorMode;
+  }
+  if (config.themePaletteKey) {
+    applyThemePaletteSelection(config.themePaletteKey);
+  }
+  if (config.themeColorKey) {
+    activeThemeColorKey = config.themeColorKey;
+  }
+  if (config.themeTextKey) {
+    activeThemeTextKey = config.themeTextKey;
+  }
+  if (config.themeBackgroundKey) {
+    activeThemeBackgroundKey = config.themeBackgroundKey;
+  }
+  if (config.themeLineKey) {
+    activeThemeLineKey = config.themeLineKey;
+  }
+  if (config.interfaceFontKey) {
+    activeInterfaceFontKey = config.interfaceFontKey;
+  }
+  if (config.interfaceSizeKey) {
+    activeInterfaceSizeKey = config.interfaceSizeKey;
+  }
+  if (config.editorFontKey) {
+    activeEditorFontKey = config.editorFontKey;
+  }
+  if (config.editorFontSizeKey) {
+    activeEditorFontSizeKey = config.editorFontSizeKey;
+  }
+  if (config.tabSize) {
+    indentSize = config.tabSize;
+  }
+  if (typeof config.glyphComposition === "boolean") {
+    glyphsOn = config.glyphComposition;
+  }
+  if (config.editorPaletteKey) {
+    applyEditorPaletteSelection(config.editorPaletteKey);
+  }
+  if (config.editorBackgroundKey) {
+    activeEditorBackgroundKey = config.editorBackgroundKey;
+  }
+  if (config.textColorKey) {
+    activeEditorTextColorKey = config.textColorKey;
+  }
+  if (config.textHighlightKey) {
+    activeEditorTextHighlightKey = config.textHighlightKey;
+  }
+  if (config.blockSurfaceKey) {
+    activeBlockSurfaceKey = config.blockSurfaceKey;
+  }
+  if (config.lineHighlightKey) {
+    activeLineHighlightKey = config.lineHighlightKey;
+  }
+  if (config.selectionHighlightKey) {
+    activeSelectionHighlightKey = config.selectionHighlightKey;
+  }
+  Object.entries(config.symbolColors).forEach(([key, value]) => {
+    glyphColors[key] = value;
+  });
+  if (config.replaceVisualTokens) {
+    visualTokenOverrides = { ...config.visualTokens };
+  } else if (hasVisualTokenOverrides(config.visualTokens)) {
+    visualTokenOverrides = {
+      ...visualTokenOverrides,
+      ...config.visualTokens,
+    };
+  }
+  coerceThemeSelectionsForMode();
+  coerceEditorSelectionsForMode();
+  applyLanguageUi();
+  applyUiStyleStrategy();
+}
+
+function loadCustomPaletteConfigState() {
+  try {
+    const raw = window.localStorage.getItem(customPaletteConfigStorageKey);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = parseCustomPaletteConfig(raw);
+    applyCustomPaletteConfig(parsed);
+  } catch (error) {
+    console.warn("failed to restore custom palette config", error);
   }
 }
 
@@ -1190,6 +1711,9 @@ function loadEditorPreferences() {
     }
 
     const parsed = JSON.parse(raw);
+    if (parsed?.editorMode === "dark" || parsed?.editorMode === "light") {
+      editorMode = parsed.editorMode;
+    }
     if (typeof parsed?.glyphsOn === "boolean") {
       glyphsOn = parsed.glyphsOn;
     }
@@ -1199,8 +1723,10 @@ function loadEditorPreferences() {
     if (editorFontOptionsList.some((option) => option.key === parsed?.editorFontKey)) {
       activeEditorFontKey = parsed.editorFontKey;
     }
-    if (editorFontSizePresets.some((preset) => preset.key === parsed?.editorFontSizeKey)) {
-      activeEditorFontSizeKey = parsed.editorFontSizeKey;
+    const migratedEditorFontSizeKey =
+      legacyEditorFontSizeKeyMap[parsed?.editorFontSizeKey] ?? parsed?.editorFontSizeKey;
+    if (editorFontSizePresets.some((preset) => preset.key === migratedEditorFontSizeKey)) {
+      activeEditorFontSizeKey = migratedEditorFontSizeKey;
     }
     if (editorBackgroundPresets.some((preset) => preset.key === parsed?.editorBackgroundKey)) {
       activeEditorBackgroundKey = parsed.editorBackgroundKey;
@@ -1208,11 +1734,74 @@ function loadEditorPreferences() {
     if (editorTextColorPresets.some((preset) => preset.key === parsed?.editorTextColorKey)) {
       activeEditorTextColorKey = parsed.editorTextColorKey;
     }
-    if (editorTextHighlightPresets.some((preset) => preset.key === parsed?.editorTextHighlightKey)) {
-      activeEditorTextHighlightKey = parsed.editorTextHighlightKey;
+    const migratedEditorTextHighlightKey =
+      legacyEditorTextHighlightKeyMap[parsed?.editorTextHighlightKey] ?? parsed?.editorTextHighlightKey;
+    if (editorTextHighlightPresets.some((preset) => preset.key === migratedEditorTextHighlightKey)) {
+      activeEditorTextHighlightKey = migratedEditorTextHighlightKey;
     }
+    const migratedPaletteKey = legacyGlyphPaletteKeyMap[parsed?.paletteKey] ?? parsed?.paletteKey;
+    if (glyphPaletteOptions.some((palette) => palette.key === migratedPaletteKey)) {
+      activePaletteKey = migratedPaletteKey;
+      editorMode = editorPaletteMeta[migratedPaletteKey]?.mode ?? editorMode;
+    } else {
+      activePaletteKey = defaultEditorPaletteForMode(editorMode).key;
+    }
+    if (blockSurfacePresets.some((preset) => preset.key === parsed?.blockSurfaceKey)) {
+      activeBlockSurfaceKey = parsed.blockSurfaceKey;
+    }
+    if (lineHighlightPresets.some((preset) => preset.key === parsed?.lineHighlightKey)) {
+      activeLineHighlightKey = parsed.lineHighlightKey;
+    }
+    if (selectionHighlightPresets.some((preset) => preset.key === parsed?.selectionHighlightKey)) {
+      activeSelectionHighlightKey = parsed.selectionHighlightKey;
+    }
+    coerceEditorSelectionsForMode();
   } catch (error) {
     console.warn("failed to restore editor settings", error);
+  }
+}
+
+function currentThemeTextOptions() {
+  return themeTextPresets.filter((preset) => preset.mode === themeMode);
+}
+
+function currentThemeBackgroundOptions() {
+  return themeBackgroundPresets.filter((preset) => preset.mode === themeMode);
+}
+
+function currentThemeLineOptions() {
+  return themeLinePresets.filter((preset) => preset.mode === themeMode);
+}
+
+function currentEditorBackgroundOptions() {
+  return editorBackgroundPresets.filter((preset) => preset.mode === editorMode);
+}
+
+function currentEditorTextColorOptions() {
+  return editorTextColorPresets.filter((preset) => preset.mode === editorMode);
+}
+
+function coerceThemeSelectionsForMode() {
+  const fallbackPalette = currentThemePalette();
+  if (!currentThemeTextOptions().some((preset) => preset.key === activeThemeTextKey)) {
+    activeThemeTextKey = fallbackPalette.themeTextKey;
+  }
+  if (!currentThemeBackgroundOptions().some((preset) => preset.key === activeThemeBackgroundKey)) {
+    activeThemeBackgroundKey = fallbackPalette.themeBackgroundKey;
+  }
+  if (!currentThemeLineOptions().some((preset) => preset.key === activeThemeLineKey)) {
+    activeThemeLineKey = fallbackPalette.themeLineKey;
+  }
+}
+
+function coerceEditorSelectionsForMode() {
+  const fallbackPalette = currentPalette();
+  const paletteMeta = editorPaletteMeta[fallbackPalette.key] ?? {};
+  if (!currentEditorBackgroundOptions().some((preset) => preset.key === activeEditorBackgroundKey)) {
+    activeEditorBackgroundKey = paletteMeta.backgroundKey ?? currentEditorBackgroundOptions()[0]?.key ?? editorBackgroundPresets[0].key;
+  }
+  if (!currentEditorTextColorOptions().some((preset) => preset.key === activeEditorTextColorKey)) {
+    activeEditorTextColorKey = paletteMeta.textColorKey ?? currentEditorTextColorOptions()[0]?.key ?? editorTextColorPresets[0].key;
   }
 }
 
@@ -1222,7 +1811,8 @@ function currentThemeColorPreset() {
 
 function currentThemeBackgroundPreset() {
   return (
-    themeBackgroundPresets.find((preset) => preset.key === activeThemeBackgroundKey) ??
+    currentThemeBackgroundOptions().find((preset) => preset.key === activeThemeBackgroundKey) ??
+    currentThemeBackgroundOptions()[0] ??
     themeBackgroundPresets[0]
   );
 }
@@ -1255,16 +1845,50 @@ function currentEditorFontSizePreset() {
   );
 }
 
+function stepInterfaceSize(direction) {
+  const options = interfaceSizeOptionsList;
+  const currentIndex = Math.max(
+    0,
+    options.findIndex((option) => option.key === activeInterfaceSizeKey),
+  );
+  const nextIndex = Math.min(options.length - 1, Math.max(0, currentIndex + direction));
+  if (nextIndex === currentIndex) {
+    return;
+  }
+
+  dispatchSurfaceAction(SURFACE_ACTIONS.INTERFACE_SIZE, () => {
+    activeInterfaceSizeKey = options[nextIndex].key;
+  });
+}
+
+function stepEditorFontSize(direction) {
+  const presets = editorFontSizePresets;
+  const currentIndex = Math.max(
+    0,
+    presets.findIndex((preset) => preset.key === activeEditorFontSizeKey),
+  );
+  const nextIndex = Math.min(presets.length - 1, Math.max(0, currentIndex + direction));
+  if (nextIndex === currentIndex) {
+    return;
+  }
+
+  dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_FONT_SIZE, () => {
+    activeEditorFontSizeKey = presets[nextIndex].key;
+  });
+}
+
 function currentEditorBackgroundPreset() {
   return (
-    editorBackgroundPresets.find((preset) => preset.key === activeEditorBackgroundKey) ??
+    currentEditorBackgroundOptions().find((preset) => preset.key === activeEditorBackgroundKey) ??
+    currentEditorBackgroundOptions()[0] ??
     editorBackgroundPresets[0]
   );
 }
 
 function currentEditorTextColorPreset() {
   return (
-    editorTextColorPresets.find((preset) => preset.key === activeEditorTextColorKey) ??
+    currentEditorTextColorOptions().find((preset) => preset.key === activeEditorTextColorKey) ??
+    currentEditorTextColorOptions()[0] ??
     editorTextColorPresets[0]
   );
 }
@@ -1327,215 +1951,526 @@ function applyEditorTextHighlightTheme() {
   document.documentElement.style.setProperty("--editor-caret-shadow", preset.caretShadow);
 }
 
-function syncThemeUi() {
-  themeColorButton.textContent = currentThemeColorPreset().label;
-  themeColorButton.setAttribute("aria-expanded", String(themeColorMenuOpen));
-  themeColorOptions.classList.toggle("is-open", themeColorMenuOpen);
-  themeColorOptions.querySelectorAll("[data-theme-color-key]").forEach((button) => {
-    const active = button.dataset.themeColorKey === activeThemeColorKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+function currentThemeTextPreset() {
+  return currentThemeTextOptions().find((preset) => preset.key === activeThemeTextKey) ?? currentThemeTextOptions()[0] ?? themeTextPresets[0];
+}
 
-  themeBackgroundButton.textContent = currentThemeBackgroundPreset().label;
-  themeBackgroundButton.setAttribute("aria-expanded", String(themeBackgroundMenuOpen));
-  themeBackgroundOptions.classList.toggle("is-open", themeBackgroundMenuOpen);
-  themeBackgroundOptions.querySelectorAll("[data-theme-background-key]").forEach((button) => {
-    const active = button.dataset.themeBackgroundKey === activeThemeBackgroundKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+function currentThemeLinePreset() {
+  return currentThemeLineOptions().find((preset) => preset.key === activeThemeLineKey) ?? currentThemeLineOptions()[0] ?? themeLinePresets[0];
+}
 
-  interfaceFontButton.textContent = currentInterfaceFontOption().label;
-  interfaceFontButton.setAttribute("aria-expanded", String(interfaceFontMenuOpen));
-  interfaceFontOptions.classList.toggle("is-open", interfaceFontMenuOpen);
-  interfaceFontOptions.querySelectorAll("[data-interface-font-key]").forEach((button) => {
-    const active = button.dataset.interfaceFontKey === activeInterfaceFontKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+function currentThemeModeOptions() {
+  return themePalettePresets.filter((palette) => palette.mode === themeMode);
+}
 
-  interfaceSizeButton.textContent = currentInterfaceSizeOption().label;
-  interfaceSizeButton.setAttribute("aria-expanded", String(interfaceSizeMenuOpen));
-  interfaceSizeOptions.classList.toggle("is-open", interfaceSizeMenuOpen);
-  interfaceSizeOptions.querySelectorAll("[data-interface-size-key]").forEach((button) => {
-    const active = button.dataset.interfaceSizeKey === activeInterfaceSizeKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+function defaultThemePaletteForMode(mode) {
+  return themePalettePresets.find((palette) => palette.mode === mode) ?? themePalettePresets[0];
+}
+
+function matchedThemePalette() {
+  return (
+    themePalettePresets.find(
+      (palette) =>
+        palette.mode === themeMode &&
+        palette.themeColorKey === activeThemeColorKey &&
+        palette.themeTextKey === activeThemeTextKey &&
+        palette.themeBackgroundKey === activeThemeBackgroundKey &&
+        palette.themeLineKey === activeThemeLineKey,
+    ) ?? null
+  );
+}
+
+function currentThemePaletteSelectionKey() {
+  return matchedThemePalette()?.key ?? "customized";
+}
+
+function currentThemePaletteLabel() {
+  return matchedThemePalette()?.label ?? t("customized");
+}
+
+function currentThemePalette() {
+  const byKey = themePalettePresets.find((palette) => palette.key === activeThemePaletteKey);
+  if (byKey && byKey.mode === themeMode) {
+    return byKey;
+  }
+  return currentThemeModeOptions()[0] ?? themePalettePresets[0];
+}
+
+function applyThemeTextTheme() {
+  Object.entries(currentThemeTextPreset().vars).forEach(([cssVar, value]) => {
+    document.documentElement.style.setProperty(cssVar, value);
   });
 }
 
+function applyThemeLineTheme() {
+  Object.entries(currentThemeLinePreset().vars).forEach(([cssVar, value]) => {
+    document.documentElement.style.setProperty(cssVar, value);
+  });
+}
+
+function applyWorkbenchThemeState() {
+  document.documentElement.style.colorScheme = themeMode;
+  document.body.dataset.themeMode = themeMode;
+  document.body.dataset.editorMode = editorMode;
+  applyThemeBackgroundTheme();
+  applyThemeTextTheme();
+  applyThemeColorTheme();
+  applyThemeLineTheme();
+  applyInterfaceFontTheme();
+  applyInterfaceSizeTheme();
+}
+
+function applyThemePaletteSelection(paletteKey) {
+  const palette = themePalettePresets.find((entry) => entry.key === paletteKey);
+  if (!palette) {
+    return;
+  }
+
+  activeThemePaletteKey = palette.key;
+  themeMode = palette.mode;
+  activeThemeColorKey = palette.themeColorKey;
+  activeThemeTextKey = palette.themeTextKey;
+  activeThemeBackgroundKey = palette.themeBackgroundKey;
+  activeThemeLineKey = palette.themeLineKey;
+}
+
+function syncThemeUi() {
+  coerceThemeSelectionsForMode();
+  syncDropdownControl({
+    nodeId: "themePalette",
+    button: themePaletteButton,
+    menu: themePaletteOptionsMenu,
+    label: currentThemePaletteLabel(),
+    open: themePaletteMenuOpen,
+    options: currentThemeModeOptions().map((palette) => ({ key: palette.key, label: palette.label })),
+    activeKey: currentThemePaletteSelectionKey(),
+  });
+  syncDropdownControl({
+    nodeId: "themeText",
+    button: themeTextButton,
+    menu: themeTextOptions,
+    label: currentThemeTextPreset().label,
+    open: themeTextMenuOpen,
+    options: currentThemeTextOptions().map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeThemeTextKey,
+  });
+  syncDropdownControl({
+    nodeId: "themeColor",
+    button: themeColorButton,
+    menu: themeColorOptions,
+    label: currentThemeColorPreset().label,
+    open: themeColorMenuOpen,
+    options: themeColorPresets.map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeThemeColorKey,
+  });
+  syncDropdownControl({
+    nodeId: "themeBackground",
+    button: themeBackgroundButton,
+    menu: themeBackgroundOptions,
+    label: currentThemeBackgroundPreset().label,
+    open: themeBackgroundMenuOpen,
+    options: currentThemeBackgroundOptions().map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeThemeBackgroundKey,
+  });
+  syncDropdownControl({
+    nodeId: "themeLines",
+    button: themeLineButton,
+    menu: themeLineOptions,
+    label: currentThemeLinePreset().label,
+    open: themeLineMenuOpen,
+    options: currentThemeLineOptions().map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeThemeLineKey,
+  });
+  syncDropdownControl({
+    nodeId: "interfaceFont",
+    button: interfaceFontButton,
+    menu: interfaceFontOptions,
+    label: currentInterfaceFontOption().label,
+    open: interfaceFontMenuOpen,
+    options: interfaceFontOptionsList.map((option) => ({ key: option.key, label: option.label })),
+    activeKey: activeInterfaceFontKey,
+  });
+
+  const currentInterfaceSize = currentInterfaceSizeOption();
+  interfaceSizeValue.textContent = String(currentInterfaceSize.size);
+  interfaceSizeDecrease.disabled = currentInterfaceSize.size <= interfaceSizeOptionsList[0].size;
+  interfaceSizeIncrease.disabled =
+    currentInterfaceSize.size >= interfaceSizeOptionsList[interfaceSizeOptionsList.length - 1].size;
+
+  themeModeDark?.classList.toggle("is-active", themeMode === "dark");
+  themeModeLight?.classList.toggle("is-active", themeMode === "light");
+  themeModeDark?.setAttribute("aria-pressed", String(themeMode === "dark"));
+  themeModeLight?.setAttribute("aria-pressed", String(themeMode === "light"));
+  themeModeToggle?.setAttribute("data-mode", themeMode);
+  themeModeDark?.toggleAttribute("disabled", false);
+  themeModeLight?.toggleAttribute("disabled", false);
+  themeModeToggle?.classList.remove("is-disabled");
+}
+
 function renderThemeControls() {
-  themeColorOptions.innerHTML = themeColorPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-theme-color-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  themeBackgroundOptions.innerHTML = themeBackgroundPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-theme-background-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  interfaceFontOptions.innerHTML = interfaceFontOptionsList
-    .map(
-      (option) => `
-        <button class="palette-option" type="button" data-interface-font-key="${option.key}">
-          ${option.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  interfaceSizeOptions.innerHTML = interfaceSizeOptionsList
-    .map(
-      (option) => `
-        <button class="palette-option" type="button" data-interface-size-key="${option.key}">
-          ${option.label}
-        </button>
-      `,
-    )
-    .join("");
-
   syncThemeUi();
 }
 
 function syncEditorPreferencesUi() {
-  editorFontButton.textContent = currentEditorFontOption().label;
-  editorFontButton.setAttribute("aria-expanded", String(editorFontMenuOpen));
-  editorFontOptions.classList.toggle("is-open", editorFontMenuOpen);
-  editorFontOptions.querySelectorAll("[data-editor-font-key]").forEach((button) => {
-    const active = button.dataset.editorFontKey === activeEditorFontKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+  coerceEditorSelectionsForMode();
+
+  const editorModeLocked = editorModeLinkedToTheme;
+  editorModeDark?.classList.toggle("is-active", editorMode === "dark");
+  editorModeLight?.classList.toggle("is-active", editorMode === "light");
+  editorModeDark?.setAttribute("aria-pressed", String(editorMode === "dark"));
+  editorModeLight?.setAttribute("aria-pressed", String(editorMode === "light"));
+  editorModeToggle?.setAttribute("data-mode", editorMode);
+  editorModeDark?.toggleAttribute("disabled", editorModeLocked);
+  editorModeLight?.toggleAttribute("disabled", editorModeLocked);
+  editorModeToggle?.classList.toggle("is-disabled", editorModeLocked);
+
+  syncDropdownControl({
+    nodeId: "editorFont",
+    button: editorFontButton,
+    menu: editorFontOptions,
+    label: currentEditorFontOption().label,
+    open: editorFontMenuOpen,
+    options: editorFontOptionsList.map((option) => ({ key: option.key, label: option.label })),
+    activeKey: activeEditorFontKey,
   });
 
-  editorFontSizeButton.textContent = currentEditorFontSizePreset().label;
-  editorFontSizeButton.setAttribute("aria-expanded", String(editorFontSizeMenuOpen));
-  editorFontSizeOptions.classList.toggle("is-open", editorFontSizeMenuOpen);
-  editorFontSizeOptions.querySelectorAll("[data-editor-font-size-key]").forEach((button) => {
-    const active = button.dataset.editorFontSizeKey === activeEditorFontSizeKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+  const currentEditorFontSize = currentEditorFontSizePreset();
+  editorFontSizeValue.textContent = String(currentEditorFontSize.size);
+  editorFontSizeDecrease.disabled = currentEditorFontSize.size <= editorFontSizePresets[0].size;
+  editorFontSizeIncrease.disabled =
+    currentEditorFontSize.size >= editorFontSizePresets[editorFontSizePresets.length - 1].size;
 
-  editorBackgroundButton.textContent = currentEditorBackgroundPreset().label;
-  editorBackgroundButton.setAttribute("aria-expanded", String(editorBackgroundMenuOpen));
-  editorBackgroundOptions.classList.toggle("is-open", editorBackgroundMenuOpen);
-  editorBackgroundOptions.querySelectorAll("[data-editor-background-key]").forEach((button) => {
-    const active = button.dataset.editorBackgroundKey === activeEditorBackgroundKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+  syncDropdownControl({
+    nodeId: "editorBackground",
+    button: editorBackgroundButton,
+    menu: editorBackgroundOptions,
+    label: currentEditorBackgroundPreset().label,
+    open: editorBackgroundMenuOpen,
+    options: currentEditorBackgroundOptions().map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeEditorBackgroundKey,
   });
+  syncDropdownControl({
+    nodeId: "editorTextColor",
+    button: textColorButton,
+    menu: textColorOptions,
+    label: currentEditorTextColorPreset().label,
+    open: textColorMenuOpen,
+    options: currentEditorTextColorOptions().map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeEditorTextColorKey,
+  });
+  syncDropdownControl({
+    nodeId: "editorTextHighlight",
+    button: textHighlightButton,
+    menu: textHighlightOptions,
+    label: currentEditorTextHighlightPreset().label,
+    open: textHighlightMenuOpen,
+    options: editorTextHighlightPresets.map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeEditorTextHighlightKey,
+  });
+}
 
-  textColorButton.textContent = currentEditorTextColorPreset().label;
-  textColorButton.setAttribute("aria-expanded", String(textColorMenuOpen));
-  textColorOptions.classList.toggle("is-open", textColorMenuOpen);
-  textColorOptions.querySelectorAll("[data-text-color-key]").forEach((button) => {
-    const active = button.dataset.textColorKey === activeEditorTextColorKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+function syncLinkedSurfaceModeCardUi() {
+  linkedSurfaceModeTitle?.replaceChildren(document.createTextNode(t("mode")));
+  linkedSurfaceThemeTab?.replaceChildren(document.createTextNode(t("theme")));
+  linkedSurfaceEditorTab?.replaceChildren(document.createTextNode(t("editor")));
 
-  textHighlightButton.textContent = currentEditorTextHighlightPreset().label;
-  textHighlightButton.setAttribute("aria-expanded", String(textHighlightMenuOpen));
-  textHighlightOptions.classList.toggle("is-open", textHighlightMenuOpen);
-  textHighlightOptions.querySelectorAll("[data-text-highlight-key]").forEach((button) => {
-    const active = button.dataset.textHighlightKey === activeEditorTextHighlightKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
-  });
+  const isThemeTab = linkedSurfaceActiveTab === SURFACE_KEYS.THEME;
+  const currentMode = isThemeTab ? themeMode : editorMode;
+  const editorModeLocked = !isThemeTab && editorModeLinkedToTheme;
+
+  linkedSurfaceThemeTab?.classList.toggle("is-active", isThemeTab);
+  linkedSurfaceEditorTab?.classList.toggle("is-active", !isThemeTab);
+  linkedSurfaceThemeTab?.setAttribute("aria-selected", String(isThemeTab));
+  linkedSurfaceEditorTab?.setAttribute("aria-selected", String(!isThemeTab));
+  linkedSurfaceThemePanel?.classList.toggle("is-active", isThemeTab);
+  linkedSurfaceEditorPanel?.classList.toggle("is-active", !isThemeTab);
+  linkedSurfaceThemePanel?.toggleAttribute("hidden", !isThemeTab);
+  linkedSurfaceEditorPanel?.toggleAttribute("hidden", isThemeTab);
+
+  linkedSurfaceModeToggle?.setAttribute("data-mode", currentMode);
+  linkedSurfaceModeToggle?.classList.toggle("is-disabled", editorModeLocked);
+
+  linkedSurfaceModeDark?.classList.toggle("is-active", currentMode === "dark");
+  linkedSurfaceModeLight?.classList.toggle("is-active", currentMode === "light");
+  linkedSurfaceModeDark?.setAttribute("aria-pressed", String(currentMode === "dark"));
+  linkedSurfaceModeLight?.setAttribute("aria-pressed", String(currentMode === "light"));
+  linkedSurfaceModeDark?.toggleAttribute("disabled", editorModeLocked);
+  linkedSurfaceModeLight?.toggleAttribute("disabled", editorModeLocked);
+
+  if (linkedEditorModeLinkButton) {
+    linkedEditorModeLinkButton.hidden = isThemeTab;
+    linkedEditorModeLinkButton.classList.toggle("is-linked", editorModeLinkedToTheme);
+    linkedEditorModeLinkButton.setAttribute("aria-pressed", String(editorModeLinkedToTheme));
+    const linkLabel = editorModeLinkedToTheme ? t("unlinkEditorMode") : t("linkEditorMode");
+    linkedEditorModeLinkButton.setAttribute("aria-label", linkLabel);
+    linkedEditorModeLinkButton.setAttribute("title", linkLabel);
+  }
 }
 
 function renderEditorPreferenceControls() {
-  editorFontOptions.innerHTML = editorFontOptionsList
-    .map(
-      (option) => `
-        <button class="palette-option" type="button" data-editor-font-key="${option.key}">
-          ${option.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  editorFontSizeOptions.innerHTML = editorFontSizePresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-editor-font-size-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  editorBackgroundOptions.innerHTML = editorBackgroundPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-editor-background-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  textColorOptions.innerHTML = editorTextColorPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-text-color-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  textHighlightOptions.innerHTML = editorTextHighlightPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-text-highlight-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
   syncEditorPreferencesUi();
 }
 
+const settingsMenuAliases = Object.freeze({
+  palette: "editorPalette",
+  themeLine: "themeLines",
+  textColor: "editorTextColor",
+  textHighlight: "editorTextHighlight",
+  block: "editorBlockStyle",
+  line: "editorLineStyle",
+  selection: "editorSelectionStyle",
+});
+
+const settingsMenuControllers = Object.freeze({
+  language: {
+    get: () => languageMenuOpen,
+    set: (nextValue) => {
+      languageMenuOpen = nextValue;
+    },
+  },
+  style: {
+    get: () => styleMenuOpen,
+    set: (nextValue) => {
+      styleMenuOpen = nextValue;
+    },
+  },
+  autoSave: {
+    get: () => autoSaveMenuOpen,
+    set: (nextValue) => {
+      autoSaveMenuOpen = nextValue;
+    },
+  },
+  themePalette: {
+    get: () => themePaletteMenuOpen,
+    set: (nextValue) => {
+      themePaletteMenuOpen = nextValue;
+    },
+  },
+  themeText: {
+    get: () => themeTextMenuOpen,
+    set: (nextValue) => {
+      themeTextMenuOpen = nextValue;
+    },
+  },
+  themeColor: {
+    get: () => themeColorMenuOpen,
+    set: (nextValue) => {
+      themeColorMenuOpen = nextValue;
+    },
+  },
+  themeBackground: {
+    get: () => themeBackgroundMenuOpen,
+    set: (nextValue) => {
+      themeBackgroundMenuOpen = nextValue;
+    },
+  },
+  themeLines: {
+    get: () => themeLineMenuOpen,
+    set: (nextValue) => {
+      themeLineMenuOpen = nextValue;
+    },
+  },
+  interfaceFont: {
+    get: () => interfaceFontMenuOpen,
+    set: (nextValue) => {
+      interfaceFontMenuOpen = nextValue;
+    },
+  },
+  editorFont: {
+    get: () => editorFontMenuOpen,
+    set: (nextValue) => {
+      editorFontMenuOpen = nextValue;
+    },
+  },
+  editorPalette: {
+    get: () => paletteMenuOpen,
+    set: (nextValue) => {
+      paletteMenuOpen = nextValue;
+    },
+  },
+  editorBackground: {
+    get: () => editorBackgroundMenuOpen,
+    set: (nextValue) => {
+      editorBackgroundMenuOpen = nextValue;
+    },
+  },
+  editorTextColor: {
+    get: () => textColorMenuOpen,
+    set: (nextValue) => {
+      textColorMenuOpen = nextValue;
+    },
+  },
+  editorTextHighlight: {
+    get: () => textHighlightMenuOpen,
+    set: (nextValue) => {
+      textHighlightMenuOpen = nextValue;
+    },
+  },
+  editorBlockStyle: {
+    get: () => blockSurfaceMenuOpen,
+    set: (nextValue) => {
+      blockSurfaceMenuOpen = nextValue;
+    },
+  },
+  editorLineStyle: {
+    get: () => lineHighlightMenuOpen,
+    set: (nextValue) => {
+      lineHighlightMenuOpen = nextValue;
+    },
+  },
+  editorSelectionStyle: {
+    get: () => selectionHighlightMenuOpen,
+    set: (nextValue) => {
+      selectionHighlightMenuOpen = nextValue;
+    },
+  },
+});
+
+function resolveSettingsMenuId(id = "") {
+  return settingsMenuAliases[id] ?? id;
+}
+
 function closeSettingsMenus(except = "") {
-  languageMenuOpen = except === "language";
-  autoSaveMenuOpen = except === "autoSave";
-  themeColorMenuOpen = except === "themeColor";
-  themeBackgroundMenuOpen = except === "themeBackground";
-  interfaceFontMenuOpen = except === "interfaceFont";
-  interfaceSizeMenuOpen = except === "interfaceSize";
-  editorFontMenuOpen = except === "editorFont";
-  editorFontSizeMenuOpen = except === "editorFontSize";
-  paletteMenuOpen = except === "palette";
-  editorBackgroundMenuOpen = except === "editorBackground";
-  textColorMenuOpen = except === "textColor";
-  textHighlightMenuOpen = except === "textHighlight";
-  blockSurfaceMenuOpen = except === "block";
-  lineHighlightMenuOpen = except === "line";
-  selectionHighlightMenuOpen = except === "selection";
-  if (except !== "glyphColor") {
+  const resolvedExcept = resolveSettingsMenuId(except);
+  Object.entries(settingsMenuControllers).forEach(([menuId, controller]) => {
+    controller.set(menuId === resolvedExcept);
+  });
+  if (resolvedExcept !== "glyphColor") {
     openGlyphColorMenu = null;
+  }
+}
+
+function toggleSettingsMenu(menuId) {
+  const resolvedId = resolveSettingsMenuId(menuId);
+  const controller = settingsMenuControllers[resolvedId];
+  if (!controller) {
+    return;
+  }
+  closeSettingsMenus(controller.get() ? "" : resolvedId);
+  requestSettingsStateRender();
+}
+
+function applySettingsOptionSelection(settingId, value) {
+  switch (settingId) {
+    case "language":
+      activeLanguageKey = value;
+      closeSettingsMenus();
+      persistLanguageState();
+      applyLanguageUi();
+      flushFullAppRender();
+      return;
+    case "style":
+      activeUiStyleKey = value;
+      closeSettingsMenus();
+      persistUiStyleState();
+      applyUiStyleStrategy();
+      flushFullAppRender();
+      return;
+    case "autoSave":
+      autoSaveMode = value;
+      closeSettingsMenus();
+      clearAutoSaveTimer();
+      syncAutoSaveUi();
+      persistAutoSaveState();
+      if (autoSaveMode === "afterDelay") {
+        scheduleAutoSave();
+      }
+      return;
+    case "themePalette":
+      closeSettingsMenus();
+      selectSurfacePalette(SURFACE_KEYS.THEME, value);
+      return;
+    case "themeText":
+      dispatchSurfaceAction(SURFACE_ACTIONS.THEME_TEXT, () => {
+        activeThemeTextKey = value;
+      });
+      return;
+    case "themeColor":
+      dispatchSurfaceAction(SURFACE_ACTIONS.THEME_COLOR, () => {
+        activeThemeColorKey = value;
+      });
+      return;
+    case "themeBackground":
+      dispatchSurfaceAction(SURFACE_ACTIONS.THEME_BACKGROUND, () => {
+        activeThemeBackgroundKey = value;
+      });
+      return;
+    case "themeLines":
+      dispatchSurfaceAction(SURFACE_ACTIONS.THEME_LINES, () => {
+        activeThemeLineKey = value;
+      });
+      return;
+    case "interfaceFont":
+      dispatchSurfaceAction(SURFACE_ACTIONS.INTERFACE_FONT, () => {
+        activeInterfaceFontKey = value;
+      });
+      return;
+    case "editorFont":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_FONT, () => {
+        activeEditorFontKey = value;
+      });
+      return;
+    case "editorPalette":
+      closeSettingsMenus();
+      selectSurfacePalette(SURFACE_KEYS.EDITOR, value);
+      return;
+    case "editorBackground":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_BACKGROUND, () => {
+        activeEditorBackgroundKey = value;
+      });
+      return;
+    case "editorTextColor":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_TEXT_COLOR, () => {
+        activeEditorTextColorKey = value;
+      });
+      return;
+    case "editorTextHighlight":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_TEXT_HIGHLIGHT, () => {
+        activeEditorTextHighlightKey = value;
+        const preset = editorTextHighlightPresets.find((entry) => entry.key === value);
+        if (preset) {
+          applySharedGlyphColor(preset.color);
+        }
+      });
+      return;
+    case "editorBlockStyle":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_BLOCK_STYLE, () => {
+        activeBlockSurfaceKey = value;
+      });
+      return;
+    case "editorLineStyle":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_LINE_STYLE, () => {
+        activeLineHighlightKey = value;
+      });
+      return;
+    case "editorSelectionStyle":
+      dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_SELECTION_STYLE, () => {
+        activeSelectionHighlightKey = value;
+      });
+      return;
+    default:
+      return;
+  }
+}
+
+function handleSettingsDialogAction(actionId) {
+  if (actionId === "importThemeConfigButton" || actionId === "importEditorConfigButton") {
+    openPaletteConfigImportPicker(workspaceRootPath);
+    return;
+  }
+
+  if (actionId === "editThemeConfigButton" || actionId === "editEditorConfigButton") {
+    openPaletteConfigEditor();
   }
 }
 
 function syncSettingsUi() {
   syncLanguageUi();
+  syncStyleUi();
   syncAutoSaveUi();
   syncThemeUi();
   syncEditorPreferencesUi();
+  syncLinkedSurfaceModeCardUi();
   syncGlyphHighlightUi();
 }
 
@@ -1544,7 +2479,11 @@ function persistGlyphHighlights() {
     window.localStorage.setItem(
       glyphHighlightStorageKey,
       JSON.stringify({
-        paletteKey: activePaletteKey,
+        editorMode,
+        paletteKey: currentEditorPaletteSelectionKey(),
+        editorBackgroundKey: activeEditorBackgroundKey,
+        editorTextColorKey: activeEditorTextColorKey,
+        editorTextHighlightKey: activeEditorTextHighlightKey,
         blockSurfaceKey: activeBlockSurfaceKey,
         lineHighlightKey: activeLineHighlightKey,
         selectionHighlightKey: activeSelectionHighlightKey,
@@ -1554,6 +2493,7 @@ function persistGlyphHighlights() {
   } catch (error) {
     console.warn("failed to persist glyph highlights", error);
   }
+  persistCustomPaletteConfigState();
 }
 
 function applyGlyphColors() {
@@ -1562,8 +2502,50 @@ function applyGlyphColors() {
   });
 }
 
+function currentEditorModeOptions() {
+  return glyphPaletteOptions.filter(
+    (palette) => (editorPaletteMeta[palette.key]?.mode ?? "dark") === editorMode,
+  );
+}
+
+function defaultEditorPaletteForMode(mode) {
+  return (
+    glyphPaletteOptions.find((palette) => (editorPaletteMeta[palette.key]?.mode ?? "dark") === mode) ??
+    glyphPaletteOptions[0]
+  );
+}
+
+function matchedEditorPalette() {
+  return (
+    glyphPaletteOptions.find((palette) => {
+      const meta = editorPaletteMeta[palette.key] ?? {};
+      return (
+        (meta.mode ?? "dark") === editorMode &&
+        meta.backgroundKey === activeEditorBackgroundKey &&
+        meta.textColorKey === activeEditorTextColorKey &&
+        meta.textHighlightKey === activeEditorTextHighlightKey &&
+        meta.blockKey === activeBlockSurfaceKey &&
+        meta.lineKey === activeLineHighlightKey &&
+        meta.selectionKey === activeSelectionHighlightKey
+      );
+    }) ?? null
+  );
+}
+
+function currentEditorPaletteSelectionKey() {
+  return matchedEditorPalette()?.key ?? "customized";
+}
+
+function currentEditorPaletteLabel() {
+  return matchedEditorPalette()?.label ?? t("customized");
+}
+
 function currentPalette() {
-  return glyphPaletteOptions.find((palette) => palette.key === activePaletteKey) ?? glyphPaletteOptions[0];
+  const byKey = glyphPaletteOptions.find((palette) => palette.key === activePaletteKey);
+  if (byKey && (editorPaletteMeta[byKey.key]?.mode ?? "dark") === editorMode) {
+    return byKey;
+  }
+  return currentEditorModeOptions()[0] ?? glyphPaletteOptions[0];
 }
 
 function currentBlockSurface() {
@@ -1606,45 +2588,60 @@ function applySelectionHighlightTheme() {
   document.documentElement.style.setProperty("--editor-selection", currentSelectionHighlight().value);
 }
 
+function applyEditorPaletteSelection(paletteKey) {
+  const palette = glyphPaletteOptions.find((entry) => entry.key === paletteKey);
+  if (!palette) {
+    return;
+  }
+
+  const meta = editorPaletteMeta[palette.key] ?? {};
+  activePaletteKey = palette.key;
+  editorMode = meta.mode ?? editorMode;
+  activeEditorBackgroundKey = meta.backgroundKey ?? activeEditorBackgroundKey;
+  activeEditorTextColorKey = meta.textColorKey ?? activeEditorTextColorKey;
+  activeEditorTextHighlightKey = meta.textHighlightKey ?? activeEditorTextHighlightKey;
+  activeBlockSurfaceKey = meta.blockKey ?? activeBlockSurfaceKey;
+  activeLineHighlightKey = meta.lineKey ?? activeLineHighlightKey;
+  activeSelectionHighlightKey = meta.selectionKey ?? activeSelectionHighlightKey;
+  applySharedGlyphColor(palette.color);
+}
+
 function syncGlyphHighlightUi() {
-  highlightPaletteButton.textContent = currentPalette().label;
-  highlightPaletteButton.setAttribute("aria-expanded", String(paletteMenuOpen));
-  highlightPaletteOptions.classList.toggle("is-open", paletteMenuOpen);
-
-  highlightPaletteOptions.querySelectorAll("[data-palette-key]").forEach((button) => {
-    const active = activePaletteKey === button.dataset.paletteKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+  syncDropdownControl({
+    nodeId: "editorPalette",
+    button: highlightPaletteButton,
+    menu: highlightPaletteOptions,
+    label: currentEditorPaletteLabel(),
+    open: paletteMenuOpen,
+    options: currentEditorModeOptions().map((palette) => ({ key: palette.key, label: palette.label })),
+    activeKey: currentEditorPaletteSelectionKey(),
   });
-
-  blockSurfaceButton.textContent = currentBlockSurface().label;
-  blockSurfaceButton.setAttribute("aria-expanded", String(blockSurfaceMenuOpen));
-  blockSurfaceOptions.classList.toggle("is-open", blockSurfaceMenuOpen);
-
-  blockSurfaceOptions.querySelectorAll("[data-block-surface-key]").forEach((button) => {
-    const active = activeBlockSurfaceKey === button.dataset.blockSurfaceKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+  syncDropdownControl({
+    nodeId: "editorBlockStyle",
+    button: blockSurfaceButton,
+    menu: blockSurfaceOptions,
+    label: currentBlockSurface().label,
+    open: blockSurfaceMenuOpen,
+    options: blockSurfacePresets.map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeBlockSurfaceKey,
   });
-
-  lineHighlightButton.textContent = currentLineHighlight().label;
-  lineHighlightButton.setAttribute("aria-expanded", String(lineHighlightMenuOpen));
-  lineHighlightOptions.classList.toggle("is-open", lineHighlightMenuOpen);
-
-  lineHighlightOptions.querySelectorAll("[data-line-highlight-key]").forEach((button) => {
-    const active = activeLineHighlightKey === button.dataset.lineHighlightKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+  syncDropdownControl({
+    nodeId: "editorLineStyle",
+    button: lineHighlightButton,
+    menu: lineHighlightOptions,
+    label: currentLineHighlight().label,
+    open: lineHighlightMenuOpen,
+    options: lineHighlightPresets.map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeLineHighlightKey,
   });
-
-  selectionHighlightButton.textContent = currentSelectionHighlight().label;
-  selectionHighlightButton.setAttribute("aria-expanded", String(selectionHighlightMenuOpen));
-  selectionHighlightOptions.classList.toggle("is-open", selectionHighlightMenuOpen);
-
-  selectionHighlightOptions.querySelectorAll("[data-selection-highlight-key]").forEach((button) => {
-    const active = activeSelectionHighlightKey === button.dataset.selectionHighlightKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+  syncDropdownControl({
+    nodeId: "editorSelectionStyle",
+    button: selectionHighlightButton,
+    menu: selectionHighlightOptions,
+    label: currentSelectionHighlight().label,
+    open: selectionHighlightMenuOpen,
+    options: selectionHighlightPresets.map((preset) => ({ key: preset.key, label: preset.label })),
+    activeKey: activeSelectionHighlightKey,
   });
 
   glyphColorSpecs.forEach((spec) => {
@@ -1676,99 +2673,14 @@ function syncGlyphHighlightUi() {
 }
 
 function renderGlyphHighlightControls() {
-  highlightPaletteOptions.innerHTML = glyphPaletteOptions
-    .map(
-      (palette) => `
-        <button class="palette-option" type="button" data-palette-key="${palette.key}">
-          ${palette.label}
-        </button>
-      `,
-    )
-    .join("");
+  if (!glyphColorList) {
+    return;
+  }
 
-  blockSurfaceOptions.innerHTML = blockSurfacePresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-block-surface-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  lineHighlightOptions.innerHTML = lineHighlightPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-line-highlight-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  selectionHighlightOptions.innerHTML = selectionHighlightPresets
-    .map(
-      (preset) => `
-        <button class="palette-option" type="button" data-selection-highlight-key="${preset.key}">
-          ${preset.label}
-        </button>
-      `,
-    )
-    .join("");
-
-  glyphColorList.innerHTML = glyphColorSpecs
-    .map(
-      (spec) => `
-        <div class="glyph-color-row" data-glyph-key="${spec.key}">
-          <div class="glyph-preview" aria-hidden="true">${renderToken(spec.token)}</div>
-          <div class="glyph-color-stack">
-            <div class="glyph-color-control">
-              <label class="glyph-color-field">
-                <span class="glyph-color-swatch" data-glyph-swatch="${spec.key}" style="--glyph-swatch-color:${glyphColors[spec.key]}"></span>
-                <input
-                  class="glyph-color-value"
-                  type="text"
-                  value="${glyphColors[spec.key]}"
-                  inputmode="text"
-                  spellcheck="false"
-                  data-glyph-value="${spec.key}"
-                  aria-label="${spec.label} hex value"
-                />
-              </label>
-              <button
-                class="glyph-dropdown-toggle"
-                type="button"
-                data-glyph-toggle="${spec.key}"
-                aria-label="Open ${spec.label} color options"
-                aria-expanded="false"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M7 10l5 5 5-5"></path>
-                </svg>
-              </button>
-            </div>
-            <div class="glyph-option-list" data-glyph-options="${spec.key}">
-              ${glyphColorOptions
-                .map(
-                  (value) => `
-                    <button
-                      class="glyph-option"
-                      type="button"
-                      data-glyph-option-key="${spec.key}"
-                      data-glyph-option="${value}"
-                    >
-                      <span class="glyph-option-swatch" style="--glyph-option-color:${value}"></span>
-                      <span class="glyph-option-value">${value}</span>
-                    </button>
-                  `,
-                )
-                .join("")}
-            </div>
-          </div>
-        </div>
-      `,
-    )
-    .join("");
+  const glyphDisclosureNode = settingsNodesById.get("symbolHighlightDisclosure");
+  glyphColorList.innerHTML = createSettingsNodes(glyphDisclosureNode?.children ?? [], {
+    tokens: settingsFactoryTokens,
+  });
 
   syncGlyphHighlightUi();
 }
@@ -1787,18 +2699,29 @@ function loadGlyphHighlightState() {
       activeBlockSurfaceKey = blockSurfacePresets[0].key;
       activeLineHighlightKey = lineHighlightPresets[0].key;
       activeSelectionHighlightKey = selectionHighlightPresets[0].key;
-      applyEditorTheme();
-      applyBlockSurfaceTheme();
-      applyLineHighlightTheme();
-      applySelectionHighlightTheme();
-      applyGlyphColors();
       return;
     }
 
     const parsed = JSON.parse(raw);
-    activePaletteKey = glyphPaletteOptions.some((palette) => palette.key === parsed?.paletteKey)
-      ? parsed.paletteKey
+    if (parsed?.editorMode === "dark" || parsed?.editorMode === "light") {
+      editorMode = parsed.editorMode;
+    }
+    const requestedPaletteKey = legacyGlyphPaletteKeyMap[parsed?.paletteKey] ?? parsed?.paletteKey;
+    activePaletteKey = glyphPaletteOptions.some((palette) => palette.key === requestedPaletteKey)
+      ? requestedPaletteKey
       : glyphPaletteOptions[0].key;
+    editorMode = editorPaletteMeta[activePaletteKey]?.mode ?? editorMode;
+    if (editorBackgroundPresets.some((preset) => preset.key === parsed?.editorBackgroundKey)) {
+      activeEditorBackgroundKey = parsed.editorBackgroundKey;
+    }
+    if (editorTextColorPresets.some((preset) => preset.key === parsed?.editorTextColorKey)) {
+      activeEditorTextColorKey = parsed.editorTextColorKey;
+    }
+    const migratedEditorTextHighlightKey =
+      legacyEditorTextHighlightKeyMap[parsed?.editorTextHighlightKey] ?? parsed?.editorTextHighlightKey;
+    if (editorTextHighlightPresets.some((preset) => preset.key === migratedEditorTextHighlightKey)) {
+      activeEditorTextHighlightKey = migratedEditorTextHighlightKey;
+    }
     activeBlockSurfaceKey = blockSurfacePresets.some((preset) => preset.key === parsed?.blockSurfaceKey)
       ? parsed.blockSurfaceKey
       : blockSurfacePresets[0].key;
@@ -1826,12 +2749,6 @@ function loadGlyphHighlightState() {
   } catch (error) {
     console.warn("failed to restore glyph highlights", error);
   }
-
-  applyEditorTheme();
-  applyBlockSurfaceTheme();
-  applyLineHighlightTheme();
-  applySelectionHighlightTheme();
-  applyGlyphColors();
 }
 
 function countMatches(value, regex) {
@@ -2027,6 +2944,33 @@ function renderToken(token) {
   return `<span class="token ${glyph.tokenClass}"><span class="token-visual">${visualMarkup}</span><span class="token-raw">${escapeHtml(token)}</span></span>`;
 }
 
+function isKeywordChar(char) {
+  return /[\p{L}\p{N}_]/u.test(char);
+}
+
+function findKeywordTokenAt(line, index) {
+  const current = line[index] ?? "";
+  if (!isKeywordChar(current)) {
+    return null;
+  }
+
+  if (index > 0 && isKeywordChar(line[index - 1] ?? "")) {
+    return null;
+  }
+
+  let end = index + 1;
+  while (end < line.length && isKeywordChar(line[end] ?? "")) {
+    end += 1;
+  }
+
+  const lexeme = line.slice(index, end);
+  return styioHighlightKeywords.has(lexeme) ? lexeme : null;
+}
+
+function renderKeywordToken(token) {
+  return `<span class="token-keyword">${escapeHtml(token)}</span>`;
+}
+
 function findGlyphTokenAt(line, index) {
   return glyphOperators.find((token) => line.startsWith(token, index)) ?? null;
 }
@@ -2037,6 +2981,7 @@ function renderInlineWithCaret(line, lineStart, caretOffset) {
 
   while (index < line.length) {
     const token = findGlyphTokenAt(line, index);
+    const keyword = !token ? findKeywordTokenAt(line, index) : null;
     const tokenStart = lineStart + index;
     const insideToken =
       token !== null && caretOffset > tokenStart && caretOffset < tokenStart + token.length;
@@ -2044,6 +2989,12 @@ function renderInlineWithCaret(line, lineStart, caretOffset) {
     if (token && !insideToken) {
       html += renderToken(token);
       index += token.length;
+      continue;
+    }
+
+    if (keyword) {
+      html += renderKeywordToken(keyword);
+      index += keyword.length;
       continue;
     }
 
@@ -2253,26 +3204,47 @@ function stopPointerSelection() {
 }
 
 function scheduleNativeRender() {
-  if (pendingNativeRenderFrame) {
+  requestRender(renderGroups.editorSelection);
+}
+
+function scheduleLayoutRender() {
+  requestRender(renderGroups.editorLayout);
+  window.requestAnimationFrame(() => {
+    requestRender(renderGroups.editorLayout);
+  });
+  if (pendingLayoutRenderTimeout) {
+    window.clearTimeout(pendingLayoutRenderTimeout);
+  }
+  pendingLayoutRenderTimeout = window.setTimeout(() => {
+    pendingLayoutRenderTimeout = 0;
+    requestRender(renderGroups.editorLayout);
+  }, 260);
+}
+
+function ensureGridLayoutConfigBinding() {
+  if (detachGridLayoutConfigBinding || !document.body) {
     return;
   }
 
-  pendingNativeRenderFrame = window.requestAnimationFrame(() => {
-    pendingNativeRenderFrame = 0;
-    renderEditor();
+  detachGridLayoutConfigBinding = bindGridLayoutConfigTarget(document.body, {
+    onAfterApply: () => {
+      if (document.body.dataset.uiStyle === "grid") {
+        scheduleLayoutRender();
+      }
+    },
   });
 }
 
 function syncSidebar() {
   document.body.classList.toggle("sidebar-open", sidebarOpen);
   workspaceShell.classList.toggle("sidebar-open", sidebarOpen);
-  toggleSidebar.setAttribute("aria-expanded", String(sidebarOpen));
-  toggleSidebar.setAttribute("aria-label", t("openSidebar"));
-  toggleSidebar.setAttribute("title", t("openSidebar"));
-  toggleSidebar.innerHTML = sidebarToggleSvg(false);
-  closeSidebar.innerHTML = sidebarToggleSvg(false);
-  closeSidebar.setAttribute("aria-label", t("closeSidebar"));
-  closeSidebar.setAttribute("title", t("closeSidebar"));
+  syncStyleShellLayout(styleShellBridge, {
+    activeUiStyleKey,
+    sidebarOpen,
+    toggleIconMarkup: sidebarToggleSvg(false),
+    closeIconMarkup: sidebarToggleSvg(false),
+    t,
+  });
 
   drawerTabs.forEach((button) => {
     const active = button.dataset.drawerTab === activeDrawerTab;
@@ -2280,6 +3252,8 @@ function syncSidebar() {
     const panel = document.getElementById(`drawerPanel${button.dataset.drawerTab.charAt(0).toUpperCase()}${button.dataset.drawerTab.slice(1)}`);
     panel.classList.toggle("is-active", active);
   });
+
+  scheduleLayoutRender();
 }
 
 function chooseWorkspaceFile(preferredFile, files) {
@@ -2362,6 +3336,12 @@ function activeTreeEntry() {
 function parentDirectoryOf(path) {
   const index = String(path || "").lastIndexOf("/");
   return index >= 0 ? path.slice(0, index) : "";
+}
+
+function formatTabFileLabel(path) {
+  const baseName = String(path || "").split("/").pop() || String(path || "");
+  const extensionIndex = baseName.lastIndexOf(".");
+  return extensionIndex > 0 ? baseName.slice(0, extensionIndex) : baseName;
 }
 
 function joinRelativePath(basePath, leafName) {
@@ -2463,40 +3443,123 @@ function currentLanguageOption() {
   return languageOptionsList.find((option) => option.key === activeLanguageKey) ?? languageOptionsList[0];
 }
 
-function syncLanguageUi() {
-  if (languageModeButton) {
-    languageModeButton.textContent = currentLanguageOption().label;
-    languageModeButton.setAttribute("aria-expanded", String(languageMenuOpen));
-  }
+function currentUiStyleOption() {
+  return uiStyleOptionsList.find((option) => option.key === activeUiStyleKey) ?? uiStyleOptionsList[0];
+}
 
-  if (!languageModeOptions) {
-    return;
-  }
-
-  languageModeOptions.classList.toggle("is-open", languageMenuOpen);
-  languageModeOptions.querySelectorAll("[data-language-key]").forEach((button) => {
-    const active = button.dataset.languageKey === activeLanguageKey;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+function applyUiStyleStrategy() {
+  const styleFactory = createUiStyleFactory(activeUiStyleKey, settingsFactoryTokens);
+  Object.entries(styleFactory.cssVars).forEach(([cssVar, value]) => {
+    document.documentElement.style.setProperty(cssVar, value);
+  });
+  document.body.dataset.uiStyle = styleFactory.key;
+  document.body.dataset.themeMode = themeMode;
+  document.body.dataset.editorMode = editorMode;
+  syncStyleShellLayout(styleShellBridge, {
+    activeUiStyleKey: styleFactory.key,
+    sidebarOpen,
+    toggleIconMarkup: sidebarToggleSvg(false),
+    closeIconMarkup: sidebarToggleSvg(false),
+    t,
+  });
+  settingsFactoryRoot?.setAttribute("style", serializeSettingsFactoryTokens(styleFactory.settingsTokens));
+  applyVisualTokenOverrides(visualTokenOverrides, {
+    root: document.documentElement,
+    settingsRoot: settingsFactoryRoot,
   });
 }
 
-function renderLanguageOptions() {
-  if (!languageModeOptions) {
-    return;
+function persistUiStyleState() {
+  try {
+    window.localStorage.setItem(storageKeys.uiStyle, JSON.stringify({ style: activeUiStyleKey }));
+  } catch (error) {
+    console.warn("failed to persist ui style state", error);
   }
+  persistCustomPaletteConfigState();
+}
 
-  languageModeOptions.innerHTML = languageOptionsList
+function loadUiStyleState() {
+  try {
+    const raw = window.localStorage.getItem(storageKeys.uiStyle);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    const migratedStyleKey = legacyUiStyleKeyMap[parsed?.style] ?? parsed?.style;
+    if (uiStyleOptionsList.some((option) => option.key === migratedStyleKey)) {
+      activeUiStyleKey = migratedStyleKey;
+    }
+  } catch (error) {
+    console.warn("failed to restore ui style state", error);
+  }
+}
+
+function renderSettingsOptionButtons(nodeId, options) {
+  return options
     .map(
       (option) => `
-        <button class="palette-option" type="button" data-language-key="${option.key}">
+        <button
+          class="palette-option"
+          type="button"
+          data-setting-option-for="${nodeId}"
+          data-setting-option-value="${option.key}"
+        >
           ${option.label}
         </button>
       `,
     )
     .join("");
+}
 
+function syncDropdownControl({ nodeId, button, menu, label, open, options, activeKey }) {
+  if (button) {
+    button.textContent = label;
+    button.setAttribute("aria-expanded", String(open));
+  }
+
+  if (!menu) {
+    return;
+  }
+
+  menu.classList.toggle("is-open", open);
+  menu.innerHTML = renderSettingsOptionButtons(nodeId, options);
+  menu.querySelectorAll("[data-setting-option-value]").forEach((optionButton) => {
+    const active = optionButton.dataset.settingOptionValue === activeKey;
+    optionButton.classList.toggle("is-active", active);
+    optionButton.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function syncLanguageUi() {
+  syncDropdownControl({
+    nodeId: "language",
+    button: languageModeButton,
+    menu: languageModeOptions,
+    label: currentLanguageOption().label,
+    open: languageMenuOpen,
+    options: languageOptionsList,
+    activeKey: activeLanguageKey,
+  });
+}
+
+function renderLanguageOptions() {
   syncLanguageUi();
+}
+
+function syncStyleUi() {
+  syncDropdownControl({
+    nodeId: "style",
+    button: styleButton,
+    menu: styleOptions,
+    label: currentUiStyleOption().label,
+    open: styleMenuOpen,
+    options: uiStyleOptionsList,
+    activeKey: activeUiStyleKey,
+  });
+}
+
+function renderStyleOptions() {
+  syncStyleUi();
 }
 
 function currentAutoSaveOption() {
@@ -2545,25 +3608,24 @@ function loadAutoSaveState() {
 }
 
 function syncAutoSaveUi() {
-  if (autoSaveModeButton) {
-    const labelMap = {
-      off: activeLanguageKey === "zhCn" ? "关闭" : "Off",
-      afterDelay: activeLanguageKey === "zhCn" ? "延迟后" : "After Delay",
-      onFocusChange: activeLanguageKey === "zhCn" ? "焦点切换时" : "On Focus Change",
-      onWindowChange: activeLanguageKey === "zhCn" ? "窗口切换时" : "On Window Change",
-    };
-    autoSaveModeButton.textContent = labelMap[autoSaveMode] ?? currentAutoSaveOption().label;
-    autoSaveModeButton.setAttribute("aria-expanded", String(autoSaveMenuOpen));
-  }
-
-  if (autoSaveModeOptions) {
-    autoSaveModeOptions.classList.toggle("is-open", autoSaveMenuOpen);
-    autoSaveModeOptions.querySelectorAll("[data-auto-save-mode]").forEach((button) => {
-      const active = button.dataset.autoSaveMode === autoSaveMode;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", String(active));
-    });
-  }
+  const labelMap = {
+    off: activeLanguageKey === "zhCn" ? "关闭" : "Off",
+    afterDelay: activeLanguageKey === "zhCn" ? "延迟后" : "After Delay",
+    onFocusChange: activeLanguageKey === "zhCn" ? "焦点切换时" : "On Focus Change",
+    onWindowChange: activeLanguageKey === "zhCn" ? "窗口切换时" : "On Window Change",
+  };
+  syncDropdownControl({
+    nodeId: "autoSave",
+    button: autoSaveModeButton,
+    menu: autoSaveModeOptions,
+    label: labelMap[autoSaveMode] ?? currentAutoSaveOption().label,
+    open: autoSaveMenuOpen,
+    options: autoSaveModeOptionsList.map((option) => ({
+      key: option.key,
+      label: labelMap[option.key] ?? option.label,
+    })),
+    activeKey: autoSaveMode,
+  });
 
   if (autoSaveDelayField) {
     autoSaveDelayField.hidden = autoSaveMode !== "afterDelay";
@@ -2590,30 +3652,6 @@ function syncAutoSaveUi() {
 }
 
 function renderAutoSaveOptions() {
-  if (!autoSaveModeOptions) {
-    return;
-  }
-
-  autoSaveModeOptions.innerHTML = autoSaveModeOptionsList
-    .map(
-      (option) => `
-        <button class="palette-option" type="button" data-auto-save-mode="${option.key}">
-          ${
-            activeLanguageKey === "zhCn"
-              ? option.key === "off"
-                ? "关闭"
-                : option.key === "afterDelay"
-                  ? "延迟后"
-                  : option.key === "onFocusChange"
-                    ? "焦点切换时"
-                    : "窗口切换时"
-              : option.label
-          }
-        </button>
-      `,
-    )
-    .join("");
-
   syncAutoSaveUi();
 }
 
@@ -2647,6 +3685,7 @@ function closeAppDialog(result = null) {
   const resolver = activeDialogResolver;
   activeDialogResolver = null;
   appDialogInput.value = "";
+  appDialogTextarea.value = "";
   if (resolver) {
     resolver(result);
   }
@@ -2659,6 +3698,7 @@ function openAppDialog(options = {}) {
     confirmLabel = t("confirm"),
     cancelLabel = t("cancel"),
     input = null,
+    textarea = null,
     items = [],
     placeholder = "",
     destructive = false,
@@ -2678,10 +3718,15 @@ function openAppDialog(options = {}) {
   appDialogConfirm.classList.toggle("danger", destructive);
 
   const hasInput = input !== null;
+  const hasTextarea = textarea !== null;
   appDialogInputField.hidden = !hasInput;
   appDialogInput.value = hasInput ? String(input) : "";
   appDialogInput.placeholder = placeholder;
   appDialogInput.setAttribute("aria-label", title);
+  appDialogTextareaField.hidden = !hasTextarea;
+  appDialogTextarea.value = hasTextarea ? String(textarea) : "";
+  appDialogTextarea.placeholder = placeholder;
+  appDialogTextarea.setAttribute("aria-label", title);
 
   const dialogItems = Array.isArray(items) ? items.filter(Boolean) : [];
   appDialogList.hidden = dialogItems.length === 0;
@@ -2698,7 +3743,10 @@ function openAppDialog(options = {}) {
   appDialogOverlay.hidden = false;
 
   requestAnimationFrame(() => {
-    if (hasInput) {
+    if (hasTextarea) {
+      appDialogTextarea.focus();
+      appDialogTextarea.setSelectionRange(appDialogTextarea.value.length, appDialogTextarea.value.length);
+    } else if (hasInput) {
       appDialogInput.focus();
       appDialogInput.select();
     } else {
@@ -2718,6 +3766,13 @@ function openPromptDialog(options = {}) {
   });
 }
 
+function openTextareaDialog(options = {}) {
+  return openAppDialog({
+    ...options,
+    textarea: options.textarea ?? "",
+  });
+}
+
 function openConfirmDialog(options = {}) {
   return openAppDialog({
     ...options,
@@ -2725,8 +3780,60 @@ function openConfirmDialog(options = {}) {
   });
 }
 
+function hideAppToast() {
+  if (!appToast) {
+    return;
+  }
+  appToast.hidden = true;
+  appToast.classList.remove("is-success", "is-error");
+  if (appToastTimer) {
+    clearTimeout(appToastTimer);
+    appToastTimer = null;
+  }
+}
+
+function showAppToast(message, kind = "success") {
+  if (!appToast || !appToastText || !message) {
+    return;
+  }
+
+  if (appToastTimer) {
+    clearTimeout(appToastTimer);
+    appToastTimer = null;
+  }
+
+  appToastText.textContent = message;
+  appToast.hidden = false;
+  appToast.classList.toggle("is-success", kind === "success");
+  appToast.classList.toggle("is-error", kind === "error");
+
+  appToastTimer = window.setTimeout(() => {
+    hideAppToast();
+  }, 2200);
+}
+
 function setWorkspacePickerMessage(text) {
   workspacePickerCaption.textContent = text;
+}
+
+function setWorkspacePickerState({
+  mode = "directory",
+  includeFiles = false,
+  title = t("openWorkspaceTitle"),
+  caption = t("chooseWorkspaceRoot"),
+  confirmLabel = t("useThisFolder"),
+  onConfirm = null,
+} = {}) {
+  workspacePickerMode = mode;
+  workspacePickerIncludeFiles = includeFiles;
+  workspacePickerSelectedFilePath = "";
+  workspacePickerConfirmAction = onConfirm;
+  workspacePickerTitleText = title;
+  workspacePickerDefaultCaptionText = caption;
+  workspacePickerConfirmText = confirmLabel;
+  workspacePickerTitle.textContent = title;
+  workspacePickerCaption.textContent = caption;
+  workspacePickerConfirm.textContent = confirmLabel;
 }
 
 function syncWorkspacePathVisual() {
@@ -2764,13 +3871,12 @@ function syncWorkspacePathScrollerMetrics() {
   }
 
   window.requestAnimationFrame(() => {
-    const maxScroll = Math.max(0, workspacePathText.scrollWidth - workspacePathViewport.clientWidth);
-    workspacePathViewport.scrollLeft = maxScroll;
+    workspacePathViewport.scrollLeft = 0;
     syncWorkspacePathVisual();
   });
 }
 
-function scrollWorkspacePathDisplayToEnd() {
+function scrollWorkspacePathDisplayToStart() {
   syncWorkspacePathScrollerMetrics();
 }
 
@@ -2783,7 +3889,7 @@ function syncWorkspaceControls() {
     workspacePathDisplay.title = workspaceRootPath;
   }
 
-  scrollWorkspacePathDisplayToEnd();
+  scrollWorkspacePathDisplayToStart();
 
   if (workspacePathHint) {
     workspacePathHint.hidden = true;
@@ -2803,10 +3909,11 @@ function renderFileTabs() {
   fileTabs.innerHTML = fileOrder
     .map((fileName) => {
       const dirty = Boolean(fileDirty[fileName]);
+      const tabLabel = formatTabFileLabel(fileName);
       return `
         <div class="editor-tab ${fileName === currentFile ? "is-active" : ""} ${dirty ? "is-dirty" : ""}" data-tab-item="${escapeHtml(fileName)}">
           <button class="editor-tab-main" data-tab-file="${escapeHtml(fileName)}" type="button">
-            <span class="editor-tab-label">${escapeHtml(fileName.split("/").pop() || fileName)}</span>
+            <span class="editor-tab-label">${escapeHtml(tabLabel)}</span>
           </button>
           <button class="editor-tab-close" data-tab-close="${escapeHtml(fileName)}" type="button" aria-label="${escapeHtml(`${activeLanguageKey === "zhCn" ? "关闭 " : "Close "}${fileName}`)}" title="${escapeHtml(activeLanguageKey === "zhCn" ? "关闭标签页" : "Close tab")}">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -3255,8 +4362,14 @@ async function loadWorkspaceFile(fileName) {
 function renderWorkspacePicker(snapshot) {
   workspacePickerPath = snapshot.currentPath || "";
   workspacePickerParentPath = snapshot.parentPath || null;
-  workspacePickerCurrent.value = workspacePickerPath;
+  workspacePickerSelectedFilePath = snapshot.selectedFilePath || "";
+  workspacePickerCurrent.value =
+    workspacePickerMode === "file" && workspacePickerSelectedFilePath
+      ? workspacePickerSelectedFilePath
+      : workspacePickerPath;
   workspacePickerUp.disabled = !workspacePickerParentPath;
+  workspacePickerConfirm.disabled =
+    workspacePickerMode === "file" ? !workspacePickerSelectedFilePath : false;
 
   workspacePickerBreadcrumbs.innerHTML = (snapshot.breadcrumbs || [])
     .map(
@@ -3268,30 +4381,64 @@ function renderWorkspacePicker(snapshot) {
     )
     .join("");
 
-  workspacePickerList.innerHTML = (snapshot.directories || []).length
-    ? snapshot.directories
+  const directoryMarkup = (snapshot.directories || [])
+    .map(
+      (directory) => `
+        <button class="workspace-picker-entry" type="button" data-picker-path="${escapeHtml(directory.path)}" data-picker-kind="directory">
+          <span class="workspace-picker-entry-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M3.75 7.75A1.75 1.75 0 0 1 5.5 6h4.05c.4 0 .79.16 1.07.44l1.24 1.24c.28.28.66.44 1.06.44h5.58a1.75 1.75 0 0 1 1.75 1.75v6.38A1.75 1.75 0 0 1 18.5 18H5.5a1.75 1.75 0 0 1-1.75-1.75z"></path>
+              <path d="M3.75 10h16.5"></path>
+            </svg>
+          </span>
+          <span class="workspace-picker-entry-copy">
+            <span class="workspace-picker-entry-name">${escapeHtml(directory.name)}</span>
+            <span class="workspace-picker-entry-path">${escapeHtml(directory.path)}</span>
+          </span>
+          <span class="workspace-picker-entry-chevron" aria-hidden="true"></span>
+        </button>
+      `,
+    )
+    .join("");
+
+  const fileMarkup = workspacePickerIncludeFiles
+    ? (snapshot.files || [])
         .map(
-          (directory) => `
-            <button class="workspace-picker-entry" type="button" data-picker-path="${escapeHtml(directory.path)}">
+          (file) => `
+            <button class="workspace-picker-entry workspace-picker-entry-file ${workspacePickerSelectedFilePath === file.path ? "is-selected" : ""}" type="button" data-picker-path="${escapeHtml(file.path)}" data-picker-kind="file">
               <span class="workspace-picker-entry-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
-                  <path d="M3.75 7.75A1.75 1.75 0 0 1 5.5 6h4.05c.4 0 .79.16 1.07.44l1.24 1.24c.28.28.66.44 1.06.44h5.58a1.75 1.75 0 0 1 1.75 1.75v6.38A1.75 1.75 0 0 1 18.5 18H5.5a1.75 1.75 0 0 1-1.75-1.75z"></path>
-                  <path d="M3.75 10h16.5"></path>
+                  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
+                  <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
                 </svg>
               </span>
               <span class="workspace-picker-entry-copy">
-                <span class="workspace-picker-entry-name">${escapeHtml(directory.name)}</span>
-                <span class="workspace-picker-entry-path">${escapeHtml(directory.path)}</span>
+                <span class="workspace-picker-entry-name">${escapeHtml(file.name)}</span>
+                <span class="workspace-picker-entry-path">${escapeHtml(file.path)}</span>
               </span>
-              <span class="workspace-picker-entry-chevron" aria-hidden="true"></span>
             </button>
           `,
         )
         .join("")
-    : `<div class="workspace-picker-empty">${escapeHtml(t("noDirectoriesFound"))}</div>`;
+    : "";
+
+  const markup = `${directoryMarkup}${fileMarkup}`;
+  workspacePickerList.innerHTML = markup
+    ? markup
+    : `<div class="workspace-picker-empty">${escapeHtml(
+        workspacePickerIncludeFiles ? t("noFilesFound") : t("noDirectoriesFound"),
+      )}</div>`;
 }
 
-async function browseWorkspaceDirectories(path) {
+function syncWorkspacePickerSelection() {
+  workspacePickerList
+    .querySelectorAll('[data-picker-kind="file"]')
+    .forEach((button) => {
+      button.classList.toggle("is-selected", button.dataset.pickerPath === workspacePickerSelectedFilePath);
+    });
+}
+
+async function browseWorkspaceEntries(path) {
   const targetPath = (path || workspaceRootPath || "").trim();
   if (!targetPath) {
     return false;
@@ -3299,12 +4446,15 @@ async function browseWorkspaceDirectories(path) {
 
   workspacePickerCurrent.value = targetPath;
   workspacePickerList.innerHTML = `<div class="workspace-picker-empty">${escapeHtml(t("loadingFolders"))}</div>`;
-  setWorkspacePickerMessage(t("chooseWorkspaceRoot"));
+  setWorkspacePickerMessage(workspacePickerDefaultCaptionText || t("chooseWorkspaceRoot"));
 
   try {
-    const response = await fetch(`/api/browser/directories?path=${encodeURIComponent(targetPath)}`, {
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `/api/browser/entries?path=${encodeURIComponent(targetPath)}&includeFiles=${workspacePickerIncludeFiles ? "1" : "0"}`,
+      {
+        cache: "no-store",
+      },
+    );
 
     const payload = await response.json();
     if (!response.ok) {
@@ -3315,6 +4465,8 @@ async function browseWorkspaceDirectories(path) {
     return true;
   } catch (error) {
     console.error(error);
+    workspacePickerSelectedFilePath = "";
+    workspacePickerConfirm.disabled = workspacePickerMode === "file";
     workspacePickerList.innerHTML = `<div class="workspace-picker-empty">${escapeHtml(error.message)}</div>`;
     setWorkspacePickerMessage(error.message);
     return false;
@@ -3322,12 +4474,24 @@ async function browseWorkspaceDirectories(path) {
 }
 
 function openWorkspacePicker(startPath = workspaceRootPath) {
+  setWorkspacePickerState({
+    mode: "directory",
+    includeFiles: false,
+    title: t("openWorkspaceTitle"),
+    caption: t("chooseWorkspaceRoot"),
+    confirmLabel: t("useThisFolder"),
+    onConfirm: async (selectedPath) => {
+      await applyWorkspaceRoot(selectedPath);
+    },
+  });
   workspacePickerOverlay.hidden = false;
-  browseWorkspaceDirectories(startPath);
+  browseWorkspaceEntries(startPath);
 }
 
 function closeWorkspacePicker() {
   workspacePickerOverlay.hidden = true;
+  workspacePickerSelectedFilePath = "";
+  workspacePickerConfirmAction = null;
   setWorkspacePickerMessage(t("chooseWorkspaceRoot"));
 }
 
@@ -3360,6 +4524,75 @@ async function applyWorkspaceRoot(path) {
     setWorkspacePickerMessage(error.message);
   } finally {
     workspacePickerConfirm.disabled = false;
+  }
+}
+
+async function readBrowserTextFile(path) {
+  const response = await fetch(`/api/browser/file?path=${encodeURIComponent(path)}`, {
+    cache: "no-store",
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || `file read failed with ${response.status}`);
+  }
+  return payload;
+}
+
+function applyImportedPaletteConfig(rawText) {
+  const parsedConfig = parseCustomPaletteConfig(rawText);
+  applyCustomPaletteConfig(parsedConfig);
+  persistLanguageState();
+  persistThemeSettings();
+  persistEditorSurfaceState();
+  document.body.classList.toggle("glyphs-off", !glyphsOn);
+  updateIndentUi();
+  toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
+  toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
+  toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
+  flushFullAppRender();
+}
+
+async function openPaletteConfigImportPicker(startPath = workspaceRootPath) {
+  setWorkspacePickerState({
+    mode: "file",
+    includeFiles: true,
+    title: t("importConfigFile"),
+    caption: t("chooseConfigFile"),
+    confirmLabel: t("importThisFile"),
+    onConfirm: async (selectedPath) => {
+      const payload = await readBrowserTextFile(selectedPath);
+      applyImportedPaletteConfig(payload.content ?? "");
+      closeWorkspacePicker();
+      showAppToast(t("configImported"), "success");
+    },
+  });
+  workspacePickerOverlay.hidden = false;
+  await browseWorkspaceEntries(startPath);
+}
+
+async function openPaletteConfigEditor() {
+  const rawText = await openTextareaDialog({
+    title: t("themeConfig"),
+    message: t("themeConfigMessage"),
+    confirmLabel: t("confirm"),
+    cancelLabel: t("cancel"),
+    textarea: buildCustomPaletteConfigText(),
+    placeholder: "{\n  \"$schema\": \"https://styio.dev/schemas/theme-customizations.json\"\n}",
+  });
+  if (rawText === null) {
+    return;
+  }
+
+  try {
+    applyImportedPaletteConfig(rawText);
+    showAppToast(t("configSaved"), "success");
+  } catch (error) {
+    console.error(error);
+    await openConfirmDialog({
+      title: "",
+      message: error.message,
+      confirmLabel: t("confirm"),
+    });
   }
 }
 
@@ -3491,7 +4724,10 @@ function updateIndentUi() {
 
 function updateStatusbar(analysis) {
   latestAnalysis = analysis;
-  currentFileTitle.textContent = t("appTitle");
+  syncStyleShellTitles(styleShellBridge, {
+    appTitle: t("appTitle"),
+    workspaceTitle: t("workspace"),
+  });
   workspacePathHint.hidden = true;
   workspacePathHint.textContent = "";
   if (glyphState) {
@@ -3568,19 +4804,7 @@ function updateSaveUi() {
 }
 
 function renderEditor() {
-  const analysis = analyzeSource(fileSources[currentFile]);
-  syncBulkDeleteButton();
-  syncRefreshWorkspaceButton();
-  renderFileTabs();
-  renderFileTree();
-  renderGutter(analysis);
-  renderLines(analysis);
-  syncOverlayMetrics();
-  renderBlocks(analysis);
-  syncCaretIndicator(analysis);
-  syncScroll();
-  updateStatusbar(analysis);
-  updateSaveUi();
+  flushRender(renderGroups.fullEditor);
 }
 
 async function focusFile(fileName) {
@@ -3617,7 +4841,8 @@ function replaceSelection(replacement, nextSelectionStart, nextSelectionEnd = ne
   editorInput.setSelectionRange(nextSelectionStart, nextSelectionEnd);
   fileSources[currentFile] = nextValue;
   fileDirty[currentFile] = true;
-  renderEditor();
+  requestSidebarRender();
+  requestEditorContentRender();
 }
 
 function currentLineStart(value, offset) {
@@ -3844,7 +5069,8 @@ async function saveCurrentFile() {
     fileSources[currentFile] = editorInput.value;
     fileDirty[currentFile] = false;
     workspaceLoadedFiles.add(currentFile);
-    renderEditor();
+    requestSidebarRender();
+    requestRender(RenderSlice.saveUi);
   } catch (error) {
     console.error(error);
     setSaveState("error", "disk: save failed");
@@ -3863,6 +5089,10 @@ appDialogCancel.addEventListener("click", () => {
 });
 
 appDialogConfirm.addEventListener("click", () => {
+  if (!appDialogTextareaField.hidden) {
+    closeAppDialog(appDialogTextarea.value);
+    return;
+  }
   closeAppDialog(appDialogInputField.hidden ? true : appDialogInput.value);
 });
 
@@ -3885,6 +5115,19 @@ appDialogInput.addEventListener("keydown", (event) => {
   }
 });
 
+appDialogTextarea.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "enter") {
+    event.preventDefault();
+    closeAppDialog(appDialogTextarea.value);
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeAppDialog(null);
+  }
+});
+
 document.addEventListener("keydown", (event) => {
   if (appDialogOverlay.hidden) {
     return;
@@ -3896,20 +5139,35 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (event.key === "Enter" && appDialogInputField.hidden) {
+  if (event.key === "Enter" && appDialogInputField.hidden && appDialogTextareaField.hidden) {
     event.preventDefault();
     closeAppDialog(true);
   }
 });
 
-toggleSidebar.addEventListener("click", () => {
-  sidebarOpen = !sidebarOpen;
-  syncSidebar();
-});
-
-closeSidebar.addEventListener("click", () => {
-  sidebarOpen = false;
-  syncSidebar();
+bindStyleShellBridgeEvents(styleShellBridge, {
+  onGridToggle: () => {
+    sidebarOpen = !sidebarOpen;
+    syncSidebar();
+  },
+  onGridClose: () => {
+    sidebarOpen = false;
+    syncSidebar();
+  },
+  onEditorialToggle: () => {
+    sidebarOpen = !sidebarOpen;
+    syncSidebar();
+  },
+  onEditorialFiles: () => {
+    activeDrawerTab = "files";
+    sidebarOpen = true;
+    syncSidebar();
+  },
+  onEditorialSettings: () => {
+    activeDrawerTab = "settings";
+    sidebarOpen = true;
+    syncSidebar();
+  },
 });
 
 drawerTabs.forEach((button) => {
@@ -3952,7 +5210,7 @@ fileTree.addEventListener("click", (event) => {
     } else {
       selectedTreePaths.add(treePath);
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -3975,7 +5233,7 @@ fileTree.addEventListener("click", (event) => {
     } else {
       activeTreePath = folderPath;
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -4001,7 +5259,7 @@ fileTree.addEventListener("click", (event) => {
     } else {
       selectedTreePaths.add(fileName);
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -4010,7 +5268,7 @@ fileTree.addEventListener("click", (event) => {
   const fileName = fileButton.dataset.treeFile;
   if (activeTreePath === fileName) {
     activeTreePath = "";
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -4077,7 +5335,24 @@ window.addEventListener("pointerup", () => {
 
 window.addEventListener("resize", () => {
   syncWorkspacePathScrollerMetrics();
+  scheduleLayoutRender();
 });
+
+workspaceShell.addEventListener("transitionend", (event) => {
+  if (event.target !== workspaceShell) {
+    return;
+  }
+  if (event.propertyName === "grid-template-columns" || event.propertyName === "gap") {
+    scheduleNativeRender();
+  }
+});
+
+if (window.ResizeObserver) {
+  const codeStageResizeObserver = new ResizeObserver(() => {
+    scheduleNativeRender();
+  });
+  codeStageResizeObserver.observe(codeStage);
+}
 
 workspacePickerClose.addEventListener("click", () => {
   closeWorkspacePicker();
@@ -4093,7 +5368,7 @@ workspacePickerUp.addEventListener("click", () => {
   if (!workspacePickerParentPath) {
     return;
   }
-  browseWorkspaceDirectories(workspacePickerParentPath);
+  browseWorkspaceEntries(workspacePickerParentPath);
 });
 
 workspacePickerBreadcrumbs.addEventListener("click", (event) => {
@@ -4101,7 +5376,7 @@ workspacePickerBreadcrumbs.addEventListener("click", (event) => {
   if (!button) {
     return;
   }
-  browseWorkspaceDirectories(button.dataset.pickerPath);
+  browseWorkspaceEntries(button.dataset.pickerPath);
 });
 
 workspacePickerList.addEventListener("click", (event) => {
@@ -4109,24 +5384,51 @@ workspacePickerList.addEventListener("click", (event) => {
   if (!button) {
     return;
   }
-  browseWorkspaceDirectories(button.dataset.pickerPath);
+  const targetPath = button.dataset.pickerPath;
+  const kind = button.dataset.pickerKind || "directory";
+  if (kind === "file") {
+    workspacePickerSelectedFilePath = targetPath;
+    workspacePickerCurrent.value = targetPath;
+    workspacePickerConfirm.disabled = false;
+    syncWorkspacePickerSelection();
+    return;
+  }
+  browseWorkspaceEntries(targetPath);
 });
 
 workspacePickerCurrent.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    browseWorkspaceDirectories(workspacePickerCurrent.value);
+    browseWorkspaceEntries(workspacePickerCurrent.value);
   }
 });
 
 workspacePickerCurrent.addEventListener("blur", () => {
   if (!workspacePickerOverlay.hidden && workspacePickerCurrent.value.trim()) {
-    browseWorkspaceDirectories(workspacePickerCurrent.value);
+    browseWorkspaceEntries(workspacePickerCurrent.value);
   }
 });
 
 workspacePickerConfirm.addEventListener("click", async () => {
-  await applyWorkspaceRoot(workspacePickerCurrent.value || workspacePickerPath);
+  const targetPath =
+    workspacePickerMode === "file"
+      ? workspacePickerSelectedFilePath || workspacePickerCurrent.value
+      : workspacePickerCurrent.value || workspacePickerPath;
+  if (!targetPath) {
+    return;
+  }
+
+  if (workspacePickerConfirmAction) {
+    try {
+      await workspacePickerConfirmAction(targetPath);
+    } catch (error) {
+      console.error(error);
+      setWorkspacePickerMessage(error.message);
+    }
+    return;
+  }
+
+  await applyWorkspaceRoot(targetPath);
 });
 
 createFolderButton.addEventListener("click", () => {
@@ -4140,7 +5442,7 @@ quickCreateFileButton.addEventListener("click", () => {
 refreshWorkspaceButton.addEventListener("click", () => {
   if (bulkDeleteMode) {
     exitBulkDeleteMode();
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -4162,13 +5464,13 @@ bulkDeleteButton.addEventListener("click", async () => {
     if (activeTreePath) {
       selectedTreePaths.add(activeTreePath);
     }
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
   if (!selectedTreePaths.size) {
     exitBulkDeleteMode();
-    renderEditor();
+    requestSidebarRender();
     return;
   }
 
@@ -4179,497 +5481,223 @@ workspaceMoreButton.addEventListener("click", () => {
   openWorkspacePicker(workspaceRootPath);
 });
 
-toggleGlyphs.addEventListener("click", () => {
-  glyphsOn = !glyphsOn;
-  document.body.classList.toggle("glyphs-off", !glyphsOn);
-  toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
-  toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
-  toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
-  persistEditorPreferences();
-  renderEditor();
-});
+settingsFactoryRoot?.addEventListener("click", (event) => {
+  const target = event.target;
 
-indentControl.querySelectorAll("[data-indent-size]").forEach((button) => {
-  button.addEventListener("click", () => {
-    indentSize = Number(button.dataset.indentSize) || 2;
-    persistEditorPreferences();
-    updateIndentUi();
-  });
-});
-
-themeColorButton?.addEventListener("click", () => {
-  closeSettingsMenus(themeColorMenuOpen ? "" : "themeColor");
-  syncSettingsUi();
-});
-
-themeColorOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-theme-color-key]");
-  if (!option) {
+  const linkedSurfaceTabButton = target.closest("[data-linked-surface-tab]");
+  if (linkedSurfaceTabButton && settingsFactoryRoot.contains(linkedSurfaceTabButton)) {
+    linkedSurfaceActiveTab = linkedSurfaceTabButton.dataset.linkedSurfaceTab;
+    closeSettingsMenus();
+    requestSettingsStateRender();
     return;
   }
 
-  const preset = themeColorPresets.find((entry) => entry.key === option.dataset.themeColorKey);
-  if (!preset) {
+  const linkedEditorModeLink = target.closest("[data-linked-editor-mode-link]");
+  if (linkedEditorModeLink && settingsFactoryRoot.contains(linkedEditorModeLink)) {
+    setEditorModeLinkState(!editorModeLinkedToTheme, { syncToTheme: !editorModeLinkedToTheme });
     return;
   }
 
-  activeThemeColorKey = preset.key;
-  closeSettingsMenus();
-  applyThemeColorTheme();
-  syncThemeUi();
-  persistThemeSettings();
-});
-
-themeBackgroundButton?.addEventListener("click", () => {
-  closeSettingsMenus(themeBackgroundMenuOpen ? "" : "themeBackground");
-  syncSettingsUi();
-});
-
-themeBackgroundOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-theme-background-key]");
-  if (!option) {
+  const linkedSurfaceModeButton = target.closest("[data-linked-surface-mode]");
+  if (linkedSurfaceModeButton && settingsFactoryRoot.contains(linkedSurfaceModeButton)) {
+    const nextMode = linkedSurfaceModeButton.dataset.linkedSurfaceMode;
+    if (!nextMode) {
+      return;
+    }
+    if (linkedSurfaceActiveTab === SURFACE_KEYS.THEME) {
+      switchSurfaceMode(SURFACE_KEYS.THEME, nextMode);
+      return;
+    }
+    if (editorModeLinkedToTheme) {
+      requestSettingsStateRender();
+      return;
+    }
+    switchSurfaceMode(SURFACE_KEYS.EDITOR, nextMode);
     return;
   }
 
-  const preset = themeBackgroundPresets.find((entry) => entry.key === option.dataset.themeBackgroundKey);
-  if (!preset) {
-    return;
-  }
-
-  activeThemeBackgroundKey = preset.key;
-  closeSettingsMenus();
-  applyThemeBackgroundTheme();
-  syncThemeUi();
-  persistThemeSettings();
-});
-
-interfaceFontButton?.addEventListener("click", () => {
-  closeSettingsMenus(interfaceFontMenuOpen ? "" : "interfaceFont");
-  syncSettingsUi();
-});
-
-interfaceFontOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-interface-font-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = interfaceFontOptionsList.find((entry) => entry.key === option.dataset.interfaceFontKey);
-  if (!preset) {
-    return;
-  }
-
-  activeInterfaceFontKey = preset.key;
-  closeSettingsMenus();
-  applyInterfaceFontTheme();
-  syncThemeUi();
-  persistThemeSettings();
-});
-
-interfaceSizeButton?.addEventListener("click", () => {
-  closeSettingsMenus(interfaceSizeMenuOpen ? "" : "interfaceSize");
-  syncSettingsUi();
-});
-
-interfaceSizeOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-interface-size-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = interfaceSizeOptionsList.find((entry) => entry.key === option.dataset.interfaceSizeKey);
-  if (!preset) {
-    return;
-  }
-
-  activeInterfaceSizeKey = preset.key;
-  closeSettingsMenus();
-  applyInterfaceSizeTheme();
-  syncThemeUi();
-  renderEditor();
-  persistThemeSettings();
-});
-
-editorFontButton?.addEventListener("click", () => {
-  closeSettingsMenus(editorFontMenuOpen ? "" : "editorFont");
-  syncSettingsUi();
-});
-
-editorFontOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-editor-font-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = editorFontOptionsList.find((entry) => entry.key === option.dataset.editorFontKey);
-  if (!preset) {
-    return;
-  }
-
-  activeEditorFontKey = preset.key;
-  closeSettingsMenus();
-  applyEditorFontTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
-});
-
-editorFontSizeButton?.addEventListener("click", () => {
-  closeSettingsMenus(editorFontSizeMenuOpen ? "" : "editorFontSize");
-  syncSettingsUi();
-});
-
-editorFontSizeOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-editor-font-size-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = editorFontSizePresets.find((entry) => entry.key === option.dataset.editorFontSizeKey);
-  if (!preset) {
-    return;
-  }
-
-  activeEditorFontSizeKey = preset.key;
-  closeSettingsMenus();
-  applyEditorFontSizeTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
-});
-
-highlightPaletteButton.addEventListener("click", () => {
-  closeSettingsMenus(paletteMenuOpen ? "" : "palette");
-  syncSettingsUi();
-});
-
-highlightPaletteOptions.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-palette-key]");
-  if (!option) {
-    return;
-  }
-
-  const palette = glyphPaletteOptions.find((entry) => entry.key === option.dataset.paletteKey);
-  if (!palette) {
-    return;
-  }
-
-  activePaletteKey = palette.key;
-  applySharedGlyphColor(palette.color);
-  closeSettingsMenus();
-  applyEditorTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  applyBlockSurfaceTheme();
-  applyLineHighlightTheme();
-  applySelectionHighlightTheme();
-  applyGlyphColors();
-  syncSettingsUi();
-  persistGlyphHighlights();
-});
-
-editorBackgroundButton?.addEventListener("click", () => {
-  closeSettingsMenus(editorBackgroundMenuOpen ? "" : "editorBackground");
-  syncSettingsUi();
-});
-
-editorBackgroundOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-editor-background-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = editorBackgroundPresets.find((entry) => entry.key === option.dataset.editorBackgroundKey);
-  if (!preset) {
-    return;
-  }
-
-  activeEditorBackgroundKey = preset.key;
-  closeSettingsMenus();
-  applyEditorBackgroundTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
-});
-
-textColorButton?.addEventListener("click", () => {
-  closeSettingsMenus(textColorMenuOpen ? "" : "textColor");
-  syncSettingsUi();
-});
-
-textColorOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-text-color-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = editorTextColorPresets.find((entry) => entry.key === option.dataset.textColorKey);
-  if (!preset) {
-    return;
-  }
-
-  activeEditorTextColorKey = preset.key;
-  closeSettingsMenus();
-  applyEditorTextColorTheme();
-  syncEditorPreferencesUi();
-  persistEditorPreferences();
-  renderEditor();
-});
-
-textHighlightButton?.addEventListener("click", () => {
-  closeSettingsMenus(textHighlightMenuOpen ? "" : "textHighlight");
-  syncSettingsUi();
-});
-
-textHighlightOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-text-highlight-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = editorTextHighlightPresets.find((entry) => entry.key === option.dataset.textHighlightKey);
-  if (!preset) {
-    return;
-  }
-
-  activeEditorTextHighlightKey = preset.key;
-  applySharedGlyphColor(preset.color);
-  closeSettingsMenus();
-  applyEditorTextHighlightTheme();
-  applyGlyphColors();
-  syncSettingsUi();
-  persistEditorPreferences();
-  persistGlyphHighlights();
-  renderEditor();
-});
-
-blockSurfaceButton.addEventListener("click", () => {
-  closeSettingsMenus(blockSurfaceMenuOpen ? "" : "block");
-  syncSettingsUi();
-});
-
-blockSurfaceOptions.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-block-surface-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = blockSurfacePresets.find((entry) => entry.key === option.dataset.blockSurfaceKey);
-  if (!preset) {
-    return;
-  }
-
-  activeBlockSurfaceKey = preset.key;
-  closeSettingsMenus();
-  applyBlockSurfaceTheme();
-  syncSettingsUi();
-  persistGlyphHighlights();
-});
-
-lineHighlightButton.addEventListener("click", () => {
-  closeSettingsMenus(lineHighlightMenuOpen ? "" : "line");
-  syncSettingsUi();
-});
-
-selectionHighlightButton.addEventListener("click", () => {
-  closeSettingsMenus(selectionHighlightMenuOpen ? "" : "selection");
-  syncSettingsUi();
-});
-
-autoSaveModeButton?.addEventListener("click", () => {
-  closeSettingsMenus(autoSaveMenuOpen ? "" : "autoSave");
-  syncSettingsUi();
-});
-
-autoSaveModeOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-auto-save-mode]");
-  if (!option) {
-    return;
-  }
-
-  autoSaveMode = option.dataset.autoSaveMode;
-  closeSettingsMenus();
-  clearAutoSaveTimer();
-  syncAutoSaveUi();
-  persistAutoSaveState();
-  if (autoSaveMode === "afterDelay") {
-    scheduleAutoSave();
-  }
-});
-
-autoSaveDelayInput?.addEventListener("input", () => {
-  const nextDelay = Number(autoSaveDelayInput.value);
-  if (!Number.isFinite(nextDelay) || nextDelay < 250) {
-    return;
-  }
-
-  autoSaveDelay = Math.round(nextDelay / 250) * 250;
-  syncAutoSaveUi();
-  persistAutoSaveState();
-  if (autoSaveMode === "afterDelay") {
-    scheduleAutoSave();
-  }
-});
-
-autoSaveDelayInput?.addEventListener("change", () => {
-  autoSaveDelayInput.value = String(autoSaveDelay);
-});
-
-languageModeButton?.addEventListener("click", () => {
-  closeSettingsMenus(languageMenuOpen ? "" : "language");
-  syncSettingsUi();
-});
-
-languageModeOptions?.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-language-key]");
-  if (!option) {
-    return;
-  }
-
-  activeLanguageKey = option.dataset.languageKey;
-  closeSettingsMenus();
-  persistLanguageState();
-  applyLanguageUi();
-  renderAutoSaveOptions();
-  renderThemeControls();
-  renderEditorPreferenceControls();
-  renderGlyphHighlightControls();
-  syncLanguageUi();
-  renderEditor();
-});
-
-lineHighlightOptions.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-line-highlight-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = lineHighlightPresets.find((entry) => entry.key === option.dataset.lineHighlightKey);
-  if (!preset) {
-    return;
-  }
-
-  activeLineHighlightKey = preset.key;
-  closeSettingsMenus();
-  applyLineHighlightTheme();
-  syncSettingsUi();
-  persistGlyphHighlights();
-});
-
-selectionHighlightOptions.addEventListener("click", (event) => {
-  const option = event.target.closest("[data-selection-highlight-key]");
-  if (!option) {
-    return;
-  }
-
-  const preset = selectionHighlightPresets.find((entry) => entry.key === option.dataset.selectionHighlightKey);
-  if (!preset) {
-    return;
-  }
-
-  activeSelectionHighlightKey = preset.key;
-  closeSettingsMenus();
-  applySelectionHighlightTheme();
-  syncSettingsUi();
-  persistGlyphHighlights();
-});
-
-glyphColorList.addEventListener("click", (event) => {
-  const toggle = event.target.closest("[data-glyph-toggle]");
-  if (toggle) {
-    const key = toggle.dataset.glyphToggle;
+  const glyphToggle = target.closest("[data-glyph-toggle]");
+  if (glyphToggle && glyphColorList?.contains(glyphToggle)) {
+    const key = glyphToggle.dataset.glyphToggle;
     openGlyphColorMenu = openGlyphColorMenu === key ? null : key;
     closeSettingsMenus("glyphColor");
-    syncSettingsUi();
+    requestSettingsStateRender();
     return;
   }
 
-  const option = event.target.closest("[data-glyph-option-key]");
-  if (!option) {
+  const glyphOption = target.closest("[data-glyph-option-key]");
+  if (glyphOption && glyphColorList?.contains(glyphOption)) {
+    const key = glyphOption.dataset.glyphOptionKey;
+    dispatchSurfaceAction(SURFACE_ACTIONS.EDITOR_GLYPH_COLOR, () => {
+      glyphColors[key] = normalizeHexColor(glyphOption.dataset.glyphOption, glyphColors[key]);
+      openGlyphColorMenu = null;
+    });
     return;
   }
 
-  const key = option.dataset.glyphOptionKey;
-  glyphColors[key] = normalizeHexColor(option.dataset.glyphOption, glyphColors[key]);
-  openGlyphColorMenu = null;
-  applyGlyphColors();
-  syncSettingsUi();
-  persistGlyphHighlights();
+  const dialogActionButton = target.closest(".setting-mini-button");
+  if (
+    dialogActionButton &&
+    settingsFactoryRoot.contains(dialogActionButton) &&
+    settingsDialogActionsById.has(dialogActionButton.id)
+  ) {
+    closeSettingsMenus();
+    requestSettingsStateRender();
+    handleSettingsDialogAction(dialogActionButton.id);
+    return;
+  }
+
+  const dropdownOption = target.closest("[data-setting-option-for]");
+  if (dropdownOption && settingsFactoryRoot.contains(dropdownOption)) {
+    const optionsContainer = dropdownOption.closest(".palette-option-list");
+    const dropdownNode =
+      settingsDropdownNodesByOptionsId.get(optionsContainer?.id ?? "") ??
+      settingsNodesById.get(dropdownOption.dataset.settingOptionFor);
+    if (!dropdownNode || dropdownNode.kind !== "dropdown" || dropdownNode.variant === "glyphColor") {
+      return;
+    }
+    applySettingsOptionSelection(
+      dropdownOption.dataset.settingOptionFor,
+      dropdownOption.dataset.settingOptionValue,
+    );
+    return;
+  }
+
+  const dropdownButton = target.closest("[data-setting-button-for]");
+  if (dropdownButton && settingsFactoryRoot.contains(dropdownButton)) {
+    const dropdownNode =
+      settingsDropdownNodesByButtonId.get(dropdownButton.id) ??
+      settingsNodesById.get(dropdownButton.dataset.settingButtonFor);
+    if (!dropdownNode || dropdownNode.kind !== "dropdown" || dropdownNode.variant === "glyphColor") {
+      return;
+    }
+    toggleSettingsMenu(dropdownNode.id);
+    return;
+  }
+
+  const themeModeButton = target.closest("[data-theme-mode]");
+  if (themeModeButton && settingsFactoryRoot.contains(themeModeButton)) {
+    switchSurfaceMode(SURFACE_KEYS.THEME, themeModeButton.dataset.themeMode);
+    return;
+  }
+
+  const editorModeButton = target.closest("[data-editor-mode]");
+  if (editorModeButton && settingsFactoryRoot.contains(editorModeButton)) {
+    switchSurfaceMode(SURFACE_KEYS.EDITOR, editorModeButton.dataset.editorMode);
+    return;
+  }
+
+  const stepperButton = target.closest("[data-setting-step-for]");
+  if (stepperButton && settingsFactoryRoot.contains(stepperButton)) {
+    const stepperNode = settingsNodesById.get(stepperButton.dataset.settingStepFor);
+    if (!stepperNode || stepperNode.kind !== "stepper") {
+      return;
+    }
+    const direction = stepperButton.dataset.settingStepDirection === "decrease" ? -1 : 1;
+    if (stepperNode.id === "interfaceSize") {
+      stepInterfaceSize(direction);
+      return;
+    }
+    if (stepperNode.id === "editorFontSize") {
+      stepEditorFontSize(direction);
+      return;
+    }
+  }
+
+  const segmentButton = target.closest("[data-setting-segment-for='tabSize']");
+  if (segmentButton && settingsFactoryRoot.contains(segmentButton)) {
+    const segmentNode = settingsNodesById.get(segmentButton.dataset.settingSegmentFor);
+    if (!segmentNode || segmentNode.kind !== "toggle") {
+      return;
+    }
+    indentSize = Number(segmentButton.dataset.indentSize) || 2;
+    closeSettingsMenus();
+    persistEditorPreferences();
+    updateIndentUi();
+    requestSettingsStateRender();
+    return;
+  }
+
+  const glyphToggleButton = target.closest("[data-setting-toggle-for='glyphComposition']");
+  if (glyphToggleButton && settingsFactoryRoot.contains(glyphToggleButton)) {
+    const toggleNode = settingsNodesById.get(glyphToggleButton.dataset.settingToggleFor);
+    if (!toggleNode || toggleNode.kind !== "toggle") {
+      return;
+    }
+    glyphsOn = !glyphsOn;
+    document.body.classList.toggle("glyphs-off", !glyphsOn);
+    toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
+    toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
+    toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
+    closeSettingsMenus();
+    persistEditorPreferences();
+    requestSettingsStateRender();
+    requestEditorContentRender();
+  }
 });
 
-glyphColorList.addEventListener("input", (event) => {
-  const text = event.target.closest("[data-glyph-value]");
-  if (!text) {
+settingsFactoryRoot?.addEventListener("input", (event) => {
+  const target = event.target;
+
+  if (target.closest("[data-glyph-value]")) {
+    const text = target.closest("[data-glyph-value]");
+    const key = text.dataset.glyphValue;
+    const normalized = normalizeHexColor(text.value, null);
+    if (!normalized) {
+      return;
+    }
+
+    dispatchSurfaceAction(
+      SURFACE_ACTIONS.EDITOR_GLYPH_COLOR,
+      () => {
+        glyphColors[key] = normalized;
+      },
+      { closeMenus: false },
+    );
     return;
   }
 
-  const key = text.dataset.glyphValue;
-  const normalized = normalizeHexColor(text.value, null);
-  if (!normalized) {
-    return;
-  }
+  if (target === autoSaveDelayInput) {
+    const nextDelay = Number(autoSaveDelayInput.value);
+    if (!Number.isFinite(nextDelay) || nextDelay < 250) {
+      return;
+    }
 
-  glyphColors[key] = normalized;
-  applyGlyphColors();
-  syncSettingsUi();
-  persistGlyphHighlights();
+    autoSaveDelay = Math.round(nextDelay / 250) * 250;
+    syncAutoSaveUi();
+    persistAutoSaveState();
+    if (autoSaveMode === "afterDelay") {
+      scheduleAutoSave();
+    }
+  }
 });
 
-glyphColorList.addEventListener("change", (event) => {
-  const text = event.target.closest("[data-glyph-value]");
-  if (!text) {
+settingsFactoryRoot?.addEventListener("change", (event) => {
+  const target = event.target;
+
+  if (target.closest("[data-glyph-value]")) {
+    const text = target.closest("[data-glyph-value]");
+    const key = text.dataset.glyphValue;
+    text.value = glyphColors[key].toUpperCase();
     return;
   }
 
-  const key = text.dataset.glyphValue;
-  text.value = glyphColors[key].toUpperCase();
+  if (target === autoSaveDelayInput) {
+    autoSaveDelayInput.value = String(autoSaveDelay);
+  }
 });
 
 document.addEventListener("click", (event) => {
-  const insideAnySettingsMenu =
-    event.target.closest("#languageModeButton") ||
-    event.target.closest("#languageModeOptions") ||
-    event.target.closest("#autoSaveModeButton") ||
-    event.target.closest("#autoSaveModeOptions") ||
-    event.target.closest("#themeColorButton") ||
-    event.target.closest("#themeColorOptions") ||
-    event.target.closest("#themeBackgroundButton") ||
-    event.target.closest("#themeBackgroundOptions") ||
-    event.target.closest("#interfaceFontButton") ||
-    event.target.closest("#interfaceFontOptions") ||
-    event.target.closest("#interfaceSizeButton") ||
-    event.target.closest("#interfaceSizeOptions") ||
-    event.target.closest("#editorFontButton") ||
-    event.target.closest("#editorFontOptions") ||
-    event.target.closest("#editorFontSizeButton") ||
-    event.target.closest("#editorFontSizeOptions") ||
-    event.target.closest("#highlightPaletteButton") ||
-    event.target.closest("#highlightPaletteOptions") ||
-    event.target.closest("#editorBackgroundButton") ||
-    event.target.closest("#editorBackgroundOptions") ||
-    event.target.closest("#textColorButton") ||
-    event.target.closest("#textColorOptions") ||
-    event.target.closest("#textHighlightButton") ||
-    event.target.closest("#textHighlightOptions") ||
-    event.target.closest("#blockSurfaceButton") ||
-    event.target.closest("#blockSurfaceOptions") ||
-    event.target.closest("#lineHighlightButton") ||
-    event.target.closest("#lineHighlightOptions") ||
-    event.target.closest("#selectionHighlightButton") ||
-    event.target.closest("#selectionHighlightOptions") ||
-    event.target.closest("#glyphColorList");
-
-  if (!insideAnySettingsMenu) {
+  if (!event.target.closest("#settingsFactoryRoot")) {
     closeSettingsMenus();
-    syncSettingsUi();
+    requestSettingsStateRender();
   }
 
   if (!event.target.closest("#fileTree")) {
     if (openFileActionMenu !== null || pendingDeleteFile !== null) {
       openFileActionMenu = null;
       pendingDeleteFile = null;
-      renderEditor();
+      requestSidebarRender();
     }
   }
 });
@@ -4684,11 +5712,12 @@ editorInput.addEventListener("input", () => {
   fileSources[currentFile] = editorInput.value;
   fileDirty[currentFile] = true;
   scheduleAutoSave();
-  renderEditor();
+  requestSidebarRender();
+  requestEditorContentRender();
 });
 
 editorInput.addEventListener("select", () => {
-  renderEditor();
+  requestEditorSelectionRender();
 });
 
 editorInput.addEventListener("scroll", () => {
@@ -4696,7 +5725,7 @@ editorInput.addEventListener("scroll", () => {
 });
 
 editorInput.addEventListener("click", () => {
-  renderEditor();
+  requestEditorSelectionRender();
 });
 
 editorInput.addEventListener("blur", () => {
@@ -4706,7 +5735,7 @@ editorInput.addEventListener("blur", () => {
 });
 
 editorInput.addEventListener("keyup", () => {
-  renderEditor();
+  requestEditorSelectionRender();
 });
 
 editorInput.addEventListener("copy", (event) => {
@@ -4760,7 +5789,7 @@ codeStage.addEventListener("mousedown", (event) => {
   if (event.detail >= 3) {
     const { start, end } = lineSelectionRangeForOffset(editorInput.value, anchor);
     editorInput.setSelectionRange(start, end);
-    renderEditor();
+    requestEditorSelectionRender();
     return;
   }
 
@@ -4768,13 +5797,13 @@ codeStage.addEventListener("mousedown", (event) => {
     const charOffset = characterOffsetForPointer(event, latestAnalysis);
     const { start, end } = wordSelectionRangeForOffset(editorInput.value, charOffset);
     editorInput.setSelectionRange(start, end);
-    renderEditor();
+    requestEditorSelectionRender();
     return;
   }
 
   pointerSelectionAnchor = anchor;
   setSelectionFromAnchor(anchor, anchor);
-  renderEditor();
+  requestEditorSelectionRender();
 
   const handlePointerMove = (moveEvent) => {
     if (!latestAnalysis || pointerSelectionAnchor === null) {
@@ -4783,7 +5812,7 @@ codeStage.addEventListener("mousedown", (event) => {
 
     const focus = rawOffsetForPointer(moveEvent, latestAnalysis);
     setSelectionFromAnchor(pointerSelectionAnchor, focus);
-    renderEditor();
+    requestEditorSelectionRender();
   };
 
   const handlePointerUp = (upEvent) => {
@@ -4794,7 +5823,7 @@ codeStage.addEventListener("mousedown", (event) => {
 
     const focus = rawOffsetForPointer(upEvent, latestAnalysis);
     setSelectionFromAnchor(pointerSelectionAnchor, focus);
-    renderEditor();
+    requestEditorSelectionRender();
     stopPointerSelection();
   };
 
@@ -4891,27 +5920,21 @@ async function bootstrap() {
     fileDirty[fileName] = false;
   });
 
+  installGridLayoutConfigDebugApi(window);
   loadLanguageState();
   applyLanguageUi();
-  renderLanguageOptions();
+  loadUiStyleState();
   loadThemeSettings();
-  applyThemeColorTheme();
-  applyThemeBackgroundTheme();
-  applyInterfaceFontTheme();
-  applyInterfaceSizeTheme();
-  renderThemeControls();
   loadAutoSaveState();
-  renderAutoSaveOptions();
   loadGlyphHighlightState();
   loadEditorPreferences();
+  loadCustomPaletteConfigState();
+  if (editorModeLinkedToTheme) {
+    syncEditorModeToThemeSurface({ persist: false, requestRender: false });
+  }
   document.body.classList.toggle("glyphs-off", !glyphsOn);
-  applyEditorFontTheme();
-  applyEditorFontSizeTheme();
-  applyEditorBackgroundTheme();
-  applyEditorTextColorTheme();
-  applyEditorTextHighlightTheme();
-  renderEditorPreferenceControls();
-  renderGlyphHighlightControls();
+  ensureGridLayoutConfigBinding();
+  applyUiStyleStrategy();
   toggleGlyphs.setAttribute("aria-pressed", String(glyphsOn));
   toggleGlyphs.setAttribute("aria-label", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
   toggleGlyphs.setAttribute("title", glyphsOn ? t("disableGlyphRendering") : t("enableGlyphRendering"));
@@ -4920,7 +5943,7 @@ async function bootstrap() {
   await loadWorkspace();
   activeTreePath = "";
   editorInput.value = fileSources[currentFile] ?? "";
-  renderEditor();
+  flushFullAppRender();
 }
 
 bootstrap();
