@@ -16,3 +16,9 @@ Styio View 是面向 `styio` 生态的专属编辑器与运行视窗项目。
 人工维护的 Web Editor 入口见 [prototype/editor.html](/Users/unka/DevSpace/styio-view/prototype/editor.html)。
 
 实际实现入口见 [frontend/styio_view_app/README.md](/Users/unka/DevSpace/styio-view/frontend/styio_view_app/README.md)。
+
+## Repository Hygiene Gate
+
+1. GitHub Actions workflow `Repository Hygiene Gate` 会在每次 `push` 和 `pull_request` 时执行 `python3 scripts/check_repo_hygiene.py`
+2. 这道门禁会阻断生成目录、依赖目录、打包产物后缀，以及未被明确允许的二进制文件进入仓库
+3. 合法的图片类资产需要放在当前允许的前端资源路径下；若确实需要新增二进制资产，应在脚本里补一条窄范围 allowlist，而不是放宽通用规则

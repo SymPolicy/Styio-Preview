@@ -1,0 +1,26 @@
+# OS and editor state
+.DS_Store
+.idea/
+.vscode/
+
+# Python caches and local environments
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Dependency payloads
+**/node_modules/
+
+# Generated artifacts and build outputs
+**/.artifacts/
+**/.dart_tool/
+**/.gradle/
+**/.next/
+**/.nuxt/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.turbo/
+**/build/
+**/coverage/
+**/dist/
