@@ -7,6 +7,7 @@ import sys
 from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DOCS_AUDIT = REPO_ROOT / "scripts" / "docs-audit.py"
 
 FORBIDDEN_PATH_PARTS = {
     ".artifacts",
@@ -77,6 +78,58 @@ ALLOWED_BINARY_GLOBS = (
     "frontend/styio_view_app/web/**/*.png",
     "frontend/styio_view_app/windows/runner/resources/*.ico",
 )
+REQUIRED_GITIGNORE_PATTERNS = (
+    ".DS_Store",
+    ".cursor/",
+    ".idea/",
+    ".vscode/",
+    ".cache/",
+    "__pycache__/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".venv/",
+    "venv/",
+    "node_modules/",
+    "build/",
+    "build-*/",
+    "tmp/",
+    "*.tmp",
+    "*.log",
+    "!docs/**/build/",
+    "!docs/**/build/**",
+    "!docs/**/build-*/",
+    "!docs/**/build-*/**",
+    "!docs/**/tmp/",
+    "!docs/**/tmp/**",
+    "!docs/**/*.tmp",
+    "!docs/**/*.log",
+    "!frontend/styio_view_app/test/**/build/",
+    "!frontend/styio_view_app/test/**/build/**",
+    "!frontend/styio_view_app/test/**/build-*/",
+    "!frontend/styio_view_app/test/**/build-*/**",
+    "!frontend/styio_view_app/test/**/tmp/",
+    "!frontend/styio_view_app/test/**/tmp/**",
+    "!frontend/styio_view_app/test/**/*.tmp",
+    "!frontend/styio_view_app/test/**/*.log",
+)
+REQUIRED_DOC_REFERENCES = {
+    Path("docs/README.md"): (
+        "scripts/docs-index.py",
+        "scripts/docs-lifecycle.py",
+        "scripts/docs-audit.py",
+    ),
+    Path("docs/specs/DOCUMENTATION-POLICY.md"): (
+        "scripts/docs-index.py",
+        "scripts/docs-lifecycle.py",
+        "scripts/docs-audit.py",
+        "scripts/check_repo_hygiene.py",
+    ),
+    Path("docs/teams/DOCS-DELIVERY-RUNBOOK.md"): (
+        "scripts/check_repo_hygiene.py",
+        "scripts/docs-audit.py",
+    ),
+}
 
 
 def tracked_files() -> list[str]:
@@ -117,6 +170,37 @@ def is_binary_file(rel_path: str) -> bool:
         return True
 
 
+def check_gitignore() -> list[str]:
+    gitignore = REPO_ROOT / ".gitignore"
+    if not gitignore.exists():
+        return [".gitignore is missing"]
+
+    patterns = {
+        line.strip()
+        for line in gitignore.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    errors: list[str] = []
+    for required in REQUIRED_GITIGNORE_PATTERNS:
+        if required not in patterns:
+            errors.append(f".gitignore must include: {required}")
+    return errors
+
+
+def check_doc_references() -> list[str]:
+    errors: list[str] = []
+    for relative_path, needles in REQUIRED_DOC_REFERENCES.items():
+        path = REPO_ROOT / relative_path
+        if not path.exists():
+            errors.append(f"required documentation file is missing: {relative_path.as_posix()}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for needle in needles:
+            if needle not in text:
+                errors.append(f"{relative_path.as_posix()} must document {needle}")
+    return errors
+
+
 def print_issue_group(title: str, paths: list[str], limit: int = 20) -> None:
     print(title)
     for path in paths[:limit]:
@@ -131,6 +215,8 @@ def main() -> int:
     forbidden_paths: list[str] = []
     forbidden_suffixes: list[str] = []
     unexpected_binaries: list[str] = []
+    gitignore_errors = check_gitignore()
+    doc_reference_errors = check_doc_references()
 
     for rel_path in tracked_files():
         if has_forbidden_path_part(rel_path):
@@ -144,10 +230,24 @@ def main() -> int:
         if is_binary_file(rel_path) and not is_allowed_binary(rel_path):
             unexpected_binaries.append(rel_path)
 
-    if forbidden_paths or forbidden_suffixes or unexpected_binaries:
+    docs_audit = subprocess.run(
+        [sys.executable, str(DOCS_AUDIT)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    if (
+        forbidden_paths
+        or forbidden_suffixes
+        or unexpected_binaries
+        or gitignore_errors
+        or doc_reference_errors
+        or docs_audit.returncode != 0
+    ):
         print("Repository hygiene gate failed.\n")
         print("Tracked files must not contain generated artifacts, dependency payloads, or")
-        print("unexpected binary blobs. Narrow asset allowlist updates should be intentional.\n")
+        print("unexpected binary blobs. Docs/file governance drift is also rejected here.\n")
 
         if forbidden_paths:
             print_issue_group(
@@ -166,6 +266,25 @@ def main() -> int:
                 "Found tracked binary files outside the approved asset allowlist:",
                 sorted(unexpected_binaries),
             )
+
+        if gitignore_errors:
+            print_issue_group(
+                "Root .gitignore is missing shared file-governance patterns:",
+                sorted(gitignore_errors),
+            )
+
+        if doc_reference_errors:
+            print_issue_group(
+                "Governance docs are missing required script references:",
+                sorted(doc_reference_errors),
+            )
+
+        if docs_audit.returncode != 0:
+            print("Docs governance audit failed:\n")
+            detail = docs_audit.stderr.strip() or docs_audit.stdout.strip() or "docs-audit.py failed"
+            for line in detail.splitlines():
+                print(f"  - {line}")
+            print()
 
         print("If a new binary asset is genuinely required, add a narrow allowlist entry in")
         print("scripts/check_repo_hygiene.py instead of widening the general rules.")

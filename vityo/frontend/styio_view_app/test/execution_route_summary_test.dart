@@ -116,4 +116,75 @@ void main() {
     expect(summary.title, 'Project route preview-only');
     expect(summary.previewOnly, isTrue);
   });
+
+  test('project route is live when compile-plan consumer is advertised', () {
+    final summary = summarizeExecutionRoute(
+      platformTarget: PlatformTarget.macos,
+      projectGraph: const ProjectGraphSnapshot(
+        id: 'demo-live',
+        title: 'Demo Live',
+        kind: ProjectKind.package,
+        workspaceRoot: '/workspace/demo-live',
+        workspaceMembers: <String>[],
+        manifestPath: '/workspace/demo-live/spio.toml',
+        lockfilePath: '/workspace/demo-live/spio.lock',
+        toolchainPinPath: '/workspace/demo-live/spio-toolchain.toml',
+        dependencies: <ProjectDependencySnapshot>[],
+        packages: <ProjectPackageSnapshot>[],
+        targets: <ProjectTargetDescriptor>[],
+        editorFiles: <String>['/workspace/demo-live/src/main.styio'],
+        toolchain: ToolchainStatusSnapshot(
+          source: ToolchainResolutionSource.projectPin,
+          detail: 'project pin',
+        ),
+        lockState: ProjectLockState.unknown,
+        vendorState: ProjectVendorState.present,
+        activeCompiler: CompilerHandshakeSnapshot(
+          binaryPath: '/toolchains/styio/bin/styio',
+          tool: 'styio',
+          compilerVersion: '0.1.0',
+          channel: 'stable',
+          variant: 'desktop',
+          capabilities: <String>[
+            'machine_info_json',
+            'jsonl_diagnostics',
+            'single_file_entry',
+          ],
+          supportedContractVersions: <String, List<int>>{
+            'machine_info': <int>[1],
+            'compile_plan': <int>[1],
+          },
+          integrationPhase: 'compile-plan-live',
+          featureFlags: <String, bool>{
+            'compile_plan_consumer': true,
+          },
+        ),
+        notes: <String>[],
+      ),
+      adapterCapabilities: const <AdapterCapabilitySnapshot>[
+        AdapterCapabilitySnapshot(
+          adapterKind: AdapterKind.cli,
+          languageService: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.partial,
+            detail: 'partial',
+          ),
+          projectGraph: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.partial,
+            detail: 'partial',
+          ),
+          execution: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.available,
+            detail: 'live compile-plan handoff',
+          ),
+          runtimeEvents: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.unavailable,
+            detail: 'n/a',
+          ),
+        ),
+      ],
+    );
+
+    expect(summary.title, 'Project route live through spio');
+    expect(summary.previewOnly, isFalse);
+  });
 }

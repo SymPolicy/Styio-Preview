@@ -5,8 +5,12 @@ import 'package:flutter/foundation.dart';
 import '../../editor/editor_controller.dart';
 import '../../editor/document_state.dart';
 import '../../integration/adapter_contracts.dart';
+import '../../integration/dependency_source_adapter.dart';
+import '../../integration/deployment_adapter.dart';
 import '../../integration/execution_adapter.dart';
+import '../../integration/project_graph_adapter.dart';
 import '../../integration/runtime_event_adapter.dart';
+import '../../integration/toolchain_management_adapter.dart';
 import '../../module_host/module_definition.dart';
 import '../../module_host/module_registry.dart';
 import '../../platform/native_module_loader.dart';
@@ -24,16 +28,36 @@ enum BottomSurfaceTab {
 class ShellModel extends ChangeNotifier {
   ShellModel({
     required this.platformTarget,
-    required this.adapterCapabilities,
+    required List<AdapterCapabilitySnapshot> supplementalAdapterCapabilities,
+    required ProjectGraphAdapter projectGraphAdapter,
     required this.workspaceController,
     required this.workspaceDocumentStore,
     required this.moduleRegistry,
     required this.nativeModuleLoader,
     required this.editorController,
     required this.executionAdapter,
+    required ExecutionAdapterFactory executionAdapterFactory,
     required this.runtimeEventAdapter,
+    required DependencySourceAdapter dependencySourceAdapter,
+    required DeploymentAdapter deploymentAdapter,
+    required ToolchainManagementAdapter toolchainManagementAdapter,
   })  : _activeBottomTab = BottomSurfaceTab.runtime,
-        _activeDocumentPath = workspaceController.activeFilePath {
+        _activeDocumentPath = workspaceController.activeFilePath,
+        _supplementalAdapterCapabilities =
+            List<AdapterCapabilitySnapshot>.unmodifiable(
+          supplementalAdapterCapabilities,
+        ),
+        _projectGraphAdapter = projectGraphAdapter,
+        _executionAdapterFactory = executionAdapterFactory,
+        _dependencySourceAdapter = dependencySourceAdapter,
+        _deploymentAdapter = deploymentAdapter,
+        _toolchainManagementAdapter = toolchainManagementAdapter,
+        _adapterCapabilities = normalizeCapabilitySnapshots([
+          projectGraphAdapter.capabilitySnapshot,
+          executionAdapter.capabilitySnapshot,
+          runtimeEventAdapter.capabilitySnapshot,
+          ...supplementalAdapterCapabilities,
+        ]) {
     workspaceController.addListener(_handleWorkspaceChanged);
     editorController.addListener(_handleDocumentChanged);
     _documentCache[_activeDocumentPath] = editorController.document;
@@ -45,13 +69,17 @@ class ShellModel extends ChangeNotifier {
   }
 
   final PlatformTarget platformTarget;
-  final List<AdapterCapabilitySnapshot> adapterCapabilities;
   final WorkspaceController workspaceController;
   final WorkspaceDocumentStore workspaceDocumentStore;
   final ModuleRegistry moduleRegistry;
   final NativeModuleLoader nativeModuleLoader;
   final EditorSessionController editorController;
-  final ExecutionAdapter executionAdapter;
+  final ProjectGraphAdapter _projectGraphAdapter;
+  final List<AdapterCapabilitySnapshot> _supplementalAdapterCapabilities;
+  final ExecutionAdapterFactory _executionAdapterFactory;
+  final DependencySourceAdapter _dependencySourceAdapter;
+  final DeploymentAdapter _deploymentAdapter;
+  final ToolchainManagementAdapter _toolchainManagementAdapter;
   final RuntimeEventAdapter runtimeEventAdapter;
 
   BottomSurfaceTab _activeBottomTab;
@@ -59,10 +87,21 @@ class ShellModel extends ChangeNotifier {
   final Map<String, DocumentState> _documentCache = <String, DocumentState>{};
   String _activeDocumentPath;
   ExecutionSession? _lastExecutionSession;
+  DependencySourceCommandResult? _lastDependencySourceCommand;
+  DeploymentCommandResult? _lastDeploymentCommand;
+  ToolchainCommandResult? _lastToolchainCommand;
+  ExecutionAdapter executionAdapter;
+  List<AdapterCapabilitySnapshot> _adapterCapabilities;
 
   BottomSurfaceTab get activeBottomTab => _activeBottomTab;
+  List<AdapterCapabilitySnapshot> get adapterCapabilities =>
+      _adapterCapabilities;
   List<String> get debugLog => List<String>.unmodifiable(_debugLog);
   ExecutionSession? get lastExecutionSession => _lastExecutionSession;
+  DependencySourceCommandResult? get lastDependencySourceCommand =>
+      _lastDependencySourceCommand;
+  DeploymentCommandResult? get lastDeploymentCommand => _lastDeploymentCommand;
+  ToolchainCommandResult? get lastToolchainCommand => _lastToolchainCommand;
 
   List<ModuleDefinition> get mountedModules => moduleRegistry.mountedModules;
   List<ModuleDefinition> get visibleModules => moduleRegistry.visibleModules;
@@ -108,6 +147,12 @@ class ShellModel extends ChangeNotifier {
         selectBottomTab(BottomSurfaceTab.runtime);
         notifyListeners();
         return;
+      case AppCommandId.fetchDependencies:
+        await fetchDependencies();
+        return;
+      case AppCommandId.vendorDependencies:
+        await vendorDependencies();
+        return;
       case AppCommandId.showRuntime:
         selectBottomTab(BottomSurfaceTab.runtime);
         return;
@@ -121,6 +166,9 @@ class ShellModel extends ChangeNotifier {
         appendLog(
           'Module host refresh requested on ${platformTarget.label}.',
         );
+        await refreshProjectGraph(
+          reason: 'manual refresh requested from the shell command registry',
+        );
         final bridge = await nativeModuleLoader.describe(
           'local.runtime.desktop',
         );
@@ -132,6 +180,32 @@ class ShellModel extends ChangeNotifier {
       case AppCommandId.openSettings:
         appendLog('Settings route is reserved for M7 theme/profile system.');
         return;
+    }
+  }
+
+  String? blockedReasonForCommand(AppCommandId commandId) {
+    final projectGraph = workspaceController.activeProject;
+    switch (commandId) {
+      case AppCommandId.fetchDependencies:
+        return blockedDependencySourceCommandReason(
+          platformTarget: platformTarget,
+          projectGraph: projectGraph,
+          command: 'fetch',
+        );
+      case AppCommandId.vendorDependencies:
+        return blockedDependencySourceCommandReason(
+          platformTarget: platformTarget,
+          projectGraph: projectGraph,
+          command: 'vendor',
+        );
+      case AppCommandId.save:
+      case AppCommandId.run:
+      case AppCommandId.showRuntime:
+      case AppCommandId.showAgent:
+      case AppCommandId.showDebug:
+      case AppCommandId.refreshModules:
+      case AppCommandId.openSettings:
+        return null;
     }
   }
 
@@ -150,6 +224,219 @@ class ShellModel extends ChangeNotifier {
 
   void _handleDocumentChanged() {
     _documentCache[_activeDocumentPath] = editorController.document;
+  }
+
+  Future<void> refreshProjectGraph({String? reason}) async {
+    final previousProject = workspaceController.activeProject;
+    final refreshedProject = await _projectGraphAdapter.loadProjectGraph();
+    executionAdapter = await _executionAdapterFactory(refreshedProject);
+    _adapterCapabilities = normalizeCapabilitySnapshots([
+      _projectGraphAdapter.capabilitySnapshot,
+      executionAdapter.capabilitySnapshot,
+      runtimeEventAdapter.capabilitySnapshot,
+      ..._supplementalAdapterCapabilities,
+    ]);
+    workspaceController.replaceProject(
+      refreshedProject,
+      activeFilePath: workspaceController.activeFilePath,
+    );
+    final previousCompiler = previousProject.activeCompiler?.compilerVersion;
+    final refreshedCompiler = refreshedProject.activeCompiler?.compilerVersion;
+    appendLog(
+      'Project graph refreshed: ${refreshedProject.title}'
+      '${reason == null ? '' : ' ($reason)'}'
+      '${previousCompiler == refreshedCompiler ? '' : ' · compiler ${previousCompiler ?? 'unresolved'} -> ${refreshedCompiler ?? 'unresolved'}'}.',
+    );
+  }
+
+  Future<ToolchainCommandResult> installManagedCompiler({
+    required String styioBinaryPath,
+  }) async {
+    final result = await _toolchainManagementAdapter.installManagedCompiler(
+      projectGraph: workspaceController.activeProject,
+      styioBinaryPath: styioBinaryPath,
+    );
+    return _completeToolchainCommand(
+      result,
+      refreshReason: 'tool install completed',
+    );
+  }
+
+  Future<ToolchainCommandResult> useManagedCompiler({
+    required String compilerVersion,
+    String? channel,
+  }) async {
+    final result = await _toolchainManagementAdapter.useManagedCompiler(
+      projectGraph: workspaceController.activeProject,
+      compilerVersion: compilerVersion,
+      channel: channel,
+    );
+    return _completeToolchainCommand(
+      result,
+      refreshReason: 'tool use completed',
+    );
+  }
+
+  Future<ToolchainCommandResult> pinManagedCompiler({
+    required String compilerVersion,
+    String? channel,
+  }) async {
+    final result = await _toolchainManagementAdapter.pinManagedCompiler(
+      projectGraph: workspaceController.activeProject,
+      compilerVersion: compilerVersion,
+      channel: channel,
+    );
+    return _completeToolchainCommand(
+      result,
+      refreshReason: 'tool pin completed',
+    );
+  }
+
+  Future<ToolchainCommandResult> clearPinnedCompiler() async {
+    final result = await _toolchainManagementAdapter.clearPinnedCompiler(
+      projectGraph: workspaceController.activeProject,
+    );
+    return _completeToolchainCommand(
+      result,
+      refreshReason: 'tool pin clear completed',
+    );
+  }
+
+  Future<ToolchainCommandResult> _completeToolchainCommand(
+    ToolchainCommandResult result, {
+    required String refreshReason,
+  }) async {
+    _lastToolchainCommand = result;
+    appendLog(
+      '${result.command} ${result.status.name}: ${result.statusMessage}',
+    );
+    if (result.succeeded) {
+      await refreshProjectGraph(reason: refreshReason);
+    } else {
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<DeploymentCommandResult> packProject({
+    String? packageName,
+    String? outputPath,
+  }) async {
+    final result = await _deploymentAdapter.packProject(
+      projectGraph: workspaceController.activeProject,
+      packageName: packageName,
+      outputPath: outputPath,
+    );
+    return _completeDeploymentCommand(result);
+  }
+
+  Future<DeploymentCommandResult> preparePublish({
+    String? packageName,
+    String? outputPath,
+  }) async {
+    final result = await _deploymentAdapter.preparePublish(
+      projectGraph: workspaceController.activeProject,
+      packageName: packageName,
+      outputPath: outputPath,
+    );
+    return _completeDeploymentCommand(result);
+  }
+
+  Future<DeploymentCommandResult> publishToRegistry({
+    required String registryRoot,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    final result = await _deploymentAdapter.publishToRegistry(
+      projectGraph: workspaceController.activeProject,
+      registryRoot: registryRoot,
+      packageName: packageName,
+      outputPath: outputPath,
+    );
+    return _completeDeploymentCommand(result);
+  }
+
+  Future<DeploymentCommandResult> _completeDeploymentCommand(
+    DeploymentCommandResult result,
+  ) async {
+    _lastDeploymentCommand = result;
+    appendLog(
+      '${result.command} ${result.status.name}: ${result.statusMessage}',
+    );
+    if (result.payload case final payload?) {
+      final packageName = payload['package'] as String?;
+      final archivePath = payload['archive_path'] as String?;
+      if (packageName != null && packageName.isNotEmpty) {
+        appendLog('deploy package: $packageName');
+      }
+      if (archivePath != null && archivePath.isNotEmpty) {
+        appendLog('deploy archive: $archivePath');
+      }
+    }
+    notifyListeners();
+    return result;
+  }
+
+  Future<DependencySourceCommandResult> fetchDependencies({
+    bool locked = false,
+    bool offline = false,
+  }) async {
+    final result = await _dependencySourceAdapter.fetchDependencies(
+      projectGraph: workspaceController.activeProject,
+      locked: locked,
+      offline: offline,
+    );
+    return _completeDependencySourceCommand(
+      result,
+      refreshReason: 'fetch completed',
+    );
+  }
+
+  Future<DependencySourceCommandResult> vendorDependencies({
+    String? outputPath,
+    bool locked = false,
+    bool offline = false,
+  }) async {
+    final result = await _dependencySourceAdapter.vendorDependencies(
+      projectGraph: workspaceController.activeProject,
+      outputPath: outputPath,
+      locked: locked,
+      offline: offline,
+    );
+    return _completeDependencySourceCommand(
+      result,
+      refreshReason: 'vendor completed',
+    );
+  }
+
+  Future<DependencySourceCommandResult> _completeDependencySourceCommand(
+    DependencySourceCommandResult result, {
+    required String refreshReason,
+  }) async {
+    _lastDependencySourceCommand = result;
+    appendLog(
+      '${result.command} ${result.status.name}: ${result.statusMessage}',
+    );
+    if (result.payload case final payload?) {
+      final packages = payload['packages'];
+      final vendorRoot = payload['vendor_root'] as String?;
+      final metadataPath = payload['metadata_path'] as String?;
+      if (packages is num) {
+        appendLog('${result.command} packages: ${packages.toInt()}');
+      }
+      if (vendorRoot != null && vendorRoot.isNotEmpty) {
+        appendLog('vendor root: $vendorRoot');
+      }
+      if (metadataPath != null && metadataPath.isNotEmpty) {
+        appendLog('vendor metadata: $metadataPath');
+      }
+    }
+    if (result.succeeded) {
+      await refreshProjectGraph(reason: refreshReason);
+    } else {
+      notifyListeners();
+    }
+    return result;
   }
 
   Future<void> _loadActiveWorkspaceDocument() async {

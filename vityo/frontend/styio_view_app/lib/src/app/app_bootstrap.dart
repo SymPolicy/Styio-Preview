@@ -1,7 +1,11 @@
 import '../integration/adapter_contracts.dart';
+import '../integration/dependency_source_adapter.dart';
+import '../integration/deployment_adapter.dart';
 import '../integration/execution_adapter.dart';
 import '../integration/project_graph_adapter.dart';
+import '../integration/project_graph_contract.dart';
 import '../integration/runtime_event_adapter.dart';
+import '../integration/toolchain_management_adapter.dart';
 import '../editor/editor_controller.dart';
 import '../language/simple_styio_language_service.dart';
 import '../module_host/module_registry.dart';
@@ -15,23 +19,41 @@ class AppBootstrap {
     required this.platformTarget,
     required this.moduleRegistry,
     required this.nativeModuleLoader,
-    required this.adapterCapabilities,
+    required this.projectGraphAdapter,
+    required this.supplementalAdapterCapabilities,
     required this.workspaceController,
     required this.workspaceDocumentStore,
     required this.editorController,
     required this.executionAdapter,
+    required this.executionAdapterFactory,
     required this.runtimeEventAdapter,
+    required this.dependencySourceAdapter,
+    required this.deploymentAdapter,
+    required this.toolchainManagementAdapter,
   });
 
   final PlatformTarget platformTarget;
   final ModuleRegistry moduleRegistry;
   final NativeModuleLoader nativeModuleLoader;
-  final List<AdapterCapabilitySnapshot> adapterCapabilities;
+  final ProjectGraphAdapter projectGraphAdapter;
+  final List<AdapterCapabilitySnapshot> supplementalAdapterCapabilities;
   final WorkspaceController workspaceController;
   final WorkspaceDocumentStore workspaceDocumentStore;
   final EditorSessionController editorController;
   final ExecutionAdapter executionAdapter;
+  final ExecutionAdapterFactory executionAdapterFactory;
   final RuntimeEventAdapter runtimeEventAdapter;
+  final DependencySourceAdapter dependencySourceAdapter;
+  final DeploymentAdapter deploymentAdapter;
+  final ToolchainManagementAdapter toolchainManagementAdapter;
+
+  List<AdapterCapabilitySnapshot> get adapterCapabilities =>
+      normalizeCapabilitySnapshots([
+        projectGraphAdapter.capabilitySnapshot,
+        executionAdapter.capabilitySnapshot,
+        runtimeEventAdapter.capabilitySnapshot,
+        ...supplementalAdapterCapabilities,
+      ]);
 
   static Future<AppBootstrap> load() async {
     final platformTarget = detectPlatformTarget();
@@ -50,18 +72,27 @@ class AppBootstrap {
     final workspaceController = WorkspaceController(
       projectSnapshot: projectSnapshot,
     );
-    final executionAdapter = await createExecutionAdapter(
-      platformTarget: platformTarget,
-      projectGraph: projectSnapshot,
-    );
+    final executionAdapterFactory =
+        (ProjectGraphSnapshot refreshedProjectGraph) => createExecutionAdapter(
+              platformTarget: platformTarget,
+              projectGraph: refreshedProjectGraph,
+            );
+    final executionAdapter = await executionAdapterFactory(projectSnapshot);
     final runtimeEventAdapter = createRuntimeEventAdapter(
       platformTarget: platformTarget,
     );
-    final ffiBridge = await nativeModuleLoader.describe('local.runtime.desktop');
-    final adapterCapabilities = normalizeCapabilitySnapshots([
-      projectGraphAdapter.capabilitySnapshot,
-      executionAdapter.capabilitySnapshot,
-      runtimeEventAdapter.capabilitySnapshot,
+    final dependencySourceAdapter = await createDependencySourceAdapter(
+      platformTarget: platformTarget,
+    );
+    final deploymentAdapter = await createDeploymentAdapter(
+      platformTarget: platformTarget,
+    );
+    final toolchainManagementAdapter = await createToolchainManagementAdapter(
+      platformTarget: platformTarget,
+    );
+    final ffiBridge =
+        await nativeModuleLoader.describe('local.runtime.desktop');
+    final supplementalAdapterCapabilities = normalizeCapabilitySnapshots([
       buildFfiAdapterCapability(
         visible: ffiBridge.state != NativeBridgeState.unavailable,
         executionSlotVisible: ffiBridge.state != NativeBridgeState.unavailable,
@@ -71,9 +102,8 @@ class AppBootstrap {
         supportsCloudExecution: platformTarget == PlatformTarget.ios ||
             platformTarget == PlatformTarget.web ||
             platformTarget == PlatformTarget.android,
-        supportsHostedProjectGraph:
-            platformTarget == PlatformTarget.ios ||
-                platformTarget == PlatformTarget.web,
+        supportsHostedProjectGraph: platformTarget == PlatformTarget.ios ||
+            platformTarget == PlatformTarget.web,
         detail: platformTarget == PlatformTarget.web
             ? 'Hosted/cloud adapters back Web workspaces while local binaries stay unavailable.'
             : platformTarget == PlatformTarget.ios
@@ -89,7 +119,8 @@ class AppBootstrap {
       platformTarget: platformTarget,
       moduleRegistry: moduleRegistry,
       nativeModuleLoader: nativeModuleLoader,
-      adapterCapabilities: adapterCapabilities,
+      projectGraphAdapter: projectGraphAdapter,
+      supplementalAdapterCapabilities: supplementalAdapterCapabilities,
       workspaceController: workspaceController,
       workspaceDocumentStore: workspaceDocumentStore,
       editorController: EditorSessionController(
@@ -97,7 +128,11 @@ class AppBootstrap {
         languageService: const SimpleStyioLanguageService(),
       ),
       executionAdapter: executionAdapter,
+      executionAdapterFactory: executionAdapterFactory,
       runtimeEventAdapter: runtimeEventAdapter,
+      dependencySourceAdapter: dependencySourceAdapter,
+      deploymentAdapter: deploymentAdapter,
+      toolchainManagementAdapter: toolchainManagementAdapter,
     );
   }
 }

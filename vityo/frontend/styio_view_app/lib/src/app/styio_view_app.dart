@@ -26,14 +26,20 @@ class _StyioViewAppState extends State<StyioViewApp> {
     super.initState();
     _shellModel = ShellModel(
       platformTarget: widget.bootstrap.platformTarget,
-      adapterCapabilities: widget.bootstrap.adapterCapabilities,
+      supplementalAdapterCapabilities:
+          widget.bootstrap.supplementalAdapterCapabilities,
+      projectGraphAdapter: widget.bootstrap.projectGraphAdapter,
       workspaceController: widget.bootstrap.workspaceController,
       workspaceDocumentStore: widget.bootstrap.workspaceDocumentStore,
       moduleRegistry: widget.bootstrap.moduleRegistry,
       nativeModuleLoader: widget.bootstrap.nativeModuleLoader,
       editorController: widget.bootstrap.editorController,
       executionAdapter: widget.bootstrap.executionAdapter,
+      executionAdapterFactory: widget.bootstrap.executionAdapterFactory,
       runtimeEventAdapter: widget.bootstrap.runtimeEventAdapter,
+      dependencySourceAdapter: widget.bootstrap.dependencySourceAdapter,
+      deploymentAdapter: widget.bootstrap.deploymentAdapter,
+      toolchainManagementAdapter: widget.bootstrap.toolchainManagementAdapter,
     );
   }
 

@@ -2,7 +2,7 @@
 
 **Purpose:** 定义 `styio-view` 的文档目录、单一事实来源、联动更新规则与最小维护要求；产品行为与系统边界分别以 `docs/design/` 中的权威文档为准。
 
-**Last updated:** 2026-04-12
+**Last updated:** 2026-04-17
 
 ## 0. 文档维护准则
 
@@ -25,6 +25,9 @@
 | 仓库职责边界 | `REPOSITORY-MAP.md` | 链接 |
 | 文档目录与更新规则 | `DOCUMENTATION-POLICY.md` | 链接 |
 | 人机协作、变更批处理要求 | `CONTRIBUTOR-AND-AGENT-SPEC.md` | 链接 |
+| 团队 ownership、review routing、handoff | `../teams/COORDINATION-RUNBOOK.md` | 链接 |
+| 三仓统一交付总纲 | `../plans/Styio-Ecosystem-Delivery-Master-Plan.md` | 链接，不重写 milestone 定义 |
+| 三仓文件治理对齐 | `../plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md` | 链接，不重写治理里程碑定义 |
 | 第三方依赖清单 | `THIRD-PARTY.md` | 与实现同步更新 |
 | 跨工作流实施计划 | `../plans/Styio-View-Implementation-Plan.md` | 链接 |
 | `styio` 对接边界与接口合同 | `../for-styio/` | 链接 |
@@ -37,8 +40,11 @@
 
 1. `docs/design/` 是产品和系统级 SSOT。
 2. `docs/plans/` 是实施路线，不可覆盖设计边界。
-3. `docs/milestones/` 是冻结批次；后续若要变更，新增日期目录，不覆盖原批次结论。
-4. `docs/review/` 中的未决问题一旦裁决，应迁入 ADR 并在 review 文档中回填链接。
+3. `docs/rollups/` 负责压缩当前状态和活跃缺口，不替代 owner 文档。
+4. `docs/history/` 负责活跃恢复记录；原始历史一旦退役，应迁入 `docs/archive/`。
+5. `docs/archive/` 负责归档 provenance 与 lifecycle 元数据，不用来隐藏仍活跃的 owner 文档。
+6. `docs/milestones/` 是冻结批次；后续若要变更，新增日期目录，不覆盖原批次结论。
+7. `docs/review/` 中的未决问题一旦裁决，应迁入 ADR 并在 review 文档中回填链接。
 
 ## 1. 目录职责
 
@@ -51,8 +57,11 @@
 | `docs/adr/` | 架构决策记录 |
 | `docs/review/` | 风险、冲突、待裁决问题 |
 | `docs/assets/` | 测试目录、复用交付资产 |
+| `docs/rollups/` | 当前状态摘要与活跃 gap ledger |
 | `docs/history/` | 按日记录与恢复信息 |
+| `docs/archive/` | 已归档 provenance 与 lifecycle 元数据 |
 | `docs/for-styio/` | 与上游 `styio` 的接口、责任边界与对接清单 |
+| `docs/teams/` | 团队 runbook、ownership 路由与 handoff 入口 |
 
 ## 2. 联动更新规则
 
@@ -65,6 +74,11 @@
 2. 新增或替换依赖时，必须同步更新 `THIRD-PARTY.md`。
 3. 新增一个长期架构边界时，必须新增 ADR，不能只写在计划或里程碑里。
 4. 新增一个重要风险但尚未裁决时，先写入 `review/Logic-Conflicts.md`。
+5. 若一次变更改变了维护责任、review 触发条件或恢复路径，必须同步更新受影响的 `../teams/*.md` 与 `../teams/COORDINATION-RUNBOOK.md`。
+6. 若一次变更改动了三仓共同里程碑、repo exit、checkpoint ID 或跨仓 cutover 条件，必须先更新 `../plans/Styio-Ecosystem-Delivery-Master-Plan.md` 镜像，再更新 `../plans/Styio-View-Implementation-Plan.md` 与对应 handoff 文档。
+7. 若一次变更改动了 docs tree、索引生成规则、archive/rollup lifecycle、ignore-policy 或 fixture 反忽略规则，必须先更新 `../plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md` 镜像，再更新本文件、`../teams/COORDINATION-RUNBOOK.md` 和受影响目录入口。
+8. docs tree 变化后，必须运行 `python3 scripts/docs-lifecycle.py refresh`、`python3 scripts/docs-index.py --write`、`python3 scripts/docs-audit.py`。
+9. 根 `.gitignore` 若扩展 temp/build/log/cache 忽略规则，必须同批补 `docs/**` 与 `frontend/styio_view_app/test/**` 的显式 negate 规则，并让 `python3 scripts/check_repo_hygiene.py` 通过。
 
 ## 3. 文件命名规则
 
@@ -81,3 +95,6 @@
 2. 每次结构变更必须更新对应目录的 `INDEX.md`。
 3. 产品语义变化必须能在里程碑和测试目录中找到映射。
 4. 任何实现如果违反已接受 ADR，必须先新增替代 ADR 或回滚计划。
+5. 维护边界变化必须能在 `docs/teams/` 中找到对应更新。
+6. `archive/rollups` 和 docs 自动化脚本必须保持可执行，不能退回人工维护模式。
+7. `scripts/check_repo_hygiene.py` 必须持续校验 shared `.gitignore` baseline、fixture negate 规则和关键治理文档接线，不能退回“只查构建垃圾”的弱模式。

@@ -11,7 +11,8 @@ abstract class RuntimeEventAdapter {
 RuntimeEventAdapter createRuntimeEventAdapter({
   required PlatformTarget platformTarget,
 }) {
-  if (platformTarget == PlatformTarget.ios || platformTarget == PlatformTarget.web) {
+  if (platformTarget == PlatformTarget.ios ||
+      platformTarget == PlatformTarget.web) {
     return const NoopRuntimeEventAdapter(
       capabilitySnapshot: AdapterCapabilitySnapshot(
         adapterKind: AdapterKind.cloud,
@@ -21,7 +22,8 @@ RuntimeEventAdapter createRuntimeEventAdapter({
         ),
         projectGraph: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
-          detail: 'Cloud runtime event adapter does not expose project graph data.',
+          detail:
+              'Cloud runtime event adapter does not expose project graph data.',
         ),
         execution: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.partial,
@@ -29,7 +31,8 @@ RuntimeEventAdapter createRuntimeEventAdapter({
         ),
         runtimeEvents: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.partial,
-          detail: 'Cloud runtime events will flow once the hosted route is published.',
+          detail:
+              'Cloud runtime events will flow once the hosted route is published.',
         ),
       ),
     );
@@ -40,7 +43,8 @@ RuntimeEventAdapter createRuntimeEventAdapter({
       adapterKind: AdapterKind.cli,
       languageService: AdapterEndpointCapability(
         level: AdapterCapabilityLevel.unavailable,
-        detail: 'CLI runtime event adapter does not expose language-service data.',
+        detail:
+            'CLI runtime event adapter does not expose language-service data.',
       ),
       projectGraph: AdapterEndpointCapability(
         level: AdapterCapabilityLevel.unavailable,
@@ -48,7 +52,8 @@ RuntimeEventAdapter createRuntimeEventAdapter({
       ),
       execution: AdapterEndpointCapability(
         level: AdapterCapabilityLevel.partial,
-        detail: 'CLI execution stays single-file only until project-level contracts are published.',
+        detail:
+            'CLI execution is live for single-file and spio-routed project workflows, but runtime events remain unpublished.',
       ),
       runtimeEvents: AdapterEndpointCapability(
         level: AdapterCapabilityLevel.unavailable,

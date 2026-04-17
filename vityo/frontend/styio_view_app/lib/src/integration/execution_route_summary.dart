@@ -78,9 +78,9 @@ ExecutionRouteSummary summarizeExecutionRoute({
 
   if (projectGraph.compilePlanConsumerAdvertised) {
     return const ExecutionRouteSummary(
-      title: 'Project route ready for compile-plan handoff',
+      title: 'Project route live through spio',
       body:
-          'The active compiler advertises compile-plan support. The shell can keep its current UI and swap the preview path for a live adapter implementation.',
+          'The active compiler advertises compile-plan support, so project build/run/test can execute through spio with live compile-plan v1 handoff.',
       primaryAdapterKind: AdapterKind.cli,
       previewOnly: false,
     );
@@ -91,7 +91,7 @@ ExecutionRouteSummary summarizeExecutionRoute({
     return const ExecutionRouteSummary(
       title: 'Project route preview-only',
       body:
-          'Android keeps local-first intent, but current project build/run stays preview-only until styio publishes a live compile-plan consumer. Cloud remains the fallback route.',
+          'Android keeps local-first intent, but current project execution still blocks until the active compiler advertises compile-plan support. Cloud remains the fallback route.',
       primaryAdapterKind: AdapterKind.cli,
       previewOnly: true,
     );
@@ -100,7 +100,7 @@ ExecutionRouteSummary summarizeExecutionRoute({
   return const ExecutionRouteSummary(
     title: 'Project route preview-only',
     body:
-        'The shell can inspect spio projects today, but build/run/test stays preview-only until styio publishes a live compile-plan consumer.',
+        'The shell can inspect spio projects today, but build/run/test stays blocked until the active compiler advertises compile-plan support.',
     primaryAdapterKind: AdapterKind.cli,
     previewOnly: true,
   );

@@ -11,9 +11,13 @@ import 'package:styio_view_app/src/app/layout/styio_shell_scaffold.dart';
 import 'package:styio_view_app/src/editor/editor_controller.dart';
 import 'package:styio_view_app/src/editor/document_state.dart';
 import 'package:styio_view_app/src/integration/adapter_contracts.dart';
+import 'package:styio_view_app/src/integration/dependency_source_adapter.dart';
+import 'package:styio_view_app/src/integration/deployment_adapter.dart';
 import 'package:styio_view_app/src/integration/execution_adapter.dart';
+import 'package:styio_view_app/src/integration/project_graph_adapter.dart';
 import 'package:styio_view_app/src/integration/project_graph_contract.dart';
 import 'package:styio_view_app/src/integration/runtime_event_adapter.dart';
+import 'package:styio_view_app/src/integration/toolchain_management_adapter.dart';
 import 'package:styio_view_app/src/language/language_contract.dart';
 import 'package:styio_view_app/src/language/simple_styio_language_service.dart';
 import 'package:styio_view_app/src/module_host/module_registry.dart';
@@ -155,6 +159,7 @@ void main() {
     final workspaceController = WorkspaceController(
       projectSnapshot: projectSnapshot,
     );
+    final projectGraphAdapter = _FakeProjectGraphAdapter(projectSnapshot);
     return AppBootstrap(
       platformTarget: target,
       moduleRegistry: ModuleRegistry(
@@ -164,28 +169,8 @@ void main() {
       nativeModuleLoader: NoopNativeModuleLoader(
         platformTarget: target,
       ),
-      adapterCapabilities: normalizeCapabilitySnapshots([
-        const AdapterCapabilitySnapshot(
-          adapterKind: AdapterKind.cli,
-          languageService: AdapterEndpointCapability(
-            level: AdapterCapabilityLevel.partial,
-            detail:
-                'Smoke test CLI adapter keeps language-service contracts partial.',
-          ),
-          projectGraph: AdapterEndpointCapability(
-            level: AdapterCapabilityLevel.available,
-            detail:
-                'Smoke test project graph is resolved from a canonical fixture.',
-          ),
-          execution: AdapterEndpointCapability(
-            level: AdapterCapabilityLevel.partial,
-            detail: 'Smoke test execution stays preview-only.',
-          ),
-          runtimeEvents: AdapterEndpointCapability(
-            level: AdapterCapabilityLevel.unavailable,
-            detail: 'Smoke test runtime events are not wired.',
-          ),
-        ),
+      projectGraphAdapter: projectGraphAdapter,
+      supplementalAdapterCapabilities: normalizeCapabilitySnapshots([
         buildFfiAdapterCapability(
           visible: target != PlatformTarget.ios && target != PlatformTarget.web,
           executionSlotVisible:
@@ -209,7 +194,12 @@ void main() {
         languageService: const SimpleStyioLanguageService(),
       ),
       executionAdapter: const _FakeExecutionAdapter(),
+      executionAdapterFactory: (ProjectGraphSnapshot _) async =>
+          const _FakeExecutionAdapter(),
       runtimeEventAdapter: createRuntimeEventAdapter(platformTarget: target),
+      dependencySourceAdapter: const _FakeDependencySourceAdapter(),
+      deploymentAdapter: const _FakeDeploymentAdapter(),
+      toolchainManagementAdapter: const _FakeToolchainManagementAdapter(),
     );
   }
 
@@ -271,8 +261,34 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('command-strip-run')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('command-strip-fetchDependencies')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('command-strip-vendorDependencies')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('command-strip-refreshModules')),
+      findsOneWidget,
+    );
     expect(find.byIcon(Icons.play_arrow_rounded), findsWidgets);
     expect(find.byIcon(Icons.arrow_right_alt_rounded), findsWidgets);
+
+    await tester.tap(
+      find.byKey(const ValueKey('command-strip-vendorDependencies')),
+    );
+    await tester.pumpAndSettle();
+
+    final shell = ShellScope.of(
+      tester.element(find.byType(StyioShellScaffold)),
+    );
+    expect(shell.lastDependencySourceCommand?.command, 'vendor');
 
     await tester.tap(find.byKey(const ValueKey('source-buffer-surface')));
     await tester.pump();
@@ -329,6 +345,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Mobile'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('command-strip-fetchDependencies')),
+      findsNothing,
+    );
 
     await revealMobileLanguagePane(tester);
     expect(
@@ -462,6 +482,39 @@ void main() {
   });
 }
 
+class _FakeProjectGraphAdapter implements ProjectGraphAdapter {
+  const _FakeProjectGraphAdapter(this.projectSnapshot);
+
+  final ProjectGraphSnapshot projectSnapshot;
+
+  @override
+  AdapterCapabilitySnapshot get capabilitySnapshot =>
+      const AdapterCapabilitySnapshot(
+        adapterKind: AdapterKind.cli,
+        languageService: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.partial,
+          detail:
+              'Smoke test CLI adapter keeps language-service contracts partial.',
+        ),
+        projectGraph: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.available,
+          detail:
+              'Smoke test project graph is resolved from a canonical fixture.',
+        ),
+        execution: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail: 'Fake project graph adapter does not own execution routes.',
+        ),
+        runtimeEvents: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail: 'Fake project graph adapter does not emit runtime events.',
+        ),
+      );
+
+  @override
+  Future<ProjectGraphSnapshot> loadProjectGraph() async => projectSnapshot;
+}
+
 class _FakeExecutionAdapter implements ExecutionAdapter {
   const _FakeExecutionAdapter();
 
@@ -502,6 +555,152 @@ class _FakeExecutionAdapter implements ExecutionAdapter {
       diagnostics: <Diagnostic>[],
       stdoutEvents: <ExecutionLogEvent>[],
       stderrEvents: <ExecutionLogEvent>[],
+    );
+  }
+}
+
+class _FakeToolchainManagementAdapter implements ToolchainManagementAdapter {
+  const _FakeToolchainManagementAdapter();
+
+  @override
+  Future<ToolchainCommandResult> clearPinnedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+  }) async {
+    return const ToolchainCommandResult(
+      command: 'tool pin',
+      status: ToolchainCommandStatus.blocked,
+      statusMessage: 'Smoke test toolchain operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+
+  @override
+  Future<ToolchainCommandResult> installManagedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+    required String styioBinaryPath,
+  }) async {
+    return const ToolchainCommandResult(
+      command: 'tool install',
+      status: ToolchainCommandStatus.blocked,
+      statusMessage: 'Smoke test toolchain operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+
+  @override
+  Future<ToolchainCommandResult> pinManagedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+    required String compilerVersion,
+    String? channel,
+  }) async {
+    return const ToolchainCommandResult(
+      command: 'tool pin',
+      status: ToolchainCommandStatus.blocked,
+      statusMessage: 'Smoke test toolchain operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+
+  @override
+  Future<ToolchainCommandResult> useManagedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+    required String compilerVersion,
+    String? channel,
+  }) async {
+    return const ToolchainCommandResult(
+      command: 'tool use',
+      status: ToolchainCommandStatus.blocked,
+      statusMessage: 'Smoke test toolchain operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+}
+
+class _FakeDependencySourceAdapter implements DependencySourceAdapter {
+  const _FakeDependencySourceAdapter();
+
+  @override
+  Future<DependencySourceCommandResult> fetchDependencies({
+    required ProjectGraphSnapshot projectGraph,
+    bool locked = false,
+    bool offline = false,
+  }) async {
+    return const DependencySourceCommandResult(
+      command: 'fetch',
+      status: DependencySourceCommandStatus.blocked,
+      statusMessage: 'Smoke test dependency-source operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+
+  @override
+  Future<DependencySourceCommandResult> vendorDependencies({
+    required ProjectGraphSnapshot projectGraph,
+    String? outputPath,
+    bool locked = false,
+    bool offline = false,
+  }) async {
+    return const DependencySourceCommandResult(
+      command: 'vendor',
+      status: DependencySourceCommandStatus.blocked,
+      statusMessage: 'Smoke test dependency-source operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+}
+
+class _FakeDeploymentAdapter implements DeploymentAdapter {
+  const _FakeDeploymentAdapter();
+
+  @override
+  Future<DeploymentCommandResult> packProject({
+    required ProjectGraphSnapshot projectGraph,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    return const DeploymentCommandResult(
+      command: 'pack',
+      status: DeploymentCommandStatus.blocked,
+      statusMessage: 'Smoke test deployment operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+
+  @override
+  Future<DeploymentCommandResult> preparePublish({
+    required ProjectGraphSnapshot projectGraph,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    return const DeploymentCommandResult(
+      command: 'publish',
+      status: DeploymentCommandStatus.blocked,
+      statusMessage: 'Smoke test deployment operations remain blocked.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+
+  @override
+  Future<DeploymentCommandResult> publishToRegistry({
+    required ProjectGraphSnapshot projectGraph,
+    required String registryRoot,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    return const DeploymentCommandResult(
+      command: 'publish',
+      status: DeploymentCommandStatus.blocked,
+      statusMessage: 'Smoke test deployment operations remain blocked.',
+      stdout: '',
+      stderr: '',
     );
   }
 }

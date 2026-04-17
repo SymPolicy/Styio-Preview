@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../agent/agent_surface.dart';
 import '../../editor/editor_surface.dart';
@@ -31,52 +30,7 @@ class StyioShellScaffold extends StatelessWidget {
     );
 
     return Shortcuts(
-      shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(
-          LogicalKeyboardKey.keyS,
-          control: true,
-        ): AppCommandIntent(AppCommandId.save),
-        SingleActivator(
-          LogicalKeyboardKey.keyS,
-          meta: true,
-        ): AppCommandIntent(AppCommandId.save),
-        SingleActivator(
-          LogicalKeyboardKey.enter,
-          control: true,
-        ): AppCommandIntent(AppCommandId.run),
-        SingleActivator(
-          LogicalKeyboardKey.enter,
-          meta: true,
-        ): AppCommandIntent(AppCommandId.run),
-        SingleActivator(
-          LogicalKeyboardKey.digit1,
-          shift: true,
-        ): AppCommandIntent(AppCommandId.showRuntime),
-        SingleActivator(
-          LogicalKeyboardKey.digit2,
-          shift: true,
-        ): AppCommandIntent(AppCommandId.showAgent),
-        SingleActivator(
-          LogicalKeyboardKey.digit3,
-          shift: true,
-        ): AppCommandIntent(AppCommandId.showDebug),
-        SingleActivator(
-          LogicalKeyboardKey.keyR,
-          control: true,
-        ): AppCommandIntent(AppCommandId.refreshModules),
-        SingleActivator(
-          LogicalKeyboardKey.keyR,
-          meta: true,
-        ): AppCommandIntent(AppCommandId.refreshModules),
-        SingleActivator(
-          LogicalKeyboardKey.comma,
-          control: true,
-        ): AppCommandIntent(AppCommandId.openSettings),
-        SingleActivator(
-          LogicalKeyboardKey.comma,
-          meta: true,
-        ): AppCommandIntent(AppCommandId.openSettings),
-      },
+      shortcuts: StyioCommandRegistry.shortcutIntents,
       child: Actions(
         actions: <Type, Action<Intent>>{
           AppCommandIntent: CallbackAction<AppCommandIntent>(
@@ -1296,6 +1250,7 @@ class _BottomSurfaceTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final tabs = <Widget>[
       _SurfaceTabChip(
         label: 'Runtime',
@@ -1341,16 +1296,54 @@ class _BottomSurfaceTabs extends StatelessWidget {
             tabs[index],
           ],
           const SizedBox(width: 16),
-          for (final command in StyioCommandRegistry.commands.take(4))
+          for (final command in StyioCommandRegistry.primaryCommands)
             Padding(
               padding: const EdgeInsets.only(left: 8),
-              child: Chip(
-                label: Text('${command.label} · ${command.shortcutHint}'),
+              child: Tooltip(
+                message: shell.blockedReasonForCommand(command.id) ??
+                    '${command.description} (${command.shortcutHint})',
+                child: ActionChip(
+                  key: ValueKey('command-strip-${command.id.name}'),
+                  onPressed: shell.blockedReasonForCommand(command.id) == null
+                      ? () => shell.executeCommand(command.id)
+                      : null,
+                  avatar: Icon(
+                    _commandIcon(command.id),
+                    size: 18,
+                    color: shell.blockedReasonForCommand(command.id) == null
+                        ? theme.colorScheme.primary
+                        : theme.disabledColor,
+                  ),
+                  label: Text('${command.label} · ${command.shortcutHint}'),
+                ),
               ),
             ),
         ],
       ),
     );
+  }
+}
+
+IconData _commandIcon(AppCommandId commandId) {
+  switch (commandId) {
+    case AppCommandId.run:
+      return Icons.play_arrow_rounded;
+    case AppCommandId.fetchDependencies:
+      return Icons.cloud_download_rounded;
+    case AppCommandId.vendorDependencies:
+      return Icons.inventory_2_rounded;
+    case AppCommandId.refreshModules:
+      return Icons.refresh_rounded;
+    case AppCommandId.save:
+      return Icons.save_rounded;
+    case AppCommandId.showRuntime:
+      return Icons.terminal_rounded;
+    case AppCommandId.showAgent:
+      return Icons.smart_toy_outlined;
+    case AppCommandId.showDebug:
+      return Icons.bug_report_outlined;
+    case AppCommandId.openSettings:
+      return Icons.settings_outlined;
   }
 }
 

@@ -1,16 +1,28 @@
 # OS and editor state
 .DS_Store
+/.idea/
+/.vscode/
+/.cursor/
 .idea/
 .vscode/
+.cursor/
 
 # Python caches and local environments
 **/__pycache__/
 *.py[cod]
+/.venv/
+/venv/
+**/.cache/
+**/.mypy_cache/
+__pycache__/
 .venv/
 venv/
+.cache/
+.mypy_cache/
 
 # Dependency payloads
 **/node_modules/
+node_modules/
 
 # Generated artifacts and build outputs
 **/.artifacts/
@@ -22,5 +34,34 @@ venv/
 **/.ruff_cache/
 **/.turbo/
 **/build/
+/build-*/
 **/coverage/
 **/dist/
+/*.tmp
+/*.log
+/tmp/
+.pytest_cache/
+.ruff_cache/
+build/
+build-*/
+tmp/
+*.tmp
+*.log
+
+# Shared cross-repo tracked-fixture negate rules
+!docs/**/build/
+!docs/**/build/**
+!docs/**/build-*/
+!docs/**/build-*/**
+!docs/**/tmp/
+!docs/**/tmp/**
+!docs/**/*.tmp
+!docs/**/*.log
+!frontend/styio_view_app/test/**/build/
+!frontend/styio_view_app/test/**/build/**
+!frontend/styio_view_app/test/**/build-*/
+!frontend/styio_view_app/test/**/build-*/**
+!frontend/styio_view_app/test/**/tmp/
+!frontend/styio_view_app/test/**/tmp/**
+!frontend/styio_view_app/test/**/*.tmp
+!frontend/styio_view_app/test/**/*.log

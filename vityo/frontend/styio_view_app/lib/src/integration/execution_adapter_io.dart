@@ -7,6 +7,7 @@ import '../platform/platform_target.dart';
 import 'adapter_contracts.dart';
 import 'execution_adapter.dart';
 import 'project_graph_contract.dart';
+import 'spio_cli_discovery.dart';
 
 Future<ExecutionAdapter> createPlatformExecutionAdapter({
   required PlatformTarget platformTarget,
@@ -15,6 +16,7 @@ Future<ExecutionAdapter> createPlatformExecutionAdapter({
   final compiler = projectGraph.activeCompiler;
   return _LocalCliExecutionAdapter(
     platformTarget: platformTarget,
+    projectGraph: projectGraph,
     compiler: compiler,
   );
 }
@@ -22,10 +24,12 @@ Future<ExecutionAdapter> createPlatformExecutionAdapter({
 class _LocalCliExecutionAdapter implements ExecutionAdapter {
   const _LocalCliExecutionAdapter({
     required this.platformTarget,
+    required this.projectGraph,
     required this.compiler,
   });
 
   final PlatformTarget platformTarget;
+  final ProjectGraphSnapshot projectGraph;
   final CompilerHandshakeSnapshot? compiler;
 
   @override
@@ -39,7 +43,8 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
         ),
         projectGraph: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
-          detail: 'Project graph is not driven through the local execution path on iOS.',
+          detail:
+              'Project graph is not driven through the local execution path on iOS.',
         ),
         execution: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
@@ -57,42 +62,63 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
         adapterKind: AdapterKind.cli,
         languageService: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
-          detail: 'No published local styio binary was resolved for CLI language services.',
+          detail:
+              'No published local styio binary was resolved for CLI language services.',
         ),
         projectGraph: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
-          detail: 'Project graph is handled by the dedicated project graph adapter.',
+          detail:
+              'Project graph is handled by the dedicated project graph adapter.',
         ),
         execution: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
-          detail: 'No local styio binary was resolved. Set STYIO_VIEW_STYIO_BIN or install styio through spio.',
+          detail:
+              'No local styio binary was resolved. Set STYIO_VIEW_STYIO_BIN or install styio through spio.',
         ),
         runtimeEvents: AdapterEndpointCapability(
           level: AdapterCapabilityLevel.unavailable,
-          detail: 'Runtime events require a published execution/runtime contract.',
+          detail:
+              'Runtime events require a published execution/runtime contract.',
         ),
       );
     }
 
-    return const AdapterCapabilitySnapshot(
+    final hasProjectExecution =
+        projectGraph.hasManifest && compiler!.supportsContract('compile_plan');
+    final hasRuntimeEvents = compiler!.supportsContract('runtime_events');
+    final executionDetail = hasProjectExecution
+        ? 'Project execution routes through spio build/run/test with live compile-plan v1 handoff.'
+        : projectGraph.hasManifest
+            ? 'Project execution remains blocked until the active compiler advertises compile-plan support.'
+            : 'CLI execution is available through published single-file entry plus jsonl diagnostics.';
+
+    return AdapterCapabilitySnapshot(
       adapterKind: AdapterKind.cli,
-      languageService: AdapterEndpointCapability(
+      languageService: const AdapterEndpointCapability(
         level: AdapterCapabilityLevel.partial,
-        detail: 'Published CLI contract currently provides machine-info and jsonl diagnostics only.',
+        detail:
+            'Published CLI contract currently provides machine-info and jsonl diagnostics only.',
       ),
-      projectGraph: AdapterEndpointCapability(
+      projectGraph: const AdapterEndpointCapability(
         level: AdapterCapabilityLevel.unavailable,
-        detail: 'Project graph is handled by the dedicated project graph adapter.',
+        detail:
+            'Project graph is handled by the dedicated project graph adapter.',
       ),
       execution: AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.partial,
-        detail:
-            'CLI execution is currently limited to published single-file entry plus jsonl diagnostics.',
+        level: hasProjectExecution || !projectGraph.hasManifest
+            ? AdapterCapabilityLevel.available
+            : AdapterCapabilityLevel.partial,
+        detail: executionDetail,
       ),
       runtimeEvents: AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.unavailable,
-        detail:
-            'Runtime events stay unavailable until styio publishes a runtime event machine contract.',
+        level: hasRuntimeEvents
+            ? AdapterCapabilityLevel.available
+            : AdapterCapabilityLevel.unavailable,
+        detail: hasRuntimeEvents
+            ? 'Runtime events route through the published styio runtime_events contract.'
+            : 'Runtime events stay unavailable until styio publishes a runtime event machine contract.',
+        supportedContractVersions:
+            hasRuntimeEvents ? const <int>[1] : const <int>[],
       ),
     );
   }
@@ -109,7 +135,8 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
         sessionId: 'ios-cloud-only',
         kind: 'run',
         status: ExecutionSessionStatus.blocked,
-        statusMessage: 'iOS execution is cloud-only and is not routed through the local CLI adapter.',
+        statusMessage:
+            'iOS execution is cloud-only and is not routed through the local CLI adapter.',
         diagnostics: <Diagnostic>[],
         stdoutEvents: <ExecutionLogEvent>[],
         stderrEvents: <ExecutionLogEvent>[],
@@ -131,44 +158,49 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
     }
 
     if (projectGraph.hasManifest) {
-      return const ExecutionSession(
-        sessionId: 'compile-plan-preview-only',
-        kind: 'run',
-        status: ExecutionSessionStatus.blocked,
-        statusMessage:
-            'Project build/run remains preview-only until styio publishes a live compile-plan consumer.',
-        diagnostics: <Diagnostic>[],
-        stdoutEvents: <ExecutionLogEvent>[],
-        stderrEvents: <ExecutionLogEvent>[],
+      if (!resolvedCompiler.supportsContract('compile_plan')) {
+        return const ExecutionSession(
+          sessionId: 'compile-plan-preview-only',
+          kind: 'run',
+          status: ExecutionSessionStatus.blocked,
+          statusMessage:
+              'Project build/run is blocked because the active styio binary does not advertise compile-plan support.',
+          diagnostics: <Diagnostic>[],
+          stdoutEvents: <ExecutionLogEvent>[],
+          stderrEvents: <ExecutionLogEvent>[],
+        );
+      }
+      return _runProjectWorkflow(
+        compiler: resolvedCompiler,
+        projectGraph: projectGraph,
+        document: document,
+        activeFilePath: activeFilePath,
       );
     }
 
-    final tempDirectory = await Directory.systemTemp.createTemp(
-      'styio-view-run-',
+    final preparedInput = await _prepareSingleFileExecutionInput(
+      activeFilePath: activeFilePath,
+      document: document,
     );
-    final tempFile = File('${tempDirectory.path}${Platform.pathSeparator}main.styio');
     try {
-      await tempFile.writeAsString(document.text);
-      final result = await Process.run(
-        resolvedCompiler.binaryPath,
-        <String>[
-          '--file',
-          tempFile.path,
-          '--error-format=jsonl',
-        ],
-      );
+      final result = await Process.run(resolvedCompiler.binaryPath, <String>[
+        '--file',
+        preparedInput.filePath,
+        '--error-format=jsonl',
+      ]);
 
-      final diagnostics = _parseDiagnostics(
-        stdout: '${result.stdout}',
-        stderr: '${result.stderr}',
-      );
-      final stdoutEvents = _toLogEvents(
+      final normalizedPath = preparedInput.pathOverlay?.normalize;
+      final stdoutChannel = _parseOutputChannel(
         '${result.stdout}',
-        skipJsonDiagnostics: true,
+        documentText: document.text,
+        activeFilePath: activeFilePath,
+        normalizePath: normalizedPath,
       );
-      final stderrEvents = _toLogEvents(
+      final stderrChannel = _parseOutputChannel(
         '${result.stderr}',
-        skipJsonDiagnostics: true,
+        documentText: document.text,
+        activeFilePath: activeFilePath,
+        normalizePath: normalizedPath,
       );
 
       return ExecutionSession(
@@ -180,77 +212,1235 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
         statusMessage: result.exitCode == 0
             ? 'Single-file CLI run completed through styio.'
             : 'styio exited with code ${result.exitCode}.',
-        diagnostics: diagnostics,
-        stdoutEvents: stdoutEvents,
-        stderrEvents: stderrEvents,
+        diagnostics: <Diagnostic>[
+          ...stdoutChannel.diagnostics,
+          ...stderrChannel.diagnostics,
+        ],
+        stdoutEvents: stdoutChannel.logEvents,
+        stderrEvents: stderrChannel.logEvents,
         unitRange: SourceRange(start: 0, end: document.length),
       );
     } finally {
-      if (await tempDirectory.exists()) {
-        await tempDirectory.delete(recursive: true);
-      }
+      await _cleanupPreparedExecutionInput(preparedInput);
     }
   }
 }
 
-List<Diagnostic> _parseDiagnostics({
+class _ProjectWorkflowSelection {
+  const _ProjectWorkflowSelection({
+    required this.command,
+    required this.kind,
+    required this.args,
+    required this.successMessage,
+  });
+
+  final String command;
+  final String kind;
+  final List<String> args;
+  final String successMessage;
+}
+
+class _PreparedExecutionInput {
+  const _PreparedExecutionInput({
+    required this.filePath,
+    this.temporaryDirectory,
+    this.pathOverlay,
+  });
+
+  final String filePath;
+  final Directory? temporaryDirectory;
+  final _PathOverlayMapping? pathOverlay;
+}
+
+class _PreparedProjectWorkflowInput {
+  const _PreparedProjectWorkflowInput({
+    required this.workspaceRoot,
+    required this.manifestPath,
+    this.temporaryDirectory,
+    this.pathOverlay,
+  });
+
+  final String workspaceRoot;
+  final String manifestPath;
+  final Directory? temporaryDirectory;
+  final _PathOverlayMapping? pathOverlay;
+}
+
+class _PathOverlayMapping {
+  const _PathOverlayMapping({
+    required this.sourceRoot,
+    required this.overlayRoot,
+  });
+
+  final String sourceRoot;
+  final String overlayRoot;
+
+  String normalize(String path) {
+    final relativePath = _relativePathWithinRoot(path, overlayRoot);
+    if (relativePath == null) {
+      return path;
+    }
+    return _appendRelativePath(sourceRoot, relativePath);
+  }
+
+  String? overlayPathForSource(String path) {
+    final relativePath = _relativePathWithinRoot(path, sourceRoot);
+    if (relativePath == null) {
+      return null;
+    }
+    return _appendRelativePath(overlayRoot, relativePath);
+  }
+}
+
+class _ParsedDiagnostics {
+  const _ParsedDiagnostics({
+    required this.diagnostics,
+    required this.logEvents,
+  });
+
+  final List<Diagnostic> diagnostics;
+  final List<ExecutionLogEvent> logEvents;
+}
+
+class _ParsedDiagnosticRecord {
+  const _ParsedDiagnosticRecord({
+    this.diagnostic,
+    this.logMessage,
+  });
+
+  final Diagnostic? diagnostic;
+  final String? logMessage;
+}
+
+Future<ExecutionSession> _runProjectWorkflow({
+  required CompilerHandshakeSnapshot compiler,
+  required ProjectGraphSnapshot projectGraph,
+  required DocumentState document,
+  required String activeFilePath,
+}) async {
+  final manifestPath = projectGraph.manifestPath;
+  if (manifestPath == null) {
+    return const ExecutionSession(
+      sessionId: 'missing-manifest',
+      kind: 'run',
+      status: ExecutionSessionStatus.blocked,
+      statusMessage: 'Project execution requires a resolved spio manifest.',
+      diagnostics: <Diagnostic>[],
+      stdoutEvents: <ExecutionLogEvent>[],
+      stderrEvents: <ExecutionLogEvent>[],
+    );
+  }
+
+  final spioBinary = await resolveSpioBinary(
+    workspaceRoot: projectGraph.workspaceRoot,
+  );
+  if (spioBinary == null) {
+    return const ExecutionSession(
+      sessionId: 'missing-spio-binary',
+      kind: 'run',
+      status: ExecutionSessionStatus.blocked,
+      statusMessage:
+          'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.',
+      diagnostics: <Diagnostic>[],
+      stdoutEvents: <ExecutionLogEvent>[],
+      stderrEvents: <ExecutionLogEvent>[],
+    );
+  }
+  final useWorkflowPayloads = await _supportsSpioWorkflowSuccessPayloads(
+    spioBinary,
+  );
+
+  final workflow = _selectProjectWorkflow(
+    projectGraph: projectGraph,
+    activeFilePath: activeFilePath,
+  );
+  final preparedInput = await _prepareProjectWorkflowInput(
+    projectGraph: projectGraph,
+    manifestPath: manifestPath,
+    activeFilePath: activeFilePath,
+    document: document,
+  );
+  final normalizedPath = preparedInput.pathOverlay?.normalize;
+
+  try {
+    final result = await Process.run(
+        spioBinary,
+        <String>[
+          if (useWorkflowPayloads) '--json',
+          workflow.command,
+          '--manifest-path',
+          preparedInput.manifestPath,
+          '--styio-bin',
+          compiler.binaryPath,
+          ...workflow.args,
+        ],
+        workingDirectory: preparedInput.workspaceRoot);
+
+    final stdout = '${result.stdout}';
+    final stderr = '${result.stderr}';
+    if (useWorkflowPayloads && result.exitCode == 0) {
+      final session = await _sessionFromWorkflowSuccessPayload(
+        stdout: stdout,
+        stderr: stderr,
+        workflow: workflow,
+        document: document,
+        activeFilePath: activeFilePath,
+        workspaceRoot: preparedInput.workspaceRoot,
+        normalizePath: normalizedPath,
+      );
+      if (session != null) {
+        return session;
+      }
+    }
+    final failurePayload = _parseJsonObject(stderr) ?? _parseJsonObject(stdout);
+    final payloadDiagnostics = _parsePayloadDiagnostics(
+      failurePayload?['diagnostics'],
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizedPath,
+    );
+    final stdoutChannel = _parseOutputChannel(
+      stdout,
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizedPath,
+    );
+    final stderrChannel = _parseOutputChannel(
+      stderr,
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizedPath,
+    );
+    return ExecutionSession(
+      sessionId: DateTime.now().microsecondsSinceEpoch.toString(),
+      kind: workflow.kind,
+      status: result.exitCode == 0
+          ? ExecutionSessionStatus.succeeded
+          : ExecutionSessionStatus.failed,
+      statusMessage: result.exitCode == 0
+          ? workflow.successMessage
+          : (failurePayload?['message'] as String? ??
+              'spio ${workflow.command} exited with code ${result.exitCode}.'),
+      diagnostics: <Diagnostic>[
+        ...payloadDiagnostics.diagnostics,
+        ...stdoutChannel.diagnostics,
+        ...stderrChannel.diagnostics,
+      ],
+      stdoutEvents: stdoutChannel.logEvents,
+      stderrEvents: <ExecutionLogEvent>[
+        ...payloadDiagnostics.logEvents,
+        ...stderrChannel.logEvents,
+      ],
+      unitRange: SourceRange(start: 0, end: document.length),
+    );
+  } on ProcessException catch (error) {
+    return ExecutionSession(
+      sessionId: 'spio-process-error',
+      kind: workflow.kind,
+      status: ExecutionSessionStatus.failed,
+      statusMessage: 'Failed to execute spio: ${error.message}',
+      diagnostics: const <Diagnostic>[],
+      stdoutEvents: const <ExecutionLogEvent>[],
+      stderrEvents: const <ExecutionLogEvent>[],
+      unitRange: SourceRange(start: 0, end: document.length),
+    );
+  } finally {
+    await _cleanupPreparedProjectWorkflowInput(preparedInput);
+  }
+}
+
+Future<bool> _supportsSpioWorkflowSuccessPayloads(String spioBinary) async {
+  try {
+    final result = await Process.run(spioBinary, const <String>[
+      'machine-info',
+      '--json',
+    ]);
+    if (result.exitCode != 0) {
+      return false;
+    }
+
+    final decoded = jsonDecode('${result.stdout}');
+    if (decoded is! Map<String, dynamic>) {
+      return false;
+    }
+
+    final featureFlags = decoded['feature_flags'];
+    if (featureFlags is Map<String, dynamic> &&
+        featureFlags['workflow_success_payloads'] == true) {
+      return true;
+    }
+
+    final contracts = decoded['supported_contract_versions'];
+    if (contracts is Map<String, dynamic>) {
+      final versions = contracts['workflow_success_payloads'];
+      if (versions is List && versions.contains(1)) {
+        return true;
+      }
+    }
+  } on ProcessException {
+    return false;
+  } on FormatException {
+    return false;
+  }
+
+  return false;
+}
+
+Future<ExecutionSession?> _sessionFromWorkflowSuccessPayload({
   required String stdout,
   required String stderr,
-}) {
-  final diagnostics = <Diagnostic>[];
-  for (final line in <String>[
-    ...stdout.split('\n'),
-    ...stderr.split('\n'),
-  ]) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty || !trimmed.startsWith('{')) {
-      continue;
-    }
-    try {
-      final decoded = jsonDecode(trimmed);
-      if (decoded is! Map<String, dynamic>) {
-        continue;
-      }
-      final category = decoded['category'] as String? ?? 'diagnostic';
-      final message = decoded['message'] as String? ?? 'Compiler diagnostic';
-      diagnostics.add(
-        Diagnostic(
-          severity: _severityFromCategory(category),
-          code: decoded['code'] as String? ?? category,
-          message: message,
-          range: const SourceRange(start: 0, end: 0),
-        ),
-      );
-    } catch (_) {
-      continue;
-    }
+  required _ProjectWorkflowSelection workflow,
+  required DocumentState document,
+  required String activeFilePath,
+  required String workspaceRoot,
+  String Function(String path)? normalizePath,
+}) async {
+  final trimmed = stdout.trim();
+  if (!trimmed.startsWith('{')) {
+    return null;
   }
-  return diagnostics;
+
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    if (decoded['workflow_payload_version'] != 1) {
+      return null;
+    }
+
+    final payloadStdout = decoded['stdout'] as String? ?? '';
+    final payloadStderr = decoded['stderr'] as String? ?? '';
+    final workflowDiagnostics = await _readWorkflowDiagnostics(
+      rawDiagnostics: decoded['diagnostics'],
+      diagnosticsPath: decoded['diagnostics_path'],
+      workspaceRoot: workspaceRoot,
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+    final payloadStdoutChannel = _parseOutputChannel(
+      payloadStdout,
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+    final payloadStderrChannel = _parseOutputChannel(
+      payloadStderr,
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+    final stderrChannel = _parseOutputChannel(
+      stderr,
+      documentText: document.text,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+
+    return ExecutionSession(
+      sessionId: DateTime.now().microsecondsSinceEpoch.toString(),
+      kind: workflow.kind,
+      status: ExecutionSessionStatus.succeeded,
+      statusMessage: decoded['message'] as String? ?? workflow.successMessage,
+      diagnostics: <Diagnostic>[
+        ...workflowDiagnostics.diagnostics,
+        ...payloadStdoutChannel.diagnostics,
+        ...payloadStderrChannel.diagnostics,
+        ...stderrChannel.diagnostics,
+      ],
+      stdoutEvents: payloadStdoutChannel.logEvents,
+      stderrEvents: <ExecutionLogEvent>[
+        ...workflowDiagnostics.logEvents,
+        ...payloadStderrChannel.logEvents,
+        ...stderrChannel.logEvents,
+      ],
+      unitRange: SourceRange(start: 0, end: document.length),
+    );
+  } on FormatException {
+    return null;
+  }
 }
 
-List<ExecutionLogEvent> _toLogEvents(
-  String output, {
-  required bool skipJsonDiagnostics,
+Future<_ParsedDiagnostics> _readWorkflowDiagnostics({
+  required Object? rawDiagnostics,
+  required Object? diagnosticsPath,
+  required String workspaceRoot,
+  required String documentText,
+  required String activeFilePath,
+  String Function(String path)? normalizePath,
+}) async {
+  final inlineDiagnostics = _parsePayloadDiagnostics(
+    rawDiagnostics,
+    documentText: documentText,
+    activeFilePath: activeFilePath,
+    normalizePath: normalizePath,
+  );
+  final diagnostics = <Diagnostic>[...inlineDiagnostics.diagnostics];
+  final logEvents = <ExecutionLogEvent>[...inlineDiagnostics.logEvents];
+
+  final resolvedDiagnosticsPath = _resolveWorkflowDiagnosticsPath(
+    diagnosticsPath,
+    workspaceRoot: workspaceRoot,
+  );
+  if (resolvedDiagnosticsPath == null) {
+    return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
+  }
+
+  try {
+    final file = File(resolvedDiagnosticsPath);
+    if (!await file.exists()) {
+      return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
+    }
+    final fileDiagnostics = _parseOutputChannel(
+      await file.readAsString(),
+      documentText: documentText,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+    diagnostics.addAll(fileDiagnostics.diagnostics);
+    logEvents.addAll(fileDiagnostics.logEvents);
+  } on FileSystemException {
+    // Keep inline diagnostics when the artifact cannot be read.
+  }
+
+  return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
+}
+
+_ParsedDiagnostics _parsePayloadDiagnostics(
+  Object? rawDiagnostics, {
+  required String documentText,
+  required String activeFilePath,
+  String Function(String path)? normalizePath,
 }) {
-  final events = <ExecutionLogEvent>[];
+  if (rawDiagnostics is! List) {
+    return const _ParsedDiagnostics(
+      diagnostics: <Diagnostic>[],
+      logEvents: <ExecutionLogEvent>[],
+    );
+  }
+
+  final diagnostics = <Diagnostic>[];
+  final logEvents = <ExecutionLogEvent>[];
+  for (final item in rawDiagnostics) {
+    if (item is! Map<String, dynamic>) {
+      continue;
+    }
+    final record = _parseDiagnosticObject(
+      item,
+      allowPayloadShape: true,
+      documentText: documentText,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+    if (record?.diagnostic != null) {
+      diagnostics.add(record!.diagnostic!);
+    }
+    if (record?.logMessage != null) {
+      logEvents.add(ExecutionLogEvent(message: record!.logMessage!));
+    }
+  }
+  return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
+}
+
+_ProjectWorkflowSelection _selectProjectWorkflow({
+  required ProjectGraphSnapshot projectGraph,
+  required String activeFilePath,
+}) {
+  ProjectTargetDescriptor? target;
+  for (final candidate in projectGraph.targets) {
+    if (candidate.filePath == activeFilePath) {
+      target = candidate;
+      break;
+    }
+  }
+
+  if (target == null) {
+    final packageName = _packageNameForPath(
+      projectGraph: projectGraph,
+      activeFilePath: activeFilePath,
+    );
+    final packageTargets = packageName == null
+        ? const <ProjectTargetDescriptor>[]
+        : projectGraph.targets
+            .where((candidate) => candidate.packageName == packageName)
+            .toList(growable: false);
+    if (packageTargets.length == 1) {
+      target = packageTargets.single;
+    } else if (projectGraph.targets.length == 1) {
+      target = projectGraph.targets.single;
+    } else {
+      return _ProjectWorkflowSelection(
+        command: 'build',
+        kind: 'build',
+        args:
+            packageName == null ? const <String>[] : _packageArgs(packageName),
+        successMessage: packageName == null
+            ? 'Project build completed through spio.'
+            : 'Project package build completed through spio.',
+      );
+    }
+  }
+
+  if (target == null) {
+    return const _ProjectWorkflowSelection(
+      command: 'build',
+      kind: 'build',
+      args: <String>[],
+      successMessage: 'Project build completed through spio.',
+    );
+  }
+
+  switch (target.kind) {
+    case ProjectTargetKind.test:
+      return _ProjectWorkflowSelection(
+        command: 'test',
+        kind: 'test',
+        args: <String>[
+          ..._packageArgs(target.packageName),
+          '--test',
+          target.name,
+        ],
+        successMessage: 'Project test target completed through spio.',
+      );
+    case ProjectTargetKind.lib:
+      return _ProjectWorkflowSelection(
+        command: 'build',
+        kind: 'build',
+        args: <String>[
+          ..._packageArgs(target.packageName),
+          '--lib',
+        ],
+        successMessage: 'Project library build completed through spio.',
+      );
+    case ProjectTargetKind.bin:
+      return _ProjectWorkflowSelection(
+        command: 'run',
+        kind: 'run',
+        args: <String>[
+          ..._packageArgs(target.packageName),
+          '--bin',
+          target.name,
+        ],
+        successMessage: 'Project binary run completed through spio.',
+      );
+  }
+}
+
+Future<_PreparedExecutionInput> _prepareSingleFileExecutionInput({
+  required String activeFilePath,
+  required DocumentState document,
+}) async {
+  if (_isAbsolutePath(activeFilePath)) {
+    if (!await _shouldUseDocumentOverlay(
+      activeFilePath: activeFilePath,
+      document: document,
+    )) {
+      return _PreparedExecutionInput(filePath: activeFilePath);
+    }
+
+    final sourceRoot = await _singleFileOverlayRoot(activeFilePath);
+    final overlay = await _createDocumentOverlay(
+      sourceRoot: sourceRoot,
+      activeFilePath: activeFilePath,
+      document: document,
+    );
+    return _PreparedExecutionInput(
+      filePath: overlay.pathOverlay.overlayPathForSource(activeFilePath) ??
+          activeFilePath,
+      temporaryDirectory: overlay.temporaryDirectory,
+      pathOverlay: overlay.pathOverlay,
+    );
+  }
+
+  final tempDirectory =
+      await Directory.systemTemp.createTemp('styio-view-run-');
+  final tempFile = File(
+    '${tempDirectory.path}${Platform.pathSeparator}main.styio',
+  );
+  await tempFile.writeAsString(document.text);
+  return _PreparedExecutionInput(
+    filePath: tempFile.path,
+    temporaryDirectory: tempDirectory,
+  );
+}
+
+Future<void> _cleanupPreparedExecutionInput(
+    _PreparedExecutionInput input) async {
+  final temporaryDirectory = input.temporaryDirectory;
+  if (temporaryDirectory == null) {
+    return;
+  }
+  if (await temporaryDirectory.exists()) {
+    await temporaryDirectory.delete(recursive: true);
+  }
+}
+
+Future<_PreparedProjectWorkflowInput> _prepareProjectWorkflowInput({
+  required ProjectGraphSnapshot projectGraph,
+  required String manifestPath,
+  required String activeFilePath,
+  required DocumentState document,
+}) async {
+  if (!_isAbsolutePath(activeFilePath) ||
+      !_pathIsWithinRoot(activeFilePath, projectGraph.workspaceRoot) ||
+      !await _shouldUseDocumentOverlay(
+        activeFilePath: activeFilePath,
+        document: document,
+      )) {
+    return _PreparedProjectWorkflowInput(
+      workspaceRoot: projectGraph.workspaceRoot,
+      manifestPath: manifestPath,
+    );
+  }
+
+  final overlay = await _createDocumentOverlay(
+    sourceRoot: projectGraph.workspaceRoot,
+    activeFilePath: activeFilePath,
+    document: document,
+  );
+  return _PreparedProjectWorkflowInput(
+    workspaceRoot: overlay.pathOverlay.overlayRoot,
+    manifestPath:
+        overlay.pathOverlay.overlayPathForSource(manifestPath) ?? manifestPath,
+    temporaryDirectory: overlay.temporaryDirectory,
+    pathOverlay: overlay.pathOverlay,
+  );
+}
+
+Future<void> _cleanupPreparedProjectWorkflowInput(
+  _PreparedProjectWorkflowInput input,
+) async {
+  final temporaryDirectory = input.temporaryDirectory;
+  if (temporaryDirectory == null) {
+    return;
+  }
+  if (await temporaryDirectory.exists()) {
+    await temporaryDirectory.delete(recursive: true);
+  }
+}
+
+Future<bool> _shouldUseDocumentOverlay({
+  required String activeFilePath,
+  required DocumentState document,
+}) async {
+  if (!_isAbsolutePath(activeFilePath)) {
+    return false;
+  }
+  try {
+    final file = File(activeFilePath);
+    if (!await file.exists()) {
+      return true;
+    }
+    return await file.readAsString() != document.text;
+  } on FileSystemException {
+    return true;
+  }
+}
+
+Future<String> _singleFileOverlayRoot(String activeFilePath) async {
+  var current = File(activeFilePath).parent.absolute;
+  while (true) {
+    final hasConfig = await File(
+          '${current.path}${Platform.pathSeparator}styio.toml',
+        ).exists() ||
+        await File(
+          '${current.path}${Platform.pathSeparator}.styio.toml',
+        ).exists();
+    if (hasConfig) {
+      return current.path;
+    }
+    final parent = current.parent;
+    if (parent.path == current.path) {
+      return File(activeFilePath).parent.absolute.path;
+    }
+    current = parent;
+  }
+}
+
+Future<
+    ({
+      Directory temporaryDirectory,
+      _PathOverlayMapping pathOverlay,
+    })> _createDocumentOverlay({
+  required String sourceRoot,
+  required String activeFilePath,
+  required DocumentState document,
+}) async {
+  final overlayRoot = await _createSiblingOverlayDirectory(sourceRoot);
+  await _expandOverlayPathChain(
+    sourceRoot: sourceRoot,
+    overlayRoot: overlayRoot.path,
+    activeFilePath: activeFilePath,
+    documentText: document.text,
+  );
+  return (
+    temporaryDirectory: overlayRoot,
+    pathOverlay: _PathOverlayMapping(
+      sourceRoot: Directory(sourceRoot).absolute.path,
+      overlayRoot: overlayRoot.path,
+    ),
+  );
+}
+
+Future<Directory> _createSiblingOverlayDirectory(String sourceRoot) async {
+  final parentDirectory = Directory(sourceRoot).absolute.parent;
+  final sourceName = Directory(sourceRoot).uri.pathSegments.lastWhere(
+        (segment) => segment.isNotEmpty,
+        orElse: () => 'workspace',
+      );
+  try {
+    return parentDirectory.createTemp('.styio-view-$sourceName-');
+  } on FileSystemException {
+    return Directory.systemTemp.createTemp('styio-view-run-');
+  }
+}
+
+Future<void> _expandOverlayPathChain({
+  required String sourceRoot,
+  required String overlayRoot,
+  required String activeFilePath,
+  required String documentText,
+}) async {
+  final relativePath = _relativePathWithinRoot(activeFilePath, sourceRoot);
+  if (relativePath == null) {
+    throw ArgumentError(
+      'Active file path $activeFilePath is outside overlay root $sourceRoot.',
+    );
+  }
+
+  await _linkChildrenIntoOverlay(
+    sourceDirectory: Directory(sourceRoot),
+    overlayDirectory: Directory(overlayRoot),
+  );
+
+  final segments = relativePath
+      .split(Platform.pathSeparator)
+      .where((segment) => segment.isNotEmpty)
+      .toList(growable: false);
+  var sourceCursor = sourceRoot;
+  var overlayCursor = overlayRoot;
+  for (var index = 0; index < segments.length - 1; index += 1) {
+    final segment = segments[index];
+    sourceCursor = _appendRelativePath(sourceCursor, segment);
+    overlayCursor = _appendRelativePath(overlayCursor, segment);
+    await _replaceOverlayLinkWithDirectory(overlayCursor);
+    await _linkChildrenIntoOverlay(
+      sourceDirectory: Directory(sourceCursor),
+      overlayDirectory: Directory(overlayCursor),
+    );
+  }
+
+  final overlayFilePath = _appendRelativePath(overlayRoot, relativePath);
+  final overlayFile = File(overlayFilePath);
+  await _deleteOverlayEntity(overlayFile.path);
+  await overlayFile.parent.create(recursive: true);
+  await overlayFile.writeAsString(documentText);
+}
+
+Future<void> _replaceOverlayLinkWithDirectory(String overlayPath) async {
+  await _deleteOverlayEntity(overlayPath);
+  await Directory(overlayPath).create(recursive: true);
+}
+
+Future<void> _linkChildrenIntoOverlay({
+  required Directory sourceDirectory,
+  required Directory overlayDirectory,
+}) async {
+  if (!await sourceDirectory.exists()) {
+    await overlayDirectory.create(recursive: true);
+    return;
+  }
+  await overlayDirectory.create(recursive: true);
+  await for (final entity in sourceDirectory.list(followLinks: false)) {
+    final name = entity.uri.pathSegments.isEmpty
+        ? ''
+        : entity.uri.pathSegments.lastWhere(
+            (segment) => segment.isNotEmpty,
+            orElse: () => '',
+          );
+    if (name.isEmpty) {
+      continue;
+    }
+    final overlayPath = _appendRelativePath(overlayDirectory.path, name);
+    if (await FileSystemEntity.type(overlayPath, followLinks: false) !=
+        FileSystemEntityType.notFound) {
+      continue;
+    }
+    await _createLinkOrCopy(
+      sourcePath: entity.path,
+      overlayPath: overlayPath,
+    );
+  }
+}
+
+Future<void> _createLinkOrCopy({
+  required String sourcePath,
+  required String overlayPath,
+}) async {
+  try {
+    await Link(overlayPath).create(sourcePath);
+    return;
+  } on FileSystemException {
+    final entityType =
+        await FileSystemEntity.type(sourcePath, followLinks: false);
+    switch (entityType) {
+      case FileSystemEntityType.directory:
+        await _copyDirectory(
+          sourceDirectory: Directory(sourcePath),
+          destinationDirectory: Directory(overlayPath),
+        );
+        return;
+      case FileSystemEntityType.file:
+        await File(overlayPath).parent.create(recursive: true);
+        await File(sourcePath).copy(overlayPath);
+        return;
+      case FileSystemEntityType.link:
+        final linkTarget = await Link(sourcePath).target();
+        await Link(overlayPath).create(linkTarget);
+        return;
+      case FileSystemEntityType.notFound:
+        return;
+    }
+  }
+}
+
+Future<void> _copyDirectory({
+  required Directory sourceDirectory,
+  required Directory destinationDirectory,
+}) async {
+  await destinationDirectory.create(recursive: true);
+  await for (final entity in sourceDirectory.list(followLinks: false)) {
+    final name = entity.uri.pathSegments.isEmpty
+        ? ''
+        : entity.uri.pathSegments.lastWhere(
+            (segment) => segment.isNotEmpty,
+            orElse: () => '',
+          );
+    if (name.isEmpty) {
+      continue;
+    }
+    final destinationPath =
+        _appendRelativePath(destinationDirectory.path, name);
+    await _createLinkOrCopy(
+      sourcePath: entity.path,
+      overlayPath: destinationPath,
+    );
+  }
+}
+
+Future<void> _deleteOverlayEntity(String path) async {
+  final entityType = await FileSystemEntity.type(path, followLinks: false);
+  switch (entityType) {
+    case FileSystemEntityType.directory:
+      await Directory(path).delete(recursive: true);
+      return;
+    case FileSystemEntityType.file:
+      await File(path).delete();
+      return;
+    case FileSystemEntityType.link:
+      await Link(path).delete();
+      return;
+    case FileSystemEntityType.notFound:
+      return;
+  }
+}
+
+_ParsedDiagnostics _parseOutputChannel(
+  String output, {
+  required String documentText,
+  required String activeFilePath,
+  String Function(String path)? normalizePath,
+}) {
+  final diagnostics = <Diagnostic>[];
+  final logEvents = <ExecutionLogEvent>[];
   for (final line in output.split('\n')) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) {
       continue;
     }
-    if (skipJsonDiagnostics && trimmed.startsWith('{')) {
-      try {
-        final decoded = jsonDecode(trimmed);
-        if (decoded is Map<String, dynamic> && decoded.containsKey('message')) {
-          continue;
-        }
-      } catch (_) {
-        // Fall through and keep the line.
+    final record = _parseDiagnosticLine(
+      trimmed,
+      documentText: documentText,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+    if (record?.diagnostic != null) {
+      diagnostics.add(record!.diagnostic!);
+      continue;
+    }
+    if (record?.logMessage != null) {
+      logEvents.add(ExecutionLogEvent(message: record!.logMessage!));
+      continue;
+    }
+    logEvents.add(ExecutionLogEvent(message: trimmed));
+  }
+  return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
+}
+
+List<String> _packageArgs(String packageName) {
+  if (packageName.isEmpty) {
+    return const <String>[];
+  }
+  return <String>['--package', packageName];
+}
+
+String? _packageNameForPath({
+  required ProjectGraphSnapshot projectGraph,
+  required String activeFilePath,
+}) {
+  if (!_isAbsolutePath(activeFilePath)) {
+    return null;
+  }
+
+  for (final package in projectGraph.packages) {
+    if (_pathIsWithinRoot(activeFilePath, package.rootPath)) {
+      return package.packageName;
+    }
+  }
+  return null;
+}
+
+bool _pathIsWithinRoot(String path, String rootPath) {
+  if (!_isAbsolutePath(path) || !_isAbsolutePath(rootPath)) {
+    return false;
+  }
+
+  final absolutePath = File(path).absolute.path;
+  final absoluteRoot = Directory(rootPath).absolute.path;
+  if (absolutePath == absoluteRoot) {
+    return true;
+  }
+
+  final rootPrefix = absoluteRoot.endsWith(Platform.pathSeparator)
+      ? absoluteRoot
+      : '$absoluteRoot${Platform.pathSeparator}';
+  return absolutePath.startsWith(rootPrefix);
+}
+
+String? _relativePathWithinRoot(String path, String rootPath) {
+  if (!_pathIsWithinRoot(path, rootPath)) {
+    return null;
+  }
+  final absolutePath = File(path).absolute.path;
+  final absoluteRoot = Directory(rootPath).absolute.path;
+  if (absolutePath == absoluteRoot) {
+    return '';
+  }
+  final rootPrefix = absoluteRoot.endsWith(Platform.pathSeparator)
+      ? absoluteRoot
+      : '$absoluteRoot${Platform.pathSeparator}';
+  return absolutePath.substring(rootPrefix.length);
+}
+
+String _appendRelativePath(String rootPath, String relativePath) {
+  if (relativePath.isEmpty) {
+    return rootPath;
+  }
+  if (rootPath.endsWith(Platform.pathSeparator)) {
+    return '$rootPath$relativePath';
+  }
+  return '$rootPath${Platform.pathSeparator}$relativePath';
+}
+
+Map<String, dynamic>? _parseJsonObject(String text) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty || !trimmed.startsWith('{')) {
+    return null;
+  }
+
+  try {
+    final decoded = jsonDecode(trimmed);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+_ParsedDiagnosticRecord? _parseDiagnosticLine(
+  String line, {
+  required String documentText,
+  required String activeFilePath,
+  String Function(String path)? normalizePath,
+}) {
+  final trimmed = line.trim();
+  if (trimmed.isEmpty || !trimmed.startsWith('{')) {
+    return null;
+  }
+
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    return _parseDiagnosticObject(
+      decoded,
+      allowPayloadShape: false,
+      documentText: documentText,
+      activeFilePath: activeFilePath,
+      normalizePath: normalizePath,
+    );
+  } on FormatException {
+    return null;
+  }
+}
+
+_ParsedDiagnosticRecord? _parseDiagnosticObject(
+  Map<String, dynamic> decoded, {
+  required bool allowPayloadShape,
+  required String documentText,
+  required String activeFilePath,
+  String Function(String path)? normalizePath,
+}) {
+  if (decoded['eventKind'] == 'diagnostic.emitted') {
+    final payload = decoded['payload'];
+    if (payload is Map<String, dynamic>) {
+      return _parseDiagnosticObject(
+        payload,
+        allowPayloadShape: true,
+        documentText: documentText,
+        activeFilePath: activeFilePath,
+        normalizePath: normalizePath,
+      );
+    }
+  }
+
+  final message = _diagnosticMessage(decoded);
+  if (message == null || message.isEmpty) {
+    return null;
+  }
+
+  final category = _stringValue(decoded['category']);
+  final severityLabel = _stringValue(decoded['severity']);
+  final kind = _stringValue(decoded['kind'])?.toLowerCase();
+  final type = _stringValue(decoded['type'])?.toLowerCase();
+  final range = _diagnosticRangeFromPayload(
+    decoded,
+    activeFilePath: activeFilePath,
+    normalizePath: normalizePath,
+  );
+  final hasDiagnosticMarker = category != null ||
+      kind == 'diagnostic' ||
+      type == 'diagnostic' ||
+      decoded['diagnostic'] == true ||
+      decoded['eventKind'] == 'diagnostic.emitted';
+  final hasPayloadShape = severityLabel != null ||
+      _stringValue(decoded['code']) != null ||
+      _stringValue(decoded['subcode']) != null ||
+      _stringValue(decoded['file']) != null ||
+      decoded.containsKey('range') ||
+      decoded.containsKey('span') ||
+      decoded.containsKey('location') ||
+      decoded.containsKey('offset') ||
+      decoded.containsKey('length');
+  if (!hasDiagnosticMarker &&
+      range == null &&
+      (!allowPayloadShape || !hasPayloadShape)) {
+    return null;
+  }
+
+  final severity = severityLabel == null || severityLabel.isEmpty
+      ? _severityFromCategory(category ?? 'diagnostic')
+      : _severityFromCategory(severityLabel);
+  final code = _diagnosticCode(decoded, category: category);
+  final rawFilePath = _stringValue(decoded['file']);
+  final filePath = rawFilePath == null
+      ? null
+      : (normalizePath == null ? rawFilePath : normalizePath(rawFilePath));
+  final displayMessage = _decorateDiagnosticMessage(
+    message,
+    filePath: filePath,
+    activeFilePath: activeFilePath,
+  );
+  if (filePath != null &&
+      filePath.isNotEmpty &&
+      activeFilePath.isNotEmpty &&
+      filePath != activeFilePath) {
+    return _ParsedDiagnosticRecord(logMessage: displayMessage);
+  }
+  return _ParsedDiagnosticRecord(
+    diagnostic: Diagnostic(
+      severity: severity,
+      code: code,
+      message: displayMessage,
+      range: range ?? const SourceRange(start: 0, end: 0),
+    ),
+  );
+}
+
+String? _diagnosticMessage(Map<String, dynamic> decoded) {
+  for (final key in const <String>[
+    'message',
+    'text',
+    'detail',
+    'reason',
+    'raw'
+  ]) {
+    final value = _messageValue(decoded[key]);
+    if (value != null && value.isNotEmpty) {
+      return value;
+    }
+  }
+  return null;
+}
+
+String? _messageValue(Object? value) {
+  if (value is String) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+  if (value is Map<String, dynamic>) {
+    final parts = <String>[];
+    for (final key in const <String>['text', 'summary', 'detail', 'message']) {
+      final nested = _messageValue(value[key]);
+      if (nested != null && !parts.contains(nested)) {
+        parts.add(nested);
       }
     }
-    events.add(ExecutionLogEvent(message: trimmed));
+    if (parts.isNotEmpty) {
+      return parts.join(' ');
+    }
   }
-  return events;
+  return null;
+}
+
+String _diagnosticCode(
+  Map<String, dynamic> decoded, {
+  required String? category,
+}) {
+  final primary = _stringValue(decoded['code']) ?? category ?? 'diagnostic';
+  final subcode = _stringValue(decoded['subcode']);
+  if (subcode == null || subcode.isEmpty) {
+    return primary;
+  }
+  return '$primary:$subcode';
+}
+
+String _decorateDiagnosticMessage(
+  String message, {
+  required String? filePath,
+  required String activeFilePath,
+}) {
+  if (filePath == null || filePath.isEmpty || filePath == activeFilePath) {
+    return message;
+  }
+  if (message.startsWith('$filePath: ')) {
+    return message;
+  }
+  return '$filePath: $message';
+}
+
+SourceRange? _diagnosticRangeFromPayload(
+  Map<String, dynamic> decoded, {
+  required String activeFilePath,
+  String Function(String path)? normalizePath,
+}) {
+  final rawFilePath = _stringValue(decoded['file']);
+  final filePath = rawFilePath == null
+      ? null
+      : (normalizePath == null ? rawFilePath : normalizePath(rawFilePath));
+  if (filePath != null &&
+      filePath.isNotEmpty &&
+      activeFilePath.isNotEmpty &&
+      filePath != activeFilePath) {
+    return null;
+  }
+
+  return _sourceRangeFromObject(decoded['range']) ??
+      _sourceRangeFromObject(decoded['span']) ??
+      _sourceRangeFromObject(decoded['location']) ??
+      _sourceRangeFromOffsetFields(decoded);
+}
+
+SourceRange? _sourceRangeFromObject(Object? value) {
+  if (value is! Map<String, dynamic>) {
+    return null;
+  }
+
+  final directRange = _sourceRangeFromOffsetFields(value);
+  if (directRange != null) {
+    return directRange;
+  }
+
+  final start = _offsetFromObject(value['start']);
+  final end = _offsetFromObject(value['end']);
+  if (start != null && end != null) {
+    return _normalizedRange(start, end);
+  }
+
+  return null;
+}
+
+SourceRange? _sourceRangeFromOffsetFields(Map<String, dynamic> value) {
+  final start = _intValue(value['start']) ?? _intValue(value['startOffset']);
+  final end = _intValue(value['end']) ?? _intValue(value['endOffset']);
+  if (start != null && end != null) {
+    return _normalizedRange(start, end);
+  }
+
+  final offset = _intValue(value['offset']);
+  final length = _intValue(value['length']);
+  if (offset != null && length != null) {
+    final safeLength = length < 0 ? 0 : length;
+    return SourceRange(start: offset, end: offset + safeLength);
+  }
+
+  return null;
+}
+
+int? _offsetFromObject(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return _intValue(value['offset']) ??
+        _intValue(value['index']) ??
+        _intValue(value['position']) ??
+        _intValue(value['value']);
+  }
+  return _intValue(value);
+}
+
+SourceRange _normalizedRange(int start, int end) {
+  if (end < start) {
+    return SourceRange(start: end, end: start);
+  }
+  return SourceRange(start: start, end: end);
+}
+
+String? _resolveWorkflowDiagnosticsPath(
+  Object? diagnosticsPath, {
+  required String workspaceRoot,
+}) {
+  final path = _stringValue(diagnosticsPath);
+  if (path == null || path.isEmpty) {
+    return null;
+  }
+  if (_isAbsolutePath(path)) {
+    return path;
+  }
+  return _joinPath(workspaceRoot, path);
+}
+
+String? _stringValue(Object? value) {
+  if (value is String) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+  if (value is num || value is bool) {
+    return '$value';
+  }
+  return null;
+}
+
+int? _intValue(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  if (value is String) {
+    return int.tryParse(value);
+  }
+  return null;
 }
 
 DiagnosticSeverity _severityFromCategory(String category) {
@@ -262,4 +1452,13 @@ DiagnosticSeverity _severityFromCategory(String category) {
     return DiagnosticSeverity.warning;
   }
   return DiagnosticSeverity.error;
+}
+
+bool _isAbsolutePath(String path) {
+  return path.startsWith(Platform.pathSeparator) ||
+      RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path);
+}
+
+String _joinPath(String base, String child) {
+  return Directory(base).uri.resolve(child).toFilePath();
 }

@@ -1,10 +1,4 @@
-enum ProjectKind {
-  scratch,
-  package,
-  workspace,
-  combinedRoot,
-  hosted,
-}
+enum ProjectKind { scratch, package, workspace, combinedRoot, hosted }
 
 extension ProjectKindX on ProjectKind {
   String get label {
@@ -23,11 +17,7 @@ extension ProjectKindX on ProjectKind {
   }
 }
 
-enum ProjectTargetKind {
-  lib,
-  bin,
-  test,
-}
+enum ProjectTargetKind { lib, bin, test }
 
 extension ProjectTargetKindX on ProjectTargetKind {
   String get label {
@@ -42,10 +32,7 @@ extension ProjectTargetKindX on ProjectTargetKind {
   }
 }
 
-enum ProjectDependencyKind {
-  runtime,
-  dev,
-}
+enum ProjectDependencyKind { runtime, dev }
 
 extension ProjectDependencyKindX on ProjectDependencyKind {
   String get label {
@@ -58,12 +45,24 @@ extension ProjectDependencyKindX on ProjectDependencyKind {
   }
 }
 
-enum ProjectLockState {
-  fresh,
-  stale,
-  missing,
-  unknown,
+enum ProjectDependencySourceKind { path, git, registry, unknown }
+
+extension ProjectDependencySourceKindX on ProjectDependencySourceKind {
+  String get label {
+    switch (this) {
+      case ProjectDependencySourceKind.path:
+        return 'path';
+      case ProjectDependencySourceKind.git:
+        return 'git';
+      case ProjectDependencySourceKind.registry:
+        return 'registry';
+      case ProjectDependencySourceKind.unknown:
+        return 'unknown';
+    }
+  }
 }
+
+enum ProjectLockState { fresh, stale, missing, unknown }
 
 extension ProjectLockStateX on ProjectLockState {
   String get label {
@@ -80,11 +79,7 @@ extension ProjectLockStateX on ProjectLockState {
   }
 }
 
-enum ProjectVendorState {
-  present,
-  missing,
-  unknown,
-}
+enum ProjectVendorState { present, missing, unknown }
 
 extension ProjectVendorStateX on ProjectVendorState {
   String get label {
@@ -149,6 +144,7 @@ class ProjectPackageSnapshot {
     required this.targets,
     this.dependencies = const <ProjectDependencySnapshot>[],
     this.isWorkspaceMember = false,
+    this.publishEnabled = false,
   });
 
   final String packageName;
@@ -158,6 +154,7 @@ class ProjectPackageSnapshot {
   final List<ProjectTargetDescriptor> targets;
   final List<ProjectDependencySnapshot> dependencies;
   final bool isWorkspaceMember;
+  final bool publishEnabled;
 }
 
 class ProjectDependencySnapshot {
@@ -167,6 +164,14 @@ class ProjectDependencySnapshot {
     required this.kind,
     required this.requirement,
     this.isWorkspaceReference = false,
+    this.packageIdentity,
+    this.sourceKind = ProjectDependencySourceKind.unknown,
+    this.pathSource,
+    this.gitSource,
+    this.gitRevision,
+    this.registryRoot,
+    this.requestedVersion,
+    this.publishBlocking = false,
   });
 
   final String sourcePackageName;
@@ -174,6 +179,14 @@ class ProjectDependencySnapshot {
   final ProjectDependencyKind kind;
   final String requirement;
   final bool isWorkspaceReference;
+  final String? packageIdentity;
+  final ProjectDependencySourceKind sourceKind;
+  final String? pathSource;
+  final String? gitSource;
+  final String? gitRevision;
+  final String? registryRoot;
+  final String? requestedVersion;
+  final bool publishBlocking;
 }
 
 class ToolchainStatusSnapshot {
@@ -202,6 +215,8 @@ class CompilerHandshakeSnapshot {
     required this.capabilities,
     required this.supportedContractVersions,
     required this.integrationPhase,
+    this.supportedAdapterModes = const <String>[],
+    this.featureFlags = const <String, bool>{},
   });
 
   final String binaryPath;
@@ -212,9 +227,15 @@ class CompilerHandshakeSnapshot {
   final List<String> capabilities;
   final Map<String, List<int>> supportedContractVersions;
   final String integrationPhase;
+  final List<String> supportedAdapterModes;
+  final Map<String, bool> featureFlags;
 
   bool supportsContract(String contractName) {
     return supportedContractVersions[contractName]?.isNotEmpty == true;
+  }
+
+  bool hasFeatureFlag(String featureName) {
+    return featureFlags[featureName] == true;
   }
 
   String get contractSummary {
@@ -222,9 +243,7 @@ class CompilerHandshakeSnapshot {
       return 'no published contract versions';
     }
     return supportedContractVersions.entries
-        .map(
-          (entry) => '${entry.key}:${entry.value.join('/')}',
-        )
+        .map((entry) => '${entry.key}:${entry.value.join('/')}')
         .join(' · ');
   }
 
@@ -234,6 +253,215 @@ class CompilerHandshakeSnapshot {
     }
     return capabilities.join(' · ');
   }
+}
+
+class ManagedToolchainInstallSnapshot {
+  const ManagedToolchainInstallSnapshot({
+    required this.channel,
+    required this.compilerVersion,
+    required this.installRoot,
+    required this.installBinaryPath,
+    this.installMetadataPath,
+  });
+
+  final String channel;
+  final String compilerVersion;
+  final String installRoot;
+  final String installBinaryPath;
+  final String? installMetadataPath;
+}
+
+class ManagedToolchainStateSnapshot {
+  const ManagedToolchainStateSnapshot({
+    this.spioHome,
+    this.currentBinaryPath,
+    this.currentMetadataPath,
+    this.installed = const <ManagedToolchainInstallSnapshot>[],
+  });
+
+  final String? spioHome;
+  final String? currentBinaryPath;
+  final String? currentMetadataPath;
+  final List<ManagedToolchainInstallSnapshot> installed;
+}
+
+class ProjectToolchainPinSnapshot {
+  const ProjectToolchainPinSnapshot({
+    required this.path,
+    this.channel,
+    this.version,
+    this.installRoot,
+    this.installBinaryPath,
+    required this.installPresent,
+  });
+
+  final String path;
+  final String? channel;
+  final String? version;
+  final String? installRoot;
+  final String? installBinaryPath;
+  final bool installPresent;
+}
+
+class ToolchainEnvironmentSnapshot {
+  const ToolchainEnvironmentSnapshot({
+    required this.schemaVersion,
+    required this.toolchain,
+    required this.managedToolchains,
+    this.candidateBinaryPath,
+    this.projectPin,
+    this.activeCompiler,
+    this.activeCompilerError,
+    this.currentCompiler,
+    this.currentCompilerError,
+    this.notes = const <String>[],
+  });
+
+  final int schemaVersion;
+  final ToolchainStatusSnapshot toolchain;
+  final String? candidateBinaryPath;
+  final ProjectToolchainPinSnapshot? projectPin;
+  final CompilerHandshakeSnapshot? activeCompiler;
+  final String? activeCompilerError;
+  final CompilerHandshakeSnapshot? currentCompiler;
+  final String? currentCompilerError;
+  final ManagedToolchainStateSnapshot managedToolchains;
+  final List<String> notes;
+}
+
+class RegistrySourceSnapshot {
+  const RegistrySourceSnapshot({
+    required this.registryRoot,
+    required this.transport,
+    required this.dependencyRefs,
+    this.packages = const <String>[],
+  });
+
+  final String registryRoot;
+  final String transport;
+  final int dependencyRefs;
+  final List<String> packages;
+}
+
+class PackageDistributionPackageSnapshot {
+  const PackageDistributionPackageSnapshot({
+    required this.packageName,
+    required this.manifestPath,
+    required this.publishEnabled,
+    required this.publishReady,
+    this.blockingReasons = const <String>[],
+    this.runtimeRegistryDependencies = 0,
+    this.runtimePathDependencies = 0,
+    this.runtimeGitDependencies = 0,
+    this.devRegistryDependencies = 0,
+    this.devPathDependencies = 0,
+    this.devGitDependencies = 0,
+  });
+
+  final String packageName;
+  final String manifestPath;
+  final bool publishEnabled;
+  final bool publishReady;
+  final List<String> blockingReasons;
+  final int runtimeRegistryDependencies;
+  final int runtimePathDependencies;
+  final int runtimeGitDependencies;
+  final int devRegistryDependencies;
+  final int devPathDependencies;
+  final int devGitDependencies;
+}
+
+class PackageDistributionSnapshot {
+  const PackageDistributionSnapshot({
+    required this.schemaVersion,
+    this.packages = const <PackageDistributionPackageSnapshot>[],
+    this.registrySources = const <RegistrySourceSnapshot>[],
+    this.publishablePackages = 0,
+    this.blockedPackages = 0,
+  });
+
+  final int schemaVersion;
+  final List<PackageDistributionPackageSnapshot> packages;
+  final List<RegistrySourceSnapshot> registrySources;
+  final int publishablePackages;
+  final int blockedPackages;
+}
+
+class GitCacheStateSnapshot {
+  const GitCacheStateSnapshot({
+    this.reposRoot,
+    this.checkoutsRoot,
+    this.reposPresent = false,
+    this.checkoutsPresent = false,
+  });
+
+  final String? reposRoot;
+  final String? checkoutsRoot;
+  final bool reposPresent;
+  final bool checkoutsPresent;
+}
+
+class RegistryCacheStateSnapshot {
+  const RegistryCacheStateSnapshot({
+    this.cacheRoot,
+    this.indexRoot,
+    this.blobRoot,
+    this.checkoutRoot,
+    this.indexPresent = false,
+    this.blobsPresent = false,
+    this.checkoutsPresent = false,
+  });
+
+  final String? cacheRoot;
+  final String? indexRoot;
+  final String? blobRoot;
+  final String? checkoutRoot;
+  final bool indexPresent;
+  final bool blobsPresent;
+  final bool checkoutsPresent;
+}
+
+class VendorSourceStateSnapshot {
+  const VendorSourceStateSnapshot({
+    this.vendorRoot,
+    this.metadataPath,
+    this.vendorPresent = false,
+    this.metadataPresent = false,
+    this.gitSnapshots = 0,
+  });
+
+  final String? vendorRoot;
+  final String? metadataPath;
+  final bool vendorPresent;
+  final bool metadataPresent;
+  final int gitSnapshots;
+}
+
+class ProjectSourceStateSnapshot {
+  const ProjectSourceStateSnapshot({
+    required this.schemaVersion,
+    this.spioHome,
+    this.declaredGitDependencies = 0,
+    this.declaredRegistryDependencies = 0,
+    this.gitCache = const GitCacheStateSnapshot(),
+    this.registryCache = const RegistryCacheStateSnapshot(),
+    this.vendor = const VendorSourceStateSnapshot(),
+  });
+
+  final int schemaVersion;
+  final String? spioHome;
+  final int declaredGitDependencies;
+  final int declaredRegistryDependencies;
+  final GitCacheStateSnapshot gitCache;
+  final RegistryCacheStateSnapshot registryCache;
+  final VendorSourceStateSnapshot vendor;
+}
+
+class PublishedPayloadFailure {
+  const PublishedPayloadFailure({required this.command, required this.detail});
+
+  final String command;
+  final String detail;
 }
 
 class ProjectGraphSnapshot {
@@ -258,6 +486,11 @@ class ProjectGraphSnapshot {
     this.vendorRoot,
     this.buildRoot,
     this.activeCompiler,
+    this.toolchainEnvironment,
+    this.packageDistribution,
+    this.sourceState,
+    this.projectGraphPayloadFailure,
+    this.toolchainStatePayloadFailure,
   });
 
   final String id;
@@ -279,11 +512,27 @@ class ProjectGraphSnapshot {
   final ProjectLockState lockState;
   final ProjectVendorState vendorState;
   final CompilerHandshakeSnapshot? activeCompiler;
+  final ToolchainEnvironmentSnapshot? toolchainEnvironment;
+  final PackageDistributionSnapshot? packageDistribution;
+  final ProjectSourceStateSnapshot? sourceState;
+  final PublishedPayloadFailure? projectGraphPayloadFailure;
+  final PublishedPayloadFailure? toolchainStatePayloadFailure;
   final List<String> notes;
 
   bool get hasManifest => manifestPath != null;
 
   bool get hasActiveCompiler => activeCompiler != null;
+
+  bool get hasToolchainEnvironment => toolchainEnvironment != null;
+
+  bool get hasPackageDistribution => packageDistribution != null;
+
+  bool get hasSourceState => sourceState != null;
+
+  bool get hasProjectGraphPayloadFailure => projectGraphPayloadFailure != null;
+
+  bool get hasToolchainStatePayloadFailure =>
+      toolchainStatePayloadFailure != null;
 
   bool get isScratch => kind == ProjectKind.scratch;
 
@@ -300,7 +549,49 @@ class ProjectGraphSnapshot {
   int get dependencyCount => dependencies.length;
 
   bool get compilePlanConsumerAdvertised =>
+      activeCompiler?.hasFeatureFlag('compile_plan_consumer') == true ||
       activeCompiler?.supportsContract('compile_plan') == true;
+
+  ProjectGraphSnapshot copyWith({
+    ToolchainStatusSnapshot? toolchain,
+    CompilerHandshakeSnapshot? activeCompiler,
+    ToolchainEnvironmentSnapshot? toolchainEnvironment,
+    PackageDistributionSnapshot? packageDistribution,
+    ProjectSourceStateSnapshot? sourceState,
+    PublishedPayloadFailure? projectGraphPayloadFailure,
+    PublishedPayloadFailure? toolchainStatePayloadFailure,
+    List<String>? notes,
+  }) {
+    return ProjectGraphSnapshot(
+      id: id,
+      title: title,
+      kind: kind,
+      workspaceRoot: workspaceRoot,
+      workspaceMembers: workspaceMembers,
+      manifestPath: manifestPath,
+      lockfilePath: lockfilePath,
+      toolchainPinPath: toolchainPinPath,
+      styioConfigPath: styioConfigPath,
+      vendorRoot: vendorRoot,
+      buildRoot: buildRoot,
+      packages: packages,
+      dependencies: dependencies,
+      targets: targets,
+      editorFiles: editorFiles,
+      toolchain: toolchain ?? this.toolchain,
+      lockState: lockState,
+      vendorState: vendorState,
+      activeCompiler: activeCompiler ?? this.activeCompiler,
+      toolchainEnvironment: toolchainEnvironment ?? this.toolchainEnvironment,
+      packageDistribution: packageDistribution ?? this.packageDistribution,
+      sourceState: sourceState ?? this.sourceState,
+      projectGraphPayloadFailure:
+          projectGraphPayloadFailure ?? this.projectGraphPayloadFailure,
+      toolchainStatePayloadFailure:
+          toolchainStatePayloadFailure ?? this.toolchainStatePayloadFailure,
+      notes: notes ?? this.notes,
+    );
+  }
 
   static ProjectGraphSnapshot scratch({
     required String workspaceRoot,
@@ -309,6 +600,11 @@ class ProjectGraphSnapshot {
     required List<String> notes,
     ToolchainStatusSnapshot? toolchain,
     CompilerHandshakeSnapshot? activeCompiler,
+    ToolchainEnvironmentSnapshot? toolchainEnvironment,
+    PackageDistributionSnapshot? packageDistribution,
+    ProjectSourceStateSnapshot? sourceState,
+    PublishedPayloadFailure? projectGraphPayloadFailure,
+    PublishedPayloadFailure? toolchainStatePayloadFailure,
   }) {
     return ProjectGraphSnapshot(
       id: 'scratch:${workspaceRoot.hashCode}',
@@ -334,6 +630,11 @@ class ProjectGraphSnapshot {
       lockState: ProjectLockState.missing,
       vendorState: ProjectVendorState.missing,
       activeCompiler: activeCompiler,
+      toolchainEnvironment: toolchainEnvironment,
+      packageDistribution: packageDistribution,
+      sourceState: sourceState,
+      projectGraphPayloadFailure: projectGraphPayloadFailure,
+      toolchainStatePayloadFailure: toolchainStatePayloadFailure,
       notes: notes,
     );
   }
