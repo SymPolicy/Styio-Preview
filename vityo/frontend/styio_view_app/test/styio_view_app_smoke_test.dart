@@ -203,6 +203,213 @@ void main() {
     );
   }
 
+  Future<AppBootstrap> createLiveWorkflowBootstrap(
+      PlatformTarget target) async {
+    final projectSnapshot = createProjectSnapshot(target).copyWith(
+      activeCompiler: const CompilerHandshakeSnapshot(
+        binaryPath: '/toolchains/styio/bin/styio',
+        tool: 'styio',
+        compilerVersion: '0.0.5',
+        channel: 'stable',
+        variant: 'live-mainline-fixture',
+        capabilities: <String>[
+          'machine_info_json',
+          'single_file_entry',
+          'jsonl_diagnostics',
+          'runtime_event_stream',
+        ],
+        supportedContractVersions: <String, List<int>>{
+          'machine_info': <int>[1],
+          'compile_plan': <int>[1],
+          'runtime_events': <int>[1],
+        },
+        integrationPhase: 'compile-plan-live',
+        supportedAdapterModes: <String>['single-file', 'project'],
+        featureFlags: <String, bool>{
+          'compile_plan_consumer': true,
+          'runtime_event_payload': true,
+        },
+      ),
+      toolchainEnvironment: const ToolchainEnvironmentSnapshot(
+        schemaVersion: 1,
+        toolchain: ToolchainStatusSnapshot(
+          source: ToolchainResolutionSource.projectPin,
+          detail: 'Live workflow fixture resolves a pinned managed compiler.',
+          pinPath: '/workspace/demo/spio-toolchain.toml',
+          channel: 'stable',
+          version: '0.0.5',
+        ),
+        activeCompiler: CompilerHandshakeSnapshot(
+          binaryPath: '/toolchains/styio/bin/styio',
+          tool: 'styio',
+          compilerVersion: '0.0.5',
+          channel: 'stable',
+          variant: 'live-mainline-fixture',
+          capabilities: <String>[
+            'machine_info_json',
+            'single_file_entry',
+            'jsonl_diagnostics',
+            'runtime_event_stream',
+          ],
+          supportedContractVersions: <String, List<int>>{
+            'machine_info': <int>[1],
+            'compile_plan': <int>[1],
+            'runtime_events': <int>[1],
+          },
+          integrationPhase: 'compile-plan-live',
+          supportedAdapterModes: <String>['single-file', 'project'],
+          featureFlags: <String, bool>{
+            'compile_plan_consumer': true,
+            'runtime_event_payload': true,
+          },
+        ),
+        currentCompiler: CompilerHandshakeSnapshot(
+          binaryPath: '/toolchains/styio/bin/styio',
+          tool: 'styio',
+          compilerVersion: '0.0.5',
+          channel: 'stable',
+          variant: 'live-mainline-fixture',
+          capabilities: <String>[
+            'machine_info_json',
+            'single_file_entry',
+            'jsonl_diagnostics',
+            'runtime_event_stream',
+          ],
+          supportedContractVersions: <String, List<int>>{
+            'machine_info': <int>[1],
+            'compile_plan': <int>[1],
+            'runtime_events': <int>[1],
+          },
+          integrationPhase: 'compile-plan-live',
+          supportedAdapterModes: <String>['single-file', 'project'],
+          featureFlags: <String, bool>{
+            'compile_plan_consumer': true,
+            'runtime_event_payload': true,
+          },
+        ),
+        managedToolchains: ManagedToolchainStateSnapshot(
+          spioHome: '/workspace/demo/.spio',
+          currentBinaryPath: '/workspace/demo/.spio/bin/styio',
+          currentMetadataPath: '/workspace/demo/.spio/current.json',
+          installed: <ManagedToolchainInstallSnapshot>[
+            ManagedToolchainInstallSnapshot(
+              channel: 'stable',
+              compilerVersion: '0.0.5',
+              installRoot: '/workspace/demo/.spio/toolchains/stable-0.0.5',
+              installBinaryPath:
+                  '/workspace/demo/.spio/toolchains/stable-0.0.5/bin/styio',
+              installMetadataPath:
+                  '/workspace/demo/.spio/toolchains/stable-0.0.5/install.json',
+            ),
+          ],
+        ),
+        notes: <String>[
+          'Live workflow fixture exposes managed toolchain state.'
+        ],
+      ),
+      packageDistribution: const PackageDistributionSnapshot(
+        schemaVersion: 1,
+        publishablePackages: 1,
+        blockedPackages: 0,
+        packages: <PackageDistributionPackageSnapshot>[
+          PackageDistributionPackageSnapshot(
+            packageName: 'demo/app',
+            manifestPath: '/workspace/demo/spio.toml',
+            publishEnabled: true,
+            publishReady: true,
+            runtimeRegistryDependencies: 1,
+          ),
+        ],
+        registrySources: <RegistrySourceSnapshot>[
+          RegistrySourceSnapshot(
+            registryRoot: '/registry/local',
+            transport: 'filesystem',
+            dependencyRefs: 1,
+            packages: <String>['assertions'],
+          ),
+        ],
+      ),
+      sourceState: const ProjectSourceStateSnapshot(
+        schemaVersion: 1,
+        spioHome: '/workspace/demo/.spio',
+        declaredGitDependencies: 0,
+        declaredRegistryDependencies: 1,
+        vendor: VendorSourceStateSnapshot(
+          vendorRoot: '/workspace/demo/.spio/vendor',
+          metadataPath: '/workspace/demo/.spio/vendor/spio-vendor.json',
+          vendorPresent: true,
+          metadataPresent: true,
+          gitSnapshots: 0,
+        ),
+      ),
+      notes: const <String>[
+        'Live workflow fixture mirrors a compile-plan-ready project route.',
+      ],
+    );
+    final workspaceController = WorkspaceController(
+      projectSnapshot: projectSnapshot,
+    );
+    recordRuntimeEventsForSession('live-workflow-run', <RuntimeEventEnvelope>[
+      RuntimeEventEnvelope(
+        schemaVersion: 1,
+        sessionId: 'live-workflow-run',
+        sequence: 1,
+        timestamp: DateTime.utc(2026, 4, 18, 3, 0, 0),
+        eventKind: 'compile.started',
+        origin: 'styio.compile-plan',
+        payload: const <String, Object?>{'intent': 'run'},
+      ),
+      RuntimeEventEnvelope(
+        schemaVersion: 1,
+        sessionId: 'live-workflow-run',
+        sequence: 2,
+        timestamp: DateTime.utc(2026, 4, 18, 3, 0, 1),
+        eventKind: 'run.finished',
+        origin: 'styio.runtime',
+        payload: const <String, Object?>{'success': true},
+      ),
+    ]);
+    addTearDown(() => clearRuntimeEventsForSession('live-workflow-run'));
+    return AppBootstrap(
+      platformTarget: target,
+      moduleRegistry: ModuleRegistry(
+        platformTarget: target,
+        definitions: const [],
+      ),
+      nativeModuleLoader: NoopNativeModuleLoader(
+        platformTarget: target,
+      ),
+      projectGraphAdapter: _FakeProjectGraphAdapter(projectSnapshot),
+      supplementalAdapterCapabilities: normalizeCapabilitySnapshots([
+        buildFfiAdapterCapability(
+          visible: true,
+          executionSlotVisible: true,
+          detail: 'Live workflow fixture keeps desktop bridge available.',
+        ),
+        buildCloudAdapterCapability(
+          supportsCloudExecution: false,
+          supportsHostedProjectGraph: false,
+          detail: 'Live workflow fixture stays on the desktop mainline path.',
+        ),
+      ]),
+      workspaceController: workspaceController,
+      workspaceDocumentStore: InMemoryWorkspaceDocumentStore(),
+      editorController: EditorSessionController(
+        initialDocument: EditorSessionController.seedDocumentForPath(
+          workspaceController.activeFilePath,
+        ),
+        languageService: const SimpleStyioLanguageService(),
+      ),
+      executionAdapter: const _LiveExecutionAdapter(),
+      executionAdapterFactory: (ProjectGraphSnapshot _) async =>
+          const _LiveExecutionAdapter(),
+      runtimeEventAdapter: createRuntimeEventAdapter(platformTarget: target),
+      dependencySourceAdapter: const _LiveDependencySourceAdapter(),
+      deploymentAdapter: const _LiveDeploymentAdapter(),
+      toolchainManagementAdapter: const _LiveToolchainManagementAdapter(),
+    );
+  }
+
   testWidgets('builds shared shell scaffold in desktop viewport family', (
     tester,
   ) async {
@@ -233,7 +440,7 @@ void main() {
     expect(find.text('Styio View Integration Shell'), findsOneWidget);
     expect(find.text('Project Graph'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('required-handoffs-card')),
+      find.byKey(const ValueKey('project-operations-card')),
       120,
       scrollable: find.descendant(
         of: find.byKey(const ValueKey('workspace-sidebar-scroll')),
@@ -241,14 +448,65 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Project Workflow'), findsOneWidget);
+    expect(find.text('Execution'), findsOneWidget);
+    expect(find.text('Dependencies'), findsOneWidget);
+    expect(find.text('Environment'), findsOneWidget);
+    expect(find.text('Deployment'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('project-operation-useActiveCompiler')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('project-operation-fetchDependencies')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('project-operation-preparePublish')),
+      findsOneWidget,
+    );
+    final workspaceSidebarScrollable = find.descendant(
+      of: find.byKey(const ValueKey('workspace-sidebar-scroll')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('project-operation-useActiveCompiler')),
+      120,
+      scrollable: workspaceSidebarScrollable,
+    );
+    await tester.pumpAndSettle();
+    final shell = ShellScope.of(
+      tester.element(find.byType(StyioShellScaffold)),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('project-operation-useActiveCompiler')),
+    );
+    await tester.pumpAndSettle();
+    expect(shell.lastToolchainCommand?.command, 'tool use');
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('project-operation-preparePublish')),
+      120,
+      scrollable: workspaceSidebarScrollable,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('project-operation-preparePublish')),
+    );
+    await tester.pumpAndSettle();
+    expect(shell.lastDeploymentCommand?.command, 'publish');
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('required-handoffs-card')),
+      120,
+      scrollable: workspaceSidebarScrollable,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Required Handoffs'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Packages'),
       120,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('workspace-sidebar-scroll')),
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: workspaceSidebarScrollable,
     );
     await tester.pumpAndSettle();
     expect(find.text('Packages'), findsOneWidget);
@@ -285,9 +543,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final shell = ShellScope.of(
-      tester.element(find.byType(StyioShellScaffold)),
-    );
     expect(shell.lastDependencySourceCommand?.command, 'vendor');
 
     await tester.tap(find.byKey(const ValueKey('source-buffer-surface')));
@@ -375,6 +630,68 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('executes sample project workflow through sidebar mainline lanes',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final bootstrap = await createLiveWorkflowBootstrap(PlatformTarget.macos);
+
+    await tester.pumpWidget(
+      StyioViewApp(bootstrap: bootstrap),
+    );
+
+    final workspaceSidebarScrollable = find.descendant(
+      of: find.byKey(const ValueKey('workspace-sidebar-scroll')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('project-operations-card')),
+      120,
+      scrollable: workspaceSidebarScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    final shell = ShellScope.of(
+      tester.element(find.byType(StyioShellScaffold)),
+    );
+
+    Future<void> tapWorkflowAction(String key) async {
+      await tester.scrollUntilVisible(
+        find.byKey(ValueKey(key)),
+        120,
+        scrollable: workspaceSidebarScrollable,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    await tapWorkflowAction('project-operation-useActiveCompiler');
+    await tapWorkflowAction('project-operation-fetchDependencies');
+    await tapWorkflowAction('project-operation-vendorDependencies');
+    await tapWorkflowAction('project-operation-run');
+    await tapWorkflowAction('project-operation-preparePublish');
+
+    expect(shell.lastToolchainCommand?.succeeded, isTrue);
+    expect(shell.lastDependencySourceCommand?.command, 'vendor');
+    expect(shell.lastDependencySourceCommand?.succeeded, isTrue);
+    expect(
+        shell.lastExecutionSession?.status, ExecutionSessionStatus.succeeded);
+    expect(shell.lastDeploymentCommand?.succeeded, isTrue);
+    expect(shell.lastRuntimeEvents, hasLength(2));
+
+    expect(find.text('execution succeeded'), findsOneWidget);
+    expect(find.text('dependencies succeeded'), findsOneWidget);
+    expect(find.text('environment succeeded'), findsOneWidget);
+    expect(find.text('deployment succeeded'), findsOneWidget);
+    expect(find.text('workflow blockers 0'), findsOneWidget);
+    expect(find.textContaining('runtime 2'), findsWidgets);
+    expect(find.textContaining('publishable 1'), findsWidgets);
   });
 
   testWidgets('keeps mobile editor layout on wide iOS viewport', (
@@ -701,6 +1018,188 @@ class _FakeDeploymentAdapter implements DeploymentAdapter {
       statusMessage: 'Smoke test deployment operations remain blocked.',
       stdout: '',
       stderr: '',
+    );
+  }
+}
+
+class _LiveExecutionAdapter implements ExecutionAdapter {
+  const _LiveExecutionAdapter();
+
+  @override
+  AdapterCapabilitySnapshot get capabilitySnapshot =>
+      const AdapterCapabilitySnapshot(
+        adapterKind: AdapterKind.cli,
+        languageService: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail:
+              'Live workflow fixture does not expose language-service data.',
+        ),
+        projectGraph: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail: 'Live workflow execution stays on the published shell route.',
+        ),
+        execution: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.available,
+          detail:
+              'Live workflow fixture exposes project execution through compile-plan v1.',
+        ),
+        runtimeEvents: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.partial,
+          detail: 'Live workflow fixture replays published runtime events.',
+        ),
+      );
+
+  @override
+  Future<ExecutionSession> runActiveDocument({
+    required PlatformTarget platformTarget,
+    required ProjectGraphSnapshot projectGraph,
+    required DocumentState document,
+    required String activeFilePath,
+  }) async {
+    return const ExecutionSession(
+      sessionId: 'live-workflow-run',
+      kind: 'run',
+      status: ExecutionSessionStatus.succeeded,
+      statusMessage: 'Live workflow fixture executed the active project route.',
+      diagnostics: <Diagnostic>[],
+      stdoutEvents: <ExecutionLogEvent>[
+        ExecutionLogEvent(message: 'run-ok'),
+      ],
+      stderrEvents: <ExecutionLogEvent>[],
+    );
+  }
+}
+
+class _LiveToolchainManagementAdapter implements ToolchainManagementAdapter {
+  const _LiveToolchainManagementAdapter();
+
+  @override
+  Future<ToolchainCommandResult> clearPinnedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+  }) async {
+    return _success('tool pin');
+  }
+
+  @override
+  Future<ToolchainCommandResult> installManagedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+    required String styioBinaryPath,
+  }) async {
+    return _success('tool install');
+  }
+
+  @override
+  Future<ToolchainCommandResult> pinManagedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+    required String compilerVersion,
+    String? channel,
+  }) async {
+    return _success('tool pin');
+  }
+
+  @override
+  Future<ToolchainCommandResult> useManagedCompiler({
+    required ProjectGraphSnapshot projectGraph,
+    required String compilerVersion,
+    String? channel,
+  }) async {
+    return _success('tool use');
+  }
+
+  ToolchainCommandResult _success(String command) {
+    return ToolchainCommandResult(
+      command: command,
+      status: ToolchainCommandStatus.succeeded,
+      statusMessage: 'live workflow toolchain command succeeded.',
+      stdout: '',
+      stderr: '',
+    );
+  }
+}
+
+class _LiveDependencySourceAdapter implements DependencySourceAdapter {
+  const _LiveDependencySourceAdapter();
+
+  @override
+  Future<DependencySourceCommandResult> fetchDependencies({
+    required ProjectGraphSnapshot projectGraph,
+    bool locked = false,
+    bool offline = false,
+  }) async {
+    return _success('fetch');
+  }
+
+  @override
+  Future<DependencySourceCommandResult> vendorDependencies({
+    required ProjectGraphSnapshot projectGraph,
+    String? outputPath,
+    bool locked = false,
+    bool offline = false,
+  }) async {
+    return _success('vendor');
+  }
+
+  DependencySourceCommandResult _success(String command) {
+    return DependencySourceCommandResult(
+      command: command,
+      status: DependencySourceCommandStatus.succeeded,
+      statusMessage: 'live workflow dependency command succeeded.',
+      stdout: '',
+      stderr: '',
+      payload: <String, dynamic>{
+        'packages': 2,
+        'vendor_root': '/workspace/demo/.spio/vendor',
+        'metadata_path': '/workspace/demo/.spio/vendor/spio-vendor.json',
+      },
+    );
+  }
+}
+
+class _LiveDeploymentAdapter implements DeploymentAdapter {
+  const _LiveDeploymentAdapter();
+
+  @override
+  Future<DeploymentCommandResult> packProject({
+    required ProjectGraphSnapshot projectGraph,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    return _success('pack', packageName: packageName);
+  }
+
+  @override
+  Future<DeploymentCommandResult> preparePublish({
+    required ProjectGraphSnapshot projectGraph,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    return _success('publish', packageName: packageName);
+  }
+
+  @override
+  Future<DeploymentCommandResult> publishToRegistry({
+    required ProjectGraphSnapshot projectGraph,
+    required String registryRoot,
+    String? packageName,
+    String? outputPath,
+  }) async {
+    return _success('publish', packageName: packageName);
+  }
+
+  DeploymentCommandResult _success(
+    String command, {
+    String? packageName,
+  }) {
+    return DeploymentCommandResult(
+      command: command,
+      status: DeploymentCommandStatus.succeeded,
+      statusMessage: 'live workflow deployment command succeeded.',
+      stdout: '',
+      stderr: '',
+      payload: <String, dynamic>{
+        'package': packageName ?? 'demo/app',
+        'archive_path': '/workspace/demo/dist/app-0.0.5.tar',
+      },
     );
   }
 }

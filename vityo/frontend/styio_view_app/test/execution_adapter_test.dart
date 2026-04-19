@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:styio_view_app/src/editor/document_state.dart';
 import 'package:styio_view_app/src/integration/execution_adapter.dart';
 import 'package:styio_view_app/src/integration/project_graph_contract.dart';
+import 'package:styio_view_app/src/integration/runtime_event_adapter.dart';
 import 'package:styio_view_app/src/platform/platform_target.dart';
 
 void main() {
@@ -64,9 +65,31 @@ if '--json' in sys.argv and 'run' in sys.argv:
         'stdout': '{"message":"user-log"}\\n{"a":1}\\nspio-run-ok\\n',
         'stderr': '',
         'diagnostics': [],
+        'runtime_session_id': 'runtime-session-1',
+        'runtime_events': [
+            {
+                'schema_version': 1,
+                'session_id': 'runtime-session-1',
+                'sequence': 1,
+                'timestamp': '2026-04-17T00:00:00Z',
+                'eventKind': 'compile.started',
+                'origin': 'styio.compile-plan',
+                'payload': {'intent': 'run'},
+            },
+            {
+                'schema_version': 1,
+                'session_id': 'runtime-session-1',
+                'sequence': 2,
+                'timestamp': '2026-04-17T00:00:01Z',
+                'eventKind': 'run.finished',
+                'origin': 'styio.runtime',
+                'payload': {'file': ${jsonEncode(sourceFile.path)}, 'success': True},
+            },
+        ],
         'receipt': {
             'schema_version': 1,
             'intent': 'run',
+            'session_id': 'runtime-session-1',
             'executed': True,
         },
     }))
@@ -111,6 +134,7 @@ raise SystemExit(64)
         ),
       );
 
+      addTearDown(() => clearRuntimeEventsForSession('runtime-session-1'));
       final session = await adapter.runActiveDocument(
         platformTarget: PlatformTarget.macos,
         projectGraph: _projectGraph(
@@ -153,6 +177,7 @@ raise SystemExit(64)
       );
 
       expect(session.status, ExecutionSessionStatus.succeeded);
+      expect(session.sessionId, 'runtime-session-1');
       expect(
         session.statusMessage,
         contains('completed compiler run via payload'),
@@ -167,6 +192,16 @@ raise SystemExit(64)
       );
       expect(session.stderrEvents, isEmpty);
       expect(session.diagnostics, isEmpty);
+      final runtimeAdapter = createRuntimeEventAdapter(
+        platformTarget: PlatformTarget.macos,
+      );
+      final runtimeEvents =
+          await runtimeAdapter.sessionEvents(session.sessionId).toList();
+      expect(
+        runtimeEvents.map((event) => event.eventKind),
+        <String>['compile.started', 'run.finished'],
+      );
+      expect(runtimeEvents.last.payload['file'], sourceFile.path);
     },
   );
 
@@ -180,7 +215,7 @@ raise SystemExit(64)
         '${tempRoot.path}${Platform.pathSeparator}src${Platform.pathSeparator}helper.styio',
       )
         ..createSync(recursive: true)
-        ..writeAsStringSync('# helper := 1\n');
+        ..writeAsStringSync('// helper fixture\n');
       final mainFile = File(
         '${tempRoot.path}${Platform.pathSeparator}src${Platform.pathSeparator}main.styio',
       )
@@ -190,7 +225,7 @@ raise SystemExit(64)
         '${tempRoot.path}${Platform.pathSeparator}src${Platform.pathSeparator}lib.styio',
       )
         ..createSync(recursive: true)
-        ..writeAsStringSync('# lib := 1\n');
+        ..writeAsStringSync('// lib fixture\n');
 
       File('${tempRoot.path}${Platform.pathSeparator}spio.toml')
         ..createSync(recursive: true)
@@ -371,6 +406,27 @@ if '--json' in sys.argv and 'run' in sys.argv:
         'code': 23,
         'message': 'compile-plan failed through payload',
         'command': 'run',
+        'runtime_session_id': 'runtime-session-failure',
+        'runtime_events': [
+            {
+                'schema_version': 1,
+                'session_id': 'runtime-session-failure',
+                'sequence': 1,
+                'timestamp': '2026-04-17T00:00:00Z',
+                'eventKind': 'compile.started',
+                'origin': 'styio.compile-plan',
+                'payload': {'intent': 'run'},
+            },
+            {
+                'schema_version': 1,
+                'session_id': 'runtime-session-failure',
+                'sequence': 2,
+                'timestamp': '2026-04-17T00:00:01Z',
+                'eventKind': 'compile.failed',
+                'origin': 'styio.compile-plan',
+                'payload': {'intent': 'run', 'executed': False},
+            },
+        ],
         'diagnostics': [{
             'category': 'SyntaxError',
             'code': 'STYIO_SYN',
@@ -422,6 +478,7 @@ raise SystemExit(64)
       projectGraph: projectGraph,
     );
 
+    addTearDown(() => clearRuntimeEventsForSession('runtime-session-failure'));
     final session = await adapter.runActiveDocument(
       platformTarget: PlatformTarget.macos,
       projectGraph: projectGraph,
@@ -434,6 +491,7 @@ raise SystemExit(64)
     );
 
     expect(session.status, ExecutionSessionStatus.failed);
+    expect(session.sessionId, 'runtime-session-failure');
     expect(
         session.statusMessage, contains('compile-plan failed through payload'));
     expect(session.diagnostics, isNotEmpty);
@@ -441,6 +499,15 @@ raise SystemExit(64)
     expect(session.diagnostics.first.message, 'missing token');
     expect(session.diagnostics.first.range.start, 2);
     expect(session.diagnostics.first.range.end, 6);
+    final runtimeAdapter = createRuntimeEventAdapter(
+      platformTarget: PlatformTarget.macos,
+    );
+    final runtimeEvents =
+        await runtimeAdapter.sessionEvents(session.sessionId).toList();
+    expect(
+      runtimeEvents.map((event) => event.eventKind),
+      <String>['compile.started', 'compile.failed'],
+    );
   });
 
   test(
@@ -546,7 +613,7 @@ raise SystemExit(65)
       '${tempRoot.path}${Platform.pathSeparator}scratch${Platform.pathSeparator}helper.styio',
     )
       ..createSync(recursive: true)
-      ..writeAsStringSync('# helper := 1\n');
+      ..writeAsStringSync('// helper fixture\n');
 
     final fakeStyio = await _writeExecutable(
       File('${tempRoot.path}${Platform.pathSeparator}fake-styio'),

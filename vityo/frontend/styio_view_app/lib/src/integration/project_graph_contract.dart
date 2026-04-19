@@ -119,6 +119,85 @@ extension ToolchainResolutionSourceX on ToolchainResolutionSource {
   }
 }
 
+enum HostedWorkspaceStatus {
+  provisioning,
+  active,
+  closing,
+  pendingDeletion,
+  deleted,
+}
+
+extension HostedWorkspaceStatusX on HostedWorkspaceStatus {
+  String get label {
+    switch (this) {
+      case HostedWorkspaceStatus.provisioning:
+        return 'provisioning';
+      case HostedWorkspaceStatus.active:
+        return 'active';
+      case HostedWorkspaceStatus.closing:
+        return 'closing';
+      case HostedWorkspaceStatus.pendingDeletion:
+        return 'pending-deletion';
+      case HostedWorkspaceStatus.deleted:
+        return 'deleted';
+    }
+  }
+}
+
+enum HostedWorkspaceExportState {
+  notRequested,
+  preparing,
+  ready,
+  expired,
+}
+
+extension HostedWorkspaceExportStateX on HostedWorkspaceExportState {
+  String get label {
+    switch (this) {
+      case HostedWorkspaceExportState.notRequested:
+        return 'not-requested';
+      case HostedWorkspaceExportState.preparing:
+        return 'preparing';
+      case HostedWorkspaceExportState.ready:
+        return 'ready';
+      case HostedWorkspaceExportState.expired:
+        return 'expired';
+    }
+  }
+}
+
+class HostedWorkspaceRecordSnapshot {
+  const HostedWorkspaceRecordSnapshot({
+    required this.workspaceId,
+    required this.schemaVersion,
+    required this.ownerRef,
+    required this.status,
+    required this.entryUrl,
+    required this.createdAt,
+    required this.lastActiveAt,
+    required this.retentionDays,
+    required this.exportState,
+    this.closedAt,
+    this.retentionDeadline,
+    this.coreFileExportUrl,
+    this.coreFileExportExpiresAt,
+  });
+
+  final String workspaceId;
+  final String schemaVersion;
+  final String ownerRef;
+  final HostedWorkspaceStatus status;
+  final String entryUrl;
+  final DateTime createdAt;
+  final DateTime lastActiveAt;
+  final int retentionDays;
+  final HostedWorkspaceExportState exportState;
+  final DateTime? closedAt;
+  final DateTime? retentionDeadline;
+  final String? coreFileExportUrl;
+  final DateTime? coreFileExportExpiresAt;
+}
+
 class ProjectTargetDescriptor {
   const ProjectTargetDescriptor({
     required this.id,
@@ -491,6 +570,7 @@ class ProjectGraphSnapshot {
     this.sourceState,
     this.projectGraphPayloadFailure,
     this.toolchainStatePayloadFailure,
+    this.hostedWorkspace,
   });
 
   final String id;
@@ -517,6 +597,7 @@ class ProjectGraphSnapshot {
   final ProjectSourceStateSnapshot? sourceState;
   final PublishedPayloadFailure? projectGraphPayloadFailure;
   final PublishedPayloadFailure? toolchainStatePayloadFailure;
+  final HostedWorkspaceRecordSnapshot? hostedWorkspace;
   final List<String> notes;
 
   bool get hasManifest => manifestPath != null;
@@ -537,6 +618,8 @@ class ProjectGraphSnapshot {
   bool get isScratch => kind == ProjectKind.scratch;
 
   bool get isHosted => kind == ProjectKind.hosted;
+
+  bool get hasHostedWorkspace => hostedWorkspace != null;
 
   int get packageCount => packages.length;
 
@@ -560,6 +643,7 @@ class ProjectGraphSnapshot {
     ProjectSourceStateSnapshot? sourceState,
     PublishedPayloadFailure? projectGraphPayloadFailure,
     PublishedPayloadFailure? toolchainStatePayloadFailure,
+    HostedWorkspaceRecordSnapshot? hostedWorkspace,
     List<String>? notes,
   }) {
     return ProjectGraphSnapshot(
@@ -589,6 +673,7 @@ class ProjectGraphSnapshot {
           projectGraphPayloadFailure ?? this.projectGraphPayloadFailure,
       toolchainStatePayloadFailure:
           toolchainStatePayloadFailure ?? this.toolchainStatePayloadFailure,
+      hostedWorkspace: hostedWorkspace ?? this.hostedWorkspace,
       notes: notes ?? this.notes,
     );
   }
@@ -605,6 +690,7 @@ class ProjectGraphSnapshot {
     ProjectSourceStateSnapshot? sourceState,
     PublishedPayloadFailure? projectGraphPayloadFailure,
     PublishedPayloadFailure? toolchainStatePayloadFailure,
+    HostedWorkspaceRecordSnapshot? hostedWorkspace,
   }) {
     return ProjectGraphSnapshot(
       id: 'scratch:${workspaceRoot.hashCode}',
@@ -635,6 +721,7 @@ class ProjectGraphSnapshot {
       sourceState: sourceState,
       projectGraphPayloadFailure: projectGraphPayloadFailure,
       toolchainStatePayloadFailure: toolchainStatePayloadFailure,
+      hostedWorkspace: hostedWorkspace,
       notes: notes,
     );
   }

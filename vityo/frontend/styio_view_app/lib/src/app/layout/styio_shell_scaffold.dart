@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import '../../agent/agent_surface.dart';
 import '../../editor/editor_surface.dart';
 import '../../integration/adapter_contracts.dart';
+import '../../integration/dependency_source_adapter.dart';
+import '../../integration/deployment_adapter.dart';
+import '../../integration/execution_adapter.dart';
 import '../../integration/execution_route_summary.dart';
 import '../../integration/project_graph_contract.dart';
 import '../../integration/required_handoff_summary.dart';
+import '../../integration/toolchain_management_adapter.dart';
 import '../../module_host/module_definition.dart';
 import '../../module_host/module_manifest.dart';
 import '../../platform/platform_target.dart';
@@ -117,6 +121,7 @@ class StyioShellScaffold extends StatelessWidget {
           mountedModules: shell.mountedModules,
           adapterCapabilities: shell.adapterCapabilities,
           executionSession: shell.lastExecutionSession,
+          runtimeEvents: shell.lastRuntimeEvents,
         );
       case BottomSurfaceTab.agent:
         return AgentSurface(
@@ -129,6 +134,7 @@ class StyioShellScaffold extends StatelessWidget {
         return DebugConsoleSurface(
           viewportProfile: viewportProfile,
           entries: shell.debugLog,
+          runtimeEvents: shell.lastRuntimeEvents,
         );
     }
   }
@@ -483,6 +489,8 @@ class _WorkspaceSidebar extends StatelessWidget {
             const SizedBox(height: 12),
             _CompilerHandshakeCard(project: project),
             const SizedBox(height: 12),
+            _ProjectOperationsCard(shell: shell),
+            const SizedBox(height: 12),
             _RequiredHandoffsCard(
               platformTarget: shell.platformTarget,
               project: project,
@@ -826,6 +834,422 @@ class _RequiredHandoffsCard extends StatelessWidget {
                 _RequiredHandoffTile(handoff: handoffs[index]),
               ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProjectOperationsCard extends StatelessWidget {
+  const _ProjectOperationsCard({
+    required this.shell,
+  });
+
+  final ShellModel shell;
+
+  String? _stringPayload(Map<String, dynamic>? payload, String key) {
+    final value = payload?[key];
+    if (value is String && value.isNotEmpty) {
+      return value;
+    }
+    return null;
+  }
+
+  List<String> _blockedWorkflowPreview() {
+    return StyioCommandRegistry.workflowCommands
+        .map((command) {
+          final reason = shell.blockedReasonForCommand(command.id);
+          if (reason == null) {
+            return null;
+          }
+          return '${command.label}: $reason';
+        })
+        .whereType<String>()
+        .take(3)
+        .toList(growable: false);
+  }
+
+  Color _laneColor(BuildContext context, String status) {
+    switch (status) {
+      case 'succeeded':
+      case 'resolved':
+      case 'ready':
+        return const Color(0xFFE3F1E1);
+      case 'failed':
+        return const Color(0xFFF5E1DE);
+      case 'blocked':
+        return const Color(0xFFF6E9D7);
+      case 'running':
+        return const Color(0xFFE3ECF6);
+      case 'idle':
+      case 'pending':
+        return const Color(0xFFEEE9F2);
+      default:
+        return Theme.of(context).colorScheme.surfaceContainerHighest;
+    }
+  }
+
+  String _executionStatusLabel(ExecutionSession? session) {
+    if (session == null) {
+      return 'idle';
+    }
+    return switch (session.status) {
+      ExecutionSessionStatus.succeeded => 'succeeded',
+      ExecutionSessionStatus.failed => 'failed',
+      ExecutionSessionStatus.blocked => 'blocked',
+      ExecutionSessionStatus.running => 'running',
+    };
+  }
+
+  String _dependencyStatusLabel(DependencySourceCommandResult? result) {
+    if (result == null) {
+      return 'idle';
+    }
+    return switch (result.status) {
+      DependencySourceCommandStatus.succeeded => 'succeeded',
+      DependencySourceCommandStatus.failed => 'failed',
+      DependencySourceCommandStatus.blocked => 'blocked',
+    };
+  }
+
+  String _toolchainStatusLabel(ToolchainCommandResult? result) {
+    if (result == null) {
+      return 'resolved';
+    }
+    return switch (result.status) {
+      ToolchainCommandStatus.succeeded => 'succeeded',
+      ToolchainCommandStatus.failed => 'failed',
+      ToolchainCommandStatus.blocked => 'blocked',
+    };
+  }
+
+  String _deploymentStatusLabel(DeploymentCommandResult? result) {
+    if (result == null) {
+      return 'ready';
+    }
+    return switch (result.status) {
+      DeploymentCommandStatus.succeeded => 'succeeded',
+      DeploymentCommandStatus.failed => 'failed',
+      DeploymentCommandStatus.blocked => 'blocked',
+    };
+  }
+
+  Widget _buildCommandChip(
+    BuildContext context,
+    ThemeData theme,
+    AppCommandDescriptor command,
+  ) {
+    final blockedReason = shell.blockedReasonForCommand(command.id);
+    return Tooltip(
+      message: blockedReason ?? command.description,
+      child: ActionChip(
+        key: ValueKey('project-operation-${command.id.name}'),
+        onPressed: blockedReason == null
+            ? () => shell.executeCommand(command.id)
+            : null,
+        avatar: Icon(
+          _commandIcon(command.id),
+          size: 18,
+          color: blockedReason == null
+              ? theme.colorScheme.primary
+              : theme.disabledColor,
+        ),
+        label: Text(command.label),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final project = shell.workspaceController.activeProject;
+    final activeCompiler = project.activeCompiler;
+    final distribution = project.packageDistribution;
+    final publishablePackages = distribution?.publishablePackages ?? 0;
+    final blockedPackages = distribution?.blockedPackages ?? 0;
+    final blockedWorkflowPreview = _blockedWorkflowPreview();
+    final lastToolchain = shell.lastToolchainCommand;
+    final lastDeployment = shell.lastDeploymentCommand;
+    final lastExecution = shell.lastExecutionSession;
+    final lastDependency = shell.lastDependencySourceCommand;
+    final executionStatus = _executionStatusLabel(lastExecution);
+    final dependencyStatus = _dependencyStatusLabel(lastDependency);
+    final toolchainStatus = _toolchainStatusLabel(lastToolchain);
+    final deploymentStatus = _deploymentStatusLabel(lastDeployment);
+    final deploymentPackage =
+        _stringPayload(lastDeployment?.payload, 'package');
+    final deploymentArchive = _stringPayload(
+      lastDeployment?.payload,
+      'archive_path',
+    );
+    final vendorMetadata = _stringPayload(
+      lastDependency?.payload,
+      'metadata_path',
+    );
+    final vendorRoot = _stringPayload(lastDependency?.payload, 'vendor_root');
+    final dependencyPackages = lastDependency?.payload?['packages'];
+    final managedInstalls =
+        project.toolchainEnvironment?.managedToolchains.installed.length ?? 0;
+
+    return DecoratedBox(
+      key: const ValueKey('project-operations-card'),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDE7F0),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Project Workflow', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'One shell-owned surface for execution, dependency materialization, toolchain routing, and deployment preflight.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _WorkflowStatusChip(
+                  label: 'execution $executionStatus',
+                  color: _laneColor(context, executionStatus),
+                ),
+                _WorkflowStatusChip(
+                  label: 'dependencies $dependencyStatus',
+                  color: _laneColor(context, dependencyStatus),
+                ),
+                _WorkflowStatusChip(
+                  label: 'environment $toolchainStatus',
+                  color: _laneColor(context, toolchainStatus),
+                ),
+                _WorkflowStatusChip(
+                  label: 'deployment $deploymentStatus',
+                  color: _laneColor(context, deploymentStatus),
+                ),
+                Chip(
+                  label: Text(
+                    activeCompiler == null
+                        ? 'compiler unresolved'
+                        : 'compiler ${activeCompiler.compilerVersion}',
+                  ),
+                ),
+                Chip(
+                  label: Text(
+                    project.toolchainPinPath == null
+                        ? 'pin unresolved'
+                        : 'pin active',
+                  ),
+                ),
+                Chip(
+                  label: Text('publishable $publishablePackages'),
+                ),
+                Chip(
+                  label: Text('blocked $blockedPackages'),
+                ),
+                Chip(
+                  label: Text(
+                    'workflow blockers ${StyioCommandRegistry.workflowCommands.where((command) => shell.blockedReasonForCommand(command.id) != null).length}',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (blockedWorkflowPreview.isNotEmpty) ...[
+              Text('Current Blockers', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              for (final blocker in blockedWorkflowPreview) ...[
+                Text(
+                  blocker,
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 4),
+              ],
+              const SizedBox(height: 8),
+            ],
+            _WorkflowLanePanel(
+              title: 'Execution',
+              statusLabel: executionStatus,
+              statusColor: _laneColor(context, executionStatus),
+              detail: lastExecution == null
+                  ? 'Run has not been routed through the active project shell yet.'
+                  : '${lastExecution.kind} ${lastExecution.status.name}: ${lastExecution.statusMessage}',
+              metaLabels: [
+                'runtime ${shell.lastRuntimeEvents.length}',
+                if (lastExecution != null) ...[
+                  'diagnostics ${lastExecution.diagnostics.length}',
+                  'stdout ${lastExecution.stdoutEvents.length}',
+                  'stderr ${lastExecution.stderrEvents.length}',
+                ],
+              ],
+              actions: StyioCommandRegistry.executionCommands
+                  .map((command) => _buildCommandChip(context, theme, command))
+                  .toList(growable: false),
+            ),
+            const SizedBox(height: 12),
+            _WorkflowLanePanel(
+              title: 'Dependencies',
+              statusLabel: dependencyStatus,
+              statusColor: _laneColor(context, dependencyStatus),
+              detail: lastDependency == null
+                  ? 'Fetch/vendor has not been materialized in this shell session yet.'
+                  : '${lastDependency.command} ${lastDependency.status.name}: ${lastDependency.statusMessage}',
+              metaLabels: [
+                'git ${project.sourceState?.declaredGitDependencies ?? 0}',
+                'registry ${project.sourceState?.declaredRegistryDependencies ?? 0}',
+                'vendor ${project.vendorState.label}',
+                if (dependencyPackages is num)
+                  'packages ${dependencyPackages.toInt()}',
+                if (vendorRoot != null) 'vendor root',
+                if (vendorMetadata != null) 'vendor metadata',
+              ],
+              actions: StyioCommandRegistry.dependencyCommands
+                  .map((command) => _buildCommandChip(context, theme, command))
+                  .toList(growable: false),
+            ),
+            const SizedBox(height: 12),
+            _WorkflowLanePanel(
+              title: 'Environment',
+              statusLabel: toolchainStatus,
+              statusColor: _laneColor(context, toolchainStatus),
+              detail: lastToolchain == null
+                  ? project.toolchain.detail
+                  : '${lastToolchain.command} ${lastToolchain.status.name}: ${lastToolchain.statusMessage}',
+              metaLabels: [
+                'source ${project.toolchain.source.label}',
+                'managed $managedInstalls',
+                if (activeCompiler != null) 'channel ${activeCompiler.channel}',
+                if (project.toolchainPinPath != null) 'pin present',
+              ],
+              actions: StyioCommandRegistry.toolchainCommands
+                  .map((command) => _buildCommandChip(context, theme, command))
+                  .toList(growable: false),
+            ),
+            const SizedBox(height: 12),
+            _WorkflowLanePanel(
+              title: 'Deployment',
+              statusLabel: deploymentStatus,
+              statusColor: _laneColor(context, deploymentStatus),
+              detail: lastDeployment == null
+                  ? 'Pack and publish preflight are ready to route through the active project shell.'
+                  : '${lastDeployment.command} ${lastDeployment.status.name}: ${lastDeployment.statusMessage}',
+              metaLabels: [
+                'packages ${distribution?.packages.length ?? 0}',
+                'publishable $publishablePackages',
+                'blocked $blockedPackages',
+                if (deploymentPackage != null) 'package $deploymentPackage',
+                if (deploymentArchive != null) 'archive ready',
+              ],
+              actions: StyioCommandRegistry.deploymentCommands
+                  .map((command) => _buildCommandChip(context, theme, command))
+                  .toList(growable: false),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowLanePanel extends StatelessWidget {
+  const _WorkflowLanePanel({
+    required this.title,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.detail,
+    required this.metaLabels,
+    required this.actions,
+  });
+
+  final String title;
+  final String statusLabel;
+  final Color statusColor;
+  final String detail;
+  final List<String> metaLabels;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: theme.dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                _WorkflowStatusChip(
+                  label: statusLabel,
+                  color: statusColor,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              detail,
+              style: theme.textTheme.bodySmall,
+            ),
+            if (metaLabels.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: metaLabels
+                    .map((label) => Chip(label: Text(label)))
+                    .toList(growable: false),
+              ),
+            ],
+            if (actions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: actions,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowStatusChip extends StatelessWidget {
+  const _WorkflowStatusChip({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
     );
@@ -1332,6 +1756,16 @@ IconData _commandIcon(AppCommandId commandId) {
       return Icons.cloud_download_rounded;
     case AppCommandId.vendorDependencies:
       return Icons.inventory_2_rounded;
+    case AppCommandId.useActiveCompiler:
+      return Icons.sync_alt_rounded;
+    case AppCommandId.pinActiveCompiler:
+      return Icons.push_pin_outlined;
+    case AppCommandId.clearPinnedCompiler:
+      return Icons.push_pin_rounded;
+    case AppCommandId.packProject:
+      return Icons.archive_rounded;
+    case AppCommandId.preparePublish:
+      return Icons.publish_rounded;
     case AppCommandId.refreshModules:
       return Icons.refresh_rounded;
     case AppCommandId.save:

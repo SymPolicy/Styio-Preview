@@ -6,19 +6,152 @@ import '../language/language_contract.dart';
 import '../platform/platform_target.dart';
 import 'adapter_contracts.dart';
 import 'execution_adapter.dart';
+import 'hosted_control_plane.dart';
+import 'hosted_execution_codec.dart';
+import 'project_workflow_selection.dart';
 import 'project_graph_contract.dart';
+import 'runtime_event_adapter.dart';
 import 'spio_cli_discovery.dart';
 
 Future<ExecutionAdapter> createPlatformExecutionAdapter({
   required PlatformTarget platformTarget,
   required ProjectGraphSnapshot projectGraph,
 }) async {
+  final hostedClient = await createHostedControlPlaneClient(
+    platformTarget: platformTarget,
+  );
+  if (hostedClient != null) {
+    return _HostedExecutionAdapter(
+      platformTarget: platformTarget,
+      projectGraph: projectGraph,
+      hostedClient: hostedClient,
+    );
+  }
   final compiler = projectGraph.activeCompiler;
   return _LocalCliExecutionAdapter(
     platformTarget: platformTarget,
     projectGraph: projectGraph,
     compiler: compiler,
   );
+}
+
+class _HostedExecutionAdapter implements ExecutionAdapter {
+  const _HostedExecutionAdapter({
+    required this.platformTarget,
+    required this.projectGraph,
+    required this.hostedClient,
+  });
+
+  final PlatformTarget platformTarget;
+  final ProjectGraphSnapshot projectGraph;
+  final HostedControlPlaneClient hostedClient;
+
+  @override
+  AdapterCapabilitySnapshot get capabilitySnapshot => const AdapterCapabilitySnapshot(
+        adapterKind: AdapterKind.cloud,
+        languageService: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.partial,
+          detail: 'Hosted language service stays reserved behind the cloud route.',
+        ),
+        projectGraph: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.available,
+          detail: 'Hosted project graph is live through the shared control plane.',
+          supportedContractVersions: <int>[1],
+        ),
+        execution: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.available,
+          detail: 'Hosted execution is live through the shared control plane.',
+          supportedContractVersions: <int>[1],
+        ),
+        runtimeEvents: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.available,
+          detail:
+              'Hosted execution publishes runtime event payloads through the shared control plane.',
+          supportedContractVersions: <int>[1],
+        ),
+      );
+
+  @override
+  Future<ExecutionSession> runActiveDocument({
+    required PlatformTarget platformTarget,
+    required ProjectGraphSnapshot projectGraph,
+    required DocumentState document,
+    required String activeFilePath,
+  }) async {
+    final workspaceId = projectGraph.hostedWorkspace?.workspaceId;
+    if (workspaceId == null || workspaceId.isEmpty) {
+      return const ExecutionSession(
+        sessionId: 'missing-hosted-workspace',
+        kind: 'run',
+        status: ExecutionSessionStatus.blocked,
+        statusMessage:
+            'Hosted workspace identity is unavailable for cloud execution.',
+        diagnostics: <Diagnostic>[],
+        stdoutEvents: <ExecutionLogEvent>[],
+        stderrEvents: <ExecutionLogEvent>[],
+      );
+    }
+
+    final workflow = selectProjectWorkflow(
+      projectGraph: projectGraph,
+      activeFilePath: activeFilePath,
+    );
+    try {
+      final response = switch (workflow.command) {
+        'test' => await hostedClient.testWorkflow(
+            workspaceId: workspaceId,
+            activeFilePath: activeFilePath,
+            documentText: document.text,
+            packageName: workflow.packageName,
+            targetName: workflow.targetName,
+            targetKind: workflow.targetKind,
+          ),
+        'build' => await hostedClient.buildWorkflow(
+            workspaceId: workspaceId,
+            activeFilePath: activeFilePath,
+            documentText: document.text,
+            packageName: workflow.packageName,
+            targetName: workflow.targetName,
+            targetKind: workflow.targetKind,
+          ),
+        _ => await hostedClient.runWorkflow(
+            workspaceId: workspaceId,
+            activeFilePath: activeFilePath,
+            documentText: document.text,
+            packageName: workflow.packageName,
+            targetName: workflow.targetName,
+            targetKind: workflow.targetKind,
+          ),
+      };
+      final decoded = executionSessionFromHostedResponse(
+        response: response,
+        workflowKind: workflow.kind,
+        successMessage: workflow.successMessage,
+        documentText: document.text,
+        activeFilePath: activeFilePath,
+      );
+      if (decoded.runtimeEvents.isEmpty) {
+        clearRuntimeEventsForSession(decoded.session.sessionId);
+      } else {
+        recordRuntimeEventsForSession(
+          decoded.session.sessionId,
+          decoded.runtimeEvents,
+        );
+      }
+      return decoded.session;
+    } catch (error) {
+      return ExecutionSession(
+        sessionId: 'hosted-execution-error',
+        kind: workflow.kind,
+        status: ExecutionSessionStatus.failed,
+        statusMessage: 'Hosted execution failed: $error',
+        diagnostics: const <Diagnostic>[],
+        stdoutEvents: const <ExecutionLogEvent>[],
+        stderrEvents: const <ExecutionLogEvent>[],
+        unitRange: SourceRange(start: 0, end: document.length),
+      );
+    }
+  }
 }
 
 class _LocalCliExecutionAdapter implements ExecutionAdapter {
@@ -393,6 +526,22 @@ Future<ExecutionSession> _runProjectWorkflow({
       }
     }
     final failurePayload = _parseJsonObject(stderr) ?? _parseJsonObject(stdout);
+    final sessionId = _workflowSessionIdFromPayload(failurePayload) ??
+        DateTime.now().microsecondsSinceEpoch.toString();
+    final runtimeEvents = await _readWorkflowRuntimeEvents(
+      rawRuntimeEvents:
+          failurePayload == null ? null : failurePayload['runtime_events'],
+      runtimeEventsPath:
+          failurePayload == null ? null : failurePayload['runtime_events_path'],
+      sessionId: sessionId,
+      workspaceRoot: preparedInput.workspaceRoot,
+      normalizePath: normalizedPath,
+    );
+    if (runtimeEvents.isEmpty) {
+      clearRuntimeEventsForSession(sessionId);
+    } else {
+      recordRuntimeEventsForSession(sessionId, runtimeEvents);
+    }
     final payloadDiagnostics = _parsePayloadDiagnostics(
       failurePayload?['diagnostics'],
       documentText: document.text,
@@ -412,7 +561,7 @@ Future<ExecutionSession> _runProjectWorkflow({
       normalizePath: normalizedPath,
     );
     return ExecutionSession(
-      sessionId: DateTime.now().microsecondsSinceEpoch.toString(),
+      sessionId: sessionId,
       kind: workflow.kind,
       status: result.exitCode == 0
           ? ExecutionSessionStatus.succeeded
@@ -509,6 +658,20 @@ Future<ExecutionSession?> _sessionFromWorkflowSuccessPayload({
       return null;
     }
 
+    final sessionId = _workflowSessionIdFromPayload(decoded) ??
+        DateTime.now().microsecondsSinceEpoch.toString();
+    final runtimeEvents = await _readWorkflowRuntimeEvents(
+      rawRuntimeEvents: decoded['runtime_events'],
+      runtimeEventsPath: decoded['runtime_events_path'],
+      sessionId: sessionId,
+      workspaceRoot: workspaceRoot,
+      normalizePath: normalizePath,
+    );
+    if (runtimeEvents.isEmpty) {
+      clearRuntimeEventsForSession(sessionId);
+    } else {
+      recordRuntimeEventsForSession(sessionId, runtimeEvents);
+    }
     final payloadStdout = decoded['stdout'] as String? ?? '';
     final payloadStderr = decoded['stderr'] as String? ?? '';
     final workflowDiagnostics = await _readWorkflowDiagnostics(
@@ -539,7 +702,7 @@ Future<ExecutionSession?> _sessionFromWorkflowSuccessPayload({
     );
 
     return ExecutionSession(
-      sessionId: DateTime.now().microsecondsSinceEpoch.toString(),
+      sessionId: sessionId,
       kind: workflow.kind,
       status: ExecutionSessionStatus.succeeded,
       statusMessage: decoded['message'] as String? ?? workflow.successMessage,
@@ -607,6 +770,138 @@ Future<_ParsedDiagnostics> _readWorkflowDiagnostics({
   return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
 }
 
+Future<List<RuntimeEventEnvelope>> _readWorkflowRuntimeEvents({
+  required Object? rawRuntimeEvents,
+  required Object? runtimeEventsPath,
+  required String sessionId,
+  required String workspaceRoot,
+  String Function(String path)? normalizePath,
+}) async {
+  final inlineEvents = _parsePayloadRuntimeEvents(
+    rawRuntimeEvents,
+    sessionId: sessionId,
+    normalizePath: normalizePath,
+  );
+  if (inlineEvents.isNotEmpty) {
+    return inlineEvents;
+  }
+
+  final resolvedRuntimeEventsPath = _resolveWorkflowArtifactPath(
+    runtimeEventsPath,
+    workspaceRoot: workspaceRoot,
+  );
+  if (resolvedRuntimeEventsPath == null) {
+    return const <RuntimeEventEnvelope>[];
+  }
+
+  try {
+    final file = File(resolvedRuntimeEventsPath);
+    if (!await file.exists()) {
+      return const <RuntimeEventEnvelope>[];
+    }
+    return _parseRuntimeEventLines(
+      await file.readAsString(),
+      sessionId: sessionId,
+      normalizePath: normalizePath,
+    );
+  } on FileSystemException {
+    return const <RuntimeEventEnvelope>[];
+  }
+}
+
+List<RuntimeEventEnvelope> _parsePayloadRuntimeEvents(
+  Object? rawRuntimeEvents, {
+  required String sessionId,
+  String Function(String path)? normalizePath,
+}) {
+  if (rawRuntimeEvents is! List) {
+    return const <RuntimeEventEnvelope>[];
+  }
+
+  final events = <RuntimeEventEnvelope>[];
+  for (final item in rawRuntimeEvents) {
+    if (item is! Map<String, dynamic>) {
+      continue;
+    }
+    final event = _parseRuntimeEventObject(
+      item,
+      sessionId: sessionId,
+      normalizePath: normalizePath,
+    );
+    if (event != null) {
+      events.add(event);
+    }
+  }
+  return events;
+}
+
+List<RuntimeEventEnvelope> _parseRuntimeEventLines(
+  String text, {
+  required String sessionId,
+  String Function(String path)? normalizePath,
+}) {
+  final events = <RuntimeEventEnvelope>[];
+  for (final line in text.split('\n')) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || !trimmed.startsWith('{')) {
+      continue;
+    }
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is! Map<String, dynamic>) {
+        continue;
+      }
+      final event = _parseRuntimeEventObject(
+        decoded,
+        sessionId: sessionId,
+        normalizePath: normalizePath,
+      );
+      if (event != null) {
+        events.add(event);
+      }
+    } on FormatException {
+      continue;
+    }
+  }
+  return events;
+}
+
+RuntimeEventEnvelope? _parseRuntimeEventObject(
+  Map<String, dynamic> decoded, {
+  required String sessionId,
+  String Function(String path)? normalizePath,
+}) {
+  final eventKind =
+      _stringValue(decoded['eventKind']) ?? _stringValue(decoded['event_kind']);
+  if (eventKind == null || eventKind.isEmpty) {
+    return null;
+  }
+
+  final resolvedSessionId = _stringValue(decoded['session_id']) ??
+      _stringValue(decoded['sessionId']) ??
+      sessionId;
+  final timestampValue = _stringValue(decoded['timestamp']);
+  final payload = decoded['payload'];
+  final payloadMap = payload is Map<String, dynamic>
+      ? Map<String, Object?>.from(payload)
+      : <String, Object?>{};
+  final rawFilePath = payloadMap['file'];
+  if (rawFilePath is String && normalizePath != null) {
+    payloadMap['file'] = normalizePath(rawFilePath);
+  }
+  return RuntimeEventEnvelope(
+    schemaVersion:
+        _intValue(decoded['schema_version'] ?? decoded['schemaVersion']) ?? 1,
+    sessionId: resolvedSessionId,
+    sequence: _intValue(decoded['sequence']) ?? 0,
+    timestamp: DateTime.tryParse(timestampValue ?? '')?.toUtc() ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    eventKind: eventKind,
+    origin: _stringValue(decoded['origin']) ?? 'styio.runtime',
+    payload: payloadMap,
+  );
+}
+
 _ParsedDiagnostics _parsePayloadDiagnostics(
   Object? rawDiagnostics, {
   required String documentText,
@@ -641,6 +936,24 @@ _ParsedDiagnostics _parsePayloadDiagnostics(
     }
   }
   return _ParsedDiagnostics(diagnostics: diagnostics, logEvents: logEvents);
+}
+
+String? _workflowSessionIdFromPayload(Map<String, dynamic>? payload) {
+  if (payload == null) {
+    return null;
+  }
+
+  final runtimeSessionId = _stringValue(payload['runtime_session_id']);
+  if (runtimeSessionId != null) {
+    return runtimeSessionId;
+  }
+
+  final receipt = payload['receipt'];
+  if (receipt is Map<String, dynamic>) {
+    return _stringValue(receipt['session_id']) ??
+        _stringValue(receipt['sessionId']);
+  }
+  return null;
 }
 
 _ProjectWorkflowSelection _selectProjectWorkflow({
@@ -1405,11 +1718,11 @@ SourceRange _normalizedRange(int start, int end) {
   return SourceRange(start: start, end: end);
 }
 
-String? _resolveWorkflowDiagnosticsPath(
-  Object? diagnosticsPath, {
+String? _resolveWorkflowArtifactPath(
+  Object? artifactPath, {
   required String workspaceRoot,
 }) {
-  final path = _stringValue(diagnosticsPath);
+  final path = _stringValue(artifactPath);
   if (path == null || path.isEmpty) {
     return null;
   }
@@ -1417,6 +1730,16 @@ String? _resolveWorkflowDiagnosticsPath(
     return path;
   }
   return _joinPath(workspaceRoot, path);
+}
+
+String? _resolveWorkflowDiagnosticsPath(
+  Object? diagnosticsPath, {
+  required String workspaceRoot,
+}) {
+  return _resolveWorkflowArtifactPath(
+    diagnosticsPath,
+    workspaceRoot: workspaceRoot,
+  );
 }
 
 String? _stringValue(Object? value) {

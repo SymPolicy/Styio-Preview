@@ -146,6 +146,70 @@ void main() {
     );
   });
 
+  test('toolchain and deployment commands dispatch through shell command flow',
+      () async {
+    final initialGraph = _projectGraph(
+      compilerVersion: '0.0.5',
+      compilePlanReady: true,
+    );
+    final refreshedGraph = _projectGraph(
+      compilerVersion: '0.0.5',
+      compilePlanReady: true,
+    );
+    final shell = ShellModel(
+      platformTarget: PlatformTarget.macos,
+      supplementalAdapterCapabilities: const <AdapterCapabilitySnapshot>[],
+      projectGraphAdapter: _SequenceProjectGraphAdapter(
+        snapshots: <ProjectGraphSnapshot>[refreshedGraph],
+      ),
+      workspaceController: WorkspaceController(projectSnapshot: initialGraph),
+      workspaceDocumentStore: InMemoryWorkspaceDocumentStore(),
+      moduleRegistry: ModuleRegistry(
+        platformTarget: PlatformTarget.macos,
+        definitions: const [],
+      ),
+      nativeModuleLoader: NoopNativeModuleLoader(
+        platformTarget: PlatformTarget.macos,
+      ),
+      editorController: EditorSessionController(
+        initialDocument: EditorSessionController.seedDocumentForPath(
+          initialGraph.editorFiles.first,
+        ),
+        languageService: const SimpleStyioLanguageService(),
+      ),
+      executionAdapter: _RefreshAwareExecutionAdapter(
+        projectGraph: initialGraph,
+      ),
+      executionAdapterFactory: (ProjectGraphSnapshot projectGraph) async =>
+          _RefreshAwareExecutionAdapter(
+        projectGraph: projectGraph,
+      ),
+      runtimeEventAdapter: createRuntimeEventAdapter(
+        platformTarget: PlatformTarget.macos,
+      ),
+      dependencySourceAdapter: const _SuccessfulDependencySourceAdapter(),
+      deploymentAdapter: const _SuccessfulDeploymentAdapter(),
+      toolchainManagementAdapter: const _SuccessfulToolchainManagementAdapter(),
+    );
+    addTearDown(shell.dispose);
+
+    await shell.executeCommand(AppCommandId.useActiveCompiler);
+    await shell.executeCommand(AppCommandId.preparePublish);
+
+    expect(shell.lastToolchainCommand?.command, 'tool use');
+    expect(shell.lastToolchainCommand?.succeeded, isTrue);
+    expect(shell.lastDeploymentCommand?.command, 'publish');
+    expect(shell.lastDeploymentCommand?.succeeded, isTrue);
+    expect(
+      shell.debugLog.any((entry) => entry.contains('tool use succeeded')),
+      isTrue,
+    );
+    expect(
+      shell.debugLog.any((entry) => entry.contains('publish succeeded')),
+      isTrue,
+    );
+  });
+
   test(
       'vendor command dispatch refreshes project graph and stores source state',
       () async {
@@ -215,6 +279,90 @@ void main() {
     );
     expect(
       shell.debugLog.any((entry) => entry.contains('vendor metadata:')),
+      isTrue,
+    );
+  });
+
+  test('run command logs runtime event summaries for published sessions',
+      () async {
+    final initialGraph = _projectGraph(
+      compilerVersion: '0.0.5',
+      compilePlanReady: true,
+    );
+    recordRuntimeEventsForSession(
+        'shell-runtime-session', <RuntimeEventEnvelope>[
+      RuntimeEventEnvelope(
+        schemaVersion: 1,
+        sessionId: 'shell-runtime-session',
+        sequence: 1,
+        timestamp: DateTime.utc(2026, 4, 17, 0, 0, 0),
+        eventKind: 'compile.started',
+        origin: 'styio.compile-plan',
+        payload: const <String, Object?>{'intent': 'run'},
+      ),
+      RuntimeEventEnvelope(
+        schemaVersion: 1,
+        sessionId: 'shell-runtime-session',
+        sequence: 2,
+        timestamp: DateTime.utc(2026, 4, 17, 0, 0, 1),
+        eventKind: 'run.finished',
+        origin: 'styio.runtime',
+        payload: const <String, Object?>{'success': true},
+      ),
+    ]);
+    addTearDown(() => clearRuntimeEventsForSession('shell-runtime-session'));
+
+    final shell = ShellModel(
+      platformTarget: PlatformTarget.macos,
+      supplementalAdapterCapabilities: const <AdapterCapabilitySnapshot>[],
+      projectGraphAdapter: _SequenceProjectGraphAdapter(
+        snapshots: <ProjectGraphSnapshot>[initialGraph],
+      ),
+      workspaceController: WorkspaceController(projectSnapshot: initialGraph),
+      workspaceDocumentStore: InMemoryWorkspaceDocumentStore(),
+      moduleRegistry: ModuleRegistry(
+        platformTarget: PlatformTarget.macos,
+        definitions: const [],
+      ),
+      nativeModuleLoader: NoopNativeModuleLoader(
+        platformTarget: PlatformTarget.macos,
+      ),
+      editorController: EditorSessionController(
+        initialDocument: EditorSessionController.seedDocumentForPath(
+          initialGraph.editorFiles.first,
+        ),
+        languageService: const SimpleStyioLanguageService(),
+      ),
+      executionAdapter: const _SuccessfulExecutionAdapter(
+        sessionId: 'shell-runtime-session',
+      ),
+      executionAdapterFactory: (ProjectGraphSnapshot projectGraph) async =>
+          const _SuccessfulExecutionAdapter(
+        sessionId: 'shell-runtime-session',
+      ),
+      runtimeEventAdapter: createRuntimeEventAdapter(
+        platformTarget: PlatformTarget.macos,
+      ),
+      dependencySourceAdapter: const _SuccessfulDependencySourceAdapter(),
+      deploymentAdapter: const _SuccessfulDeploymentAdapter(),
+      toolchainManagementAdapter: const _SuccessfulToolchainManagementAdapter(),
+    );
+    addTearDown(shell.dispose);
+
+    await shell.executeCommand(AppCommandId.run);
+
+    expect(shell.lastExecutionSession?.sessionId, 'shell-runtime-session');
+    expect(
+      shell.debugLog
+          .any((entry) => entry.contains('runtime events: 2 event(s)')),
+      isTrue,
+    );
+    expect(
+      shell.debugLog.any((entry) => entry.contains('runtime: compile.started')),
+      isTrue,
+    );
+    expect(
+      shell.debugLog.any((entry) => entry.contains('runtime: run.finished')),
       isTrue,
     );
   });
@@ -361,6 +509,55 @@ class _RefreshAwareExecutionAdapter implements ExecutionAdapter {
       diagnostics: <Diagnostic>[],
       stdoutEvents: <ExecutionLogEvent>[],
       stderrEvents: <ExecutionLogEvent>[],
+    );
+  }
+}
+
+class _SuccessfulExecutionAdapter implements ExecutionAdapter {
+  const _SuccessfulExecutionAdapter({
+    required this.sessionId,
+  });
+
+  final String sessionId;
+
+  @override
+  AdapterCapabilitySnapshot get capabilitySnapshot =>
+      const AdapterCapabilitySnapshot(
+        adapterKind: AdapterKind.cli,
+        languageService: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail: 'Execution adapter does not provide language services.',
+        ),
+        projectGraph: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail: 'Execution adapter does not own project graph data.',
+        ),
+        execution: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.available,
+          detail: 'Project execution is live through compile-plan v1.',
+        ),
+        runtimeEvents: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.partial,
+          detail: 'Runtime events are replayed from published artifacts.',
+        ),
+      );
+
+  @override
+  Future<ExecutionSession> runActiveDocument({
+    required PlatformTarget platformTarget,
+    required ProjectGraphSnapshot projectGraph,
+    required DocumentState document,
+    required String activeFilePath,
+  }) async {
+    return ExecutionSession(
+      sessionId: sessionId,
+      kind: 'run',
+      status: ExecutionSessionStatus.succeeded,
+      statusMessage:
+          'Execution completed through the shell-model test fixture.',
+      diagnostics: const <Diagnostic>[],
+      stdoutEvents: const <ExecutionLogEvent>[],
+      stderrEvents: const <ExecutionLogEvent>[],
     );
   }
 }

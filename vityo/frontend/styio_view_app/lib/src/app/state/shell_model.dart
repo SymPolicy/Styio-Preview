@@ -9,6 +9,7 @@ import '../../integration/dependency_source_adapter.dart';
 import '../../integration/deployment_adapter.dart';
 import '../../integration/execution_adapter.dart';
 import '../../integration/project_graph_adapter.dart';
+import '../../integration/project_graph_contract.dart';
 import '../../integration/runtime_event_adapter.dart';
 import '../../integration/toolchain_management_adapter.dart';
 import '../../module_host/module_definition.dart';
@@ -87,6 +88,8 @@ class ShellModel extends ChangeNotifier {
   final Map<String, DocumentState> _documentCache = <String, DocumentState>{};
   String _activeDocumentPath;
   ExecutionSession? _lastExecutionSession;
+  List<RuntimeEventEnvelope> _lastRuntimeEvents =
+      const <RuntimeEventEnvelope>[];
   DependencySourceCommandResult? _lastDependencySourceCommand;
   DeploymentCommandResult? _lastDeploymentCommand;
   ToolchainCommandResult? _lastToolchainCommand;
@@ -98,6 +101,8 @@ class ShellModel extends ChangeNotifier {
       _adapterCapabilities;
   List<String> get debugLog => List<String>.unmodifiable(_debugLog);
   ExecutionSession? get lastExecutionSession => _lastExecutionSession;
+  List<RuntimeEventEnvelope> get lastRuntimeEvents =>
+      List<RuntimeEventEnvelope>.unmodifiable(_lastRuntimeEvents);
   DependencySourceCommandResult? get lastDependencySourceCommand =>
       _lastDependencySourceCommand;
   DeploymentCommandResult? get lastDeploymentCommand => _lastDeploymentCommand;
@@ -115,6 +120,14 @@ class ShellModel extends ChangeNotifier {
   }
 
   Future<void> executeCommand(AppCommandId commandId) async {
+    final blockedReason = blockedReasonForCommand(commandId);
+    if (blockedReason != null) {
+      appendLog(
+        '${StyioCommandRegistry.descriptorFor(commandId).label} blocked: $blockedReason',
+      );
+      return;
+    }
+
     switch (commandId) {
       case AppCommandId.save:
         _documentCache[_activeDocumentPath] = editorController.document;
@@ -132,6 +145,8 @@ class ShellModel extends ChangeNotifier {
           activeFilePath: workspaceController.activeFilePath,
         );
         _lastExecutionSession = session;
+        _lastRuntimeEvents =
+            await runtimeEventAdapter.sessionEvents(session.sessionId).toList();
         appendLog('Run ${session.status.name}: ${session.statusMessage}');
         for (final event in session.stdoutEvents.take(3)) {
           appendLog('stdout: ${event.message}');
@@ -144,6 +159,14 @@ class ShellModel extends ChangeNotifier {
             'diagnostics: ${session.diagnostics.length} issue(s) returned by the execution route.',
           );
         }
+        if (_lastRuntimeEvents.isNotEmpty) {
+          appendLog(
+            'runtime events: ${_lastRuntimeEvents.length} event(s) for session ${session.sessionId}.',
+          );
+          for (final event in _lastRuntimeEvents.take(4)) {
+            appendLog('runtime: ${event.eventKind}');
+          }
+        }
         selectBottomTab(BottomSurfaceTab.runtime);
         notifyListeners();
         return;
@@ -152,6 +175,29 @@ class ShellModel extends ChangeNotifier {
         return;
       case AppCommandId.vendorDependencies:
         await vendorDependencies();
+        return;
+      case AppCommandId.useActiveCompiler:
+        final compiler = workspaceController.activeProject.activeCompiler!;
+        await useManagedCompiler(
+          compilerVersion: compiler.compilerVersion,
+          channel: compiler.channel,
+        );
+        return;
+      case AppCommandId.pinActiveCompiler:
+        final compiler = workspaceController.activeProject.activeCompiler!;
+        await pinManagedCompiler(
+          compilerVersion: compiler.compilerVersion,
+          channel: compiler.channel,
+        );
+        return;
+      case AppCommandId.clearPinnedCompiler:
+        await clearPinnedCompiler();
+        return;
+      case AppCommandId.packProject:
+        await packProject();
+        return;
+      case AppCommandId.preparePublish:
+        await preparePublish();
         return;
       case AppCommandId.showRuntime:
         selectBottomTab(BottomSurfaceTab.runtime);
@@ -198,6 +244,32 @@ class ShellModel extends ChangeNotifier {
           projectGraph: projectGraph,
           command: 'vendor',
         );
+      case AppCommandId.useActiveCompiler:
+        return _blockedToolchainCommandReason(
+          projectGraph: projectGraph,
+          requiresResolvedCompiler: true,
+        );
+      case AppCommandId.pinActiveCompiler:
+        return _blockedToolchainCommandReason(
+          projectGraph: projectGraph,
+          requiresResolvedCompiler: true,
+          requiresManifest: true,
+        );
+      case AppCommandId.clearPinnedCompiler:
+        return _blockedToolchainCommandReason(
+          projectGraph: projectGraph,
+          requiresManifest: true,
+          requiresPin: true,
+        );
+      case AppCommandId.packProject:
+        return _blockedDeploymentCommandReason(
+          projectGraph: projectGraph,
+        );
+      case AppCommandId.preparePublish:
+        return _blockedDeploymentCommandReason(
+          projectGraph: projectGraph,
+          requireResolvedPublishTarget: true,
+        );
       case AppCommandId.save:
       case AppCommandId.run:
       case AppCommandId.showRuntime:
@@ -207,6 +279,78 @@ class ShellModel extends ChangeNotifier {
       case AppCommandId.openSettings:
         return null;
     }
+  }
+
+  String? _blockedToolchainCommandReason({
+    required ProjectGraphSnapshot projectGraph,
+    bool requiresResolvedCompiler = false,
+    bool requiresManifest = false,
+    bool requiresPin = false,
+  }) {
+    if (platformTarget == PlatformTarget.ios ||
+        platformTarget == PlatformTarget.web) {
+      if (!projectGraph.hasHostedWorkspace) {
+        return '${platformTarget.label} does not expose local spio toolchain management.';
+      }
+    }
+    if (requiresResolvedCompiler && projectGraph.activeCompiler == null) {
+      return 'No active compiler handshake is currently resolved for this project.';
+    }
+    if (requiresManifest && !projectGraph.hasManifest) {
+      return 'Project toolchain commands require a resolved spio manifest path.';
+    }
+    if (requiresPin && projectGraph.toolchainPinPath == null) {
+      return 'No project toolchain pin is currently resolved.';
+    }
+    return null;
+  }
+
+  String? _blockedDeploymentCommandReason({
+    required ProjectGraphSnapshot projectGraph,
+    bool requireResolvedPublishTarget = false,
+  }) {
+    if (platformTarget == PlatformTarget.ios ||
+        platformTarget == PlatformTarget.web) {
+      if (!projectGraph.hasHostedWorkspace) {
+        return '${platformTarget.label} does not expose local spio deployment commands.';
+      }
+    }
+    if (!projectGraph.hasManifest) {
+      return 'Deployment commands require a resolved spio manifest path.';
+    }
+    if (!requireResolvedPublishTarget) {
+      return null;
+    }
+    final distribution = projectGraph.packageDistribution;
+    if (distribution == null || distribution.packages.isEmpty) {
+      return null;
+    }
+    final publishablePackages = distribution.packages
+        .where((package) => package.publishReady)
+        .toList(growable: false);
+    if (publishablePackages.length == 1) {
+      return null;
+    }
+    if (publishablePackages.isEmpty) {
+      final blockedPackages = distribution.packages
+          .where((package) => !package.publishReady)
+          .toList(growable: false);
+      if (blockedPackages.isEmpty) {
+        return 'No publish-ready package is available for deployment.';
+      }
+      final headline =
+          'No publish-ready package is available: ${blockedPackages.map((package) => package.packageName).join(', ')}.';
+      final details = blockedPackages.take(2).expand((package) {
+        if (package.blockingReasons.isEmpty) {
+          return <String>[];
+        }
+        return <String>[
+          '${package.packageName}: ${package.blockingReasons.join(' | ')}',
+        ];
+      }).join(' ');
+      return details.isEmpty ? headline : '$headline $details';
+    }
+    return 'Multiple publish-ready packages are available. Select a package before publish: ${publishablePackages.map((package) => package.packageName).join(', ')}.';
   }
 
   void appendLog(String message) {

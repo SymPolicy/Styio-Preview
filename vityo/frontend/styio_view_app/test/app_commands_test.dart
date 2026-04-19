@@ -33,4 +33,55 @@ void main() {
     expect(vendor.primary, isTrue);
     expect(vendor.shortcuts, hasLength(2));
   });
+
+  test('command registry exposes toolchain and deployment route commands', () {
+    expect(
+      StyioCommandRegistry.executionCommands.map((command) => command.id),
+      <AppCommandId>[AppCommandId.run],
+    );
+    expect(
+      StyioCommandRegistry.dependencyCommands.map((command) => command.id),
+      <AppCommandId>[
+        AppCommandId.fetchDependencies,
+        AppCommandId.vendorDependencies,
+      ],
+    );
+    expect(
+      StyioCommandRegistry.toolchainCommands.map((command) => command.id),
+      <AppCommandId>[
+        AppCommandId.useActiveCompiler,
+        AppCommandId.pinActiveCompiler,
+        AppCommandId.clearPinnedCompiler,
+      ],
+    );
+    expect(
+      StyioCommandRegistry.deploymentCommands.map((command) => command.id),
+      <AppCommandId>[
+        AppCommandId.packProject,
+        AppCommandId.preparePublish,
+      ],
+    );
+    expect(
+      StyioCommandRegistry.workflowCommands.map((command) => command.id),
+      <AppCommandId>[
+        AppCommandId.run,
+        AppCommandId.fetchDependencies,
+        AppCommandId.vendorDependencies,
+        AppCommandId.useActiveCompiler,
+        AppCommandId.pinActiveCompiler,
+        AppCommandId.clearPinnedCompiler,
+        AppCommandId.packProject,
+        AppCommandId.preparePublish,
+      ],
+    );
+
+    expect(
+      StyioCommandRegistry.descriptorFor(AppCommandId.useActiveCompiler).label,
+      'Use Compiler',
+    );
+    expect(
+      StyioCommandRegistry.descriptorFor(AppCommandId.preparePublish).label,
+      'Preflight',
+    );
+  });
 }

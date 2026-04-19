@@ -20,10 +20,12 @@
 1. `compile.*`
 2. `run.*`
 3. `thread.*`
-4. `state.*`
-5. `transition.fired`
-6. `log.emitted`
-7. `diagnostic.emitted`
+4. `unit.*`
+5. `unit.test.*`
+6. `state.*`
+7. `transition.fired`
+8. `log.emitted`
+9. `diagnostic.emitted`
 
 每个事件至少应带：
 
@@ -45,12 +47,15 @@
 4. `build/check/run/test` 都走同一条 compile-plan v1 入口
 5. invalid plan / CLI conflict 也返回 machine-readable `CliError`
 6. compile-plan 成功路径会在约定的 `build_root / artifact_dir / diag_dir` 内写出 receipt、产物和 `diagnostics.jsonl`
+7. `styio --machine-info=json` 现在广告 `supported_contracts.runtime_events:[1]`
+8. compile-plan v1 现在会写出 `build_root/runtime-events.jsonl`
+9. `receipt.json` 现在包含 `session_id` 与 `outputs.runtime_events_path`
 
 当前缺口不再是 compile-plan consumer 本身，而是：
 
-1. runtime event stream v1
-2. compile/run session result 的更完整 machine envelope
-3. language-service / runtime surface 所需的更多稳定 payload
+1. compile/run session result 的更完整 machine envelope
+2. language-service / runtime surface 所需的更多稳定 payload
+3. debug-oriented runtime families 与更细粒度 graph semantics
 
 当前 `styio-view` 的 project route 已不再停留在 preview-only：
 
@@ -67,6 +72,8 @@
 3. `supported_adapter_modes`
 4. `feature_flags`
 5. `supported_contracts.compile_plan:[1]`
+6. `supported_contracts.runtime_events:[1]`
+7. `feature_flags.runtime_event_stream:true`
 
 ## 5. Rules
 

@@ -6,6 +6,11 @@ enum AppCommandId {
   run,
   fetchDependencies,
   vendorDependencies,
+  useActiveCompiler,
+  pinActiveCompiler,
+  clearPinnedCompiler,
+  packProject,
+  preparePublish,
   showRuntime,
   showAgent,
   showDebug,
@@ -111,6 +116,38 @@ class StyioCommandRegistry {
       ],
     ),
     AppCommandDescriptor(
+      id: AppCommandId.useActiveCompiler,
+      label: 'Use Compiler',
+      shortcutHint: 'Route',
+      description:
+          'Use the currently resolved compiler version as the managed spio compiler.',
+    ),
+    AppCommandDescriptor(
+      id: AppCommandId.pinActiveCompiler,
+      label: 'Pin Compiler',
+      shortcutHint: 'Route',
+      description:
+          'Pin the currently resolved compiler version into spio-toolchain.toml.',
+    ),
+    AppCommandDescriptor(
+      id: AppCommandId.clearPinnedCompiler,
+      label: 'Clear Pin',
+      shortcutHint: 'Route',
+      description: 'Clear the current project toolchain pin.',
+    ),
+    AppCommandDescriptor(
+      id: AppCommandId.packProject,
+      label: 'Pack',
+      shortcutHint: 'Route',
+      description: 'Create a package archive for the active project.',
+    ),
+    AppCommandDescriptor(
+      id: AppCommandId.preparePublish,
+      label: 'Preflight',
+      shortcutHint: 'Route',
+      description: 'Run publish preflight for the active project.',
+    ),
+    AppCommandDescriptor(
       id: AppCommandId.showRuntime,
       label: 'Runtime',
       shortcutHint: 'Shift+1',
@@ -184,6 +221,56 @@ class StyioCommandRegistry {
 
   static Iterable<AppCommandDescriptor> get primaryCommands =>
       commands.where((command) => command.primary);
+
+  static Iterable<AppCommandDescriptor> get executionCommands => commands.where(
+        (command) => switch (command.id) {
+          AppCommandId.run => true,
+          _ => false,
+        },
+      );
+
+  static Iterable<AppCommandDescriptor> get dependencyCommands =>
+      commands.where(
+        (command) => switch (command.id) {
+          AppCommandId.fetchDependencies ||
+          AppCommandId.vendorDependencies =>
+            true,
+          _ => false,
+        },
+      );
+
+  static Iterable<AppCommandDescriptor> get toolchainCommands => commands.where(
+        (command) => switch (command.id) {
+          AppCommandId.useActiveCompiler ||
+          AppCommandId.pinActiveCompiler ||
+          AppCommandId.clearPinnedCompiler =>
+            true,
+          _ => false,
+        },
+      );
+
+  static Iterable<AppCommandDescriptor> get workflowCommands => commands.where(
+        (command) => switch (command.id) {
+          AppCommandId.run ||
+          AppCommandId.fetchDependencies ||
+          AppCommandId.vendorDependencies ||
+          AppCommandId.useActiveCompiler ||
+          AppCommandId.pinActiveCompiler ||
+          AppCommandId.clearPinnedCompiler ||
+          AppCommandId.packProject ||
+          AppCommandId.preparePublish =>
+            true,
+          _ => false,
+        },
+      );
+
+  static Iterable<AppCommandDescriptor> get deploymentCommands =>
+      commands.where(
+        (command) => switch (command.id) {
+          AppCommandId.packProject || AppCommandId.preparePublish => true,
+          _ => false,
+        },
+      );
 
   static AppCommandDescriptor descriptorFor(AppCommandId id) =>
       commands.firstWhere((command) => command.id == id);

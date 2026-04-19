@@ -39,6 +39,13 @@ String? blockedDependencySourceCommandReason({
 }) {
   if (platformTarget == PlatformTarget.ios ||
       platformTarget == PlatformTarget.web) {
+    if (projectGraph.hasHostedWorkspace) {
+      final manifestPath = projectGraph.manifestPath;
+      if (manifestPath == null || manifestPath.isEmpty) {
+        return '$command requires a resolved spio manifest path.';
+      }
+      return null;
+    }
     return '${platformTarget.label} does not expose local spio dependency materialization commands.';
   }
 

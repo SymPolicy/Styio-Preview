@@ -187,4 +187,65 @@ void main() {
     expect(summary.title, 'Project route live through spio');
     expect(summary.previewOnly, isFalse);
   });
+
+  test('hosted web route is live once cloud project workflow is published', () {
+    final summary = summarizeExecutionRoute(
+      platformTarget: PlatformTarget.web,
+      projectGraph: ProjectGraphSnapshot(
+        id: 'hosted-demo',
+        title: 'Hosted Demo',
+        kind: ProjectKind.hosted,
+        workspaceRoot: '/workspace/hosted-demo',
+        workspaceMembers: <String>[],
+        manifestPath: '/workspace/hosted-demo/spio.toml',
+        dependencies: <ProjectDependencySnapshot>[],
+        packages: <ProjectPackageSnapshot>[],
+        targets: <ProjectTargetDescriptor>[],
+        editorFiles: <String>['/workspace/hosted-demo/src/main.styio'],
+        toolchain: ToolchainStatusSnapshot(
+          source: ToolchainResolutionSource.projectPin,
+          detail: 'hosted pin',
+        ),
+        lockState: ProjectLockState.fresh,
+        vendorState: ProjectVendorState.present,
+        hostedWorkspace: HostedWorkspaceRecordSnapshot(
+          workspaceId: 'hosted-demo',
+          schemaVersion: '1',
+          ownerRef: 'styio-view',
+          status: HostedWorkspaceStatus.active,
+          entryUrl: 'https://hosted.test/workspaces/hosted-demo',
+          createdAt: DateTime.utc(2026, 4, 18),
+          lastActiveAt: DateTime.utc(2026, 4, 18, 1),
+          retentionDays: 7,
+          exportState: HostedWorkspaceExportState.notRequested,
+        ),
+        notes: <String>[],
+      ),
+      adapterCapabilities: const <AdapterCapabilitySnapshot>[
+        AdapterCapabilitySnapshot(
+          adapterKind: AdapterKind.cloud,
+          languageService: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.partial,
+            detail: 'partial',
+          ),
+          projectGraph: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.available,
+            detail: 'hosted project graph',
+          ),
+          execution: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.available,
+            detail: 'hosted execution',
+          ),
+          runtimeEvents: AdapterEndpointCapability(
+            level: AdapterCapabilityLevel.available,
+            detail: 'hosted runtime events',
+          ),
+        ),
+      ],
+    );
+
+    expect(summary.title, 'Hosted project route');
+    expect(summary.primaryAdapterKind, AdapterKind.cloud);
+    expect(summary.previewOnly, isFalse);
+  });
 }

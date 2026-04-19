@@ -27,8 +27,23 @@ spio --json test --manifest-path <path> ...
 5. `receipt_path`
 6. parsed `receipt`
 7. `diagnostics_path`
-8. captured `stdout`
-9. captured `stderr`
+8. `runtime_events_path`
+9. `runtime_session_id`
+10. parsed `runtime_events`
+11. captured `stdout`
+12. captured `stderr`
+
+当前 `runtime_events` 基线至少承载：
+
+1. `compile.*`
+2. `run.*`
+3. `thread.*`
+4. `unit.*`
+5. `unit.test.*`
+6. `state.*`
+7. `transition.fired`
+8. `log.emitted`
+9. `diagnostic.emitted`
 
 ## 2. Stable JSON Success For Supporting Commands
 
