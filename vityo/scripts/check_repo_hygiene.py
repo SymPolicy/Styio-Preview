@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import codecs
 import fnmatch
 import subprocess
 import sys
@@ -164,10 +165,16 @@ def is_binary_file(rel_path: str) -> bool:
     if b"\0" in sample:
         return True
     try:
-        sample.decode("utf-8")
-        return False
+        # Allow a valid UTF-8 sample to end mid-codepoint without turning text
+        # files into false-positive binaries.
+        text = codecs.getincrementaldecoder("utf-8")().decode(sample, final=False)
     except UnicodeDecodeError:
         return True
+
+    return any(
+        ord(char) < 32 and char not in "\n\r\t\f\b"
+        for char in text
+    )
 
 
 def check_gitignore() -> list[str]:
