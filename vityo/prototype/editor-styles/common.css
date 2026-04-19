@@ -4,6 +4,7 @@ body[data-ui-style="grid"] #editorialSidebarRail {
   display: none !important;
 }
 
+/* Hide Grid elements when Editorial style is active */
 body[data-ui-style="editorial"] #gridMainHead,
 body[data-ui-style="editorial"] #gridMainToolbar,
 body[data-ui-style="editorial"] #gridMainToolbarSpacer,

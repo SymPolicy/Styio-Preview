@@ -1,0 +1,139 @@
+/* 
+ * STITCH: Luxury Terminal - THE TACTICAL HUD
+ * A complete structural revolution. No more sidebars, only floating modules.
+ */
+
+:root {
+  --term-gold: #F4C76A;
+  --term-gold-glow: rgba(244, 199, 106, 0.25);
+  --term-bg: #050505;
+  --hud-line: rgba(244, 199, 106, 0.12);
+}
+
+/* 1. 战术网格背景 */
+body[data-ui-style="terminal"] {
+  background-color: var(--term-bg) !important;
+  background-image: 
+    linear-gradient(var(--hud-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hud-line) 1px, transparent 1px) !important;
+  background-size: 50px 50px !important;
+  font-family: "IBM Plex Mono", monospace !important;
+  overflow: hidden !important;
+}
+
+/* 2. 解构主壳层 */
+body[data-ui-style="terminal"] .workspace-shell {
+  display: block !important; /* 放弃 Grid/Flex */
+  border: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+/* 3. 悬浮的 Monolith 编辑器 */
+body[data-ui-style="terminal"] .main-editor-card {
+  position: fixed !important;
+  top: 100px !important;
+  left: 320px !important;
+  right: 60px !important;
+  bottom: 80px !important;
+  padding: 0 !important;
+  background: rgba(10, 10, 10, 0.7) !important;
+  border: 1px solid var(--hud-line) !important;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.8) !important;
+  z-index: 10;
+}
+
+/* 编辑器装饰角 */
+body[data-ui-style="terminal"] .main-editor-card::before,
+body[data-ui-style="terminal"] .main-editor-card::after {
+  content: "";
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--term-gold);
+  pointer-events: none;
+}
+body[data-ui-style="terminal"] .main-editor-card::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+body[data-ui-style="terminal"] .main-editor-card::after { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+
+body[data-ui-style="terminal"] #gridEditorPane {
+  height: 100% !important;
+  padding: 20px !important;
+  background: transparent !important;
+}
+
+/* 4. 浮动的 HUD 侧边栏 (拆分为模块感) */
+body[data-ui-style="terminal"] #gridSideDrawer {
+  position: fixed !important;
+  top: 100px !important;
+  left: 30px !important;
+  width: 260px !important;
+  height: calc(100vh - 180px) !important;
+  background: transparent !important;
+  border: 0 !important;
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+  z-index: 20;
+}
+
+body[data-ui-style="terminal"] #sharedDrawerContent {
+  background: rgba(15, 15, 15, 0.9) !important;
+  border: 1px solid var(--hud-line) !important;
+  padding: 10px !important;
+}
+
+/* 5. 顶部的战术命令条 */
+body[data-ui-style="terminal"] #gridMainToolbar {
+  position: fixed !important;
+  top: 25px !important;
+  left: 320px !important;
+  right: 60px !important;
+  height: 50px !important;
+  background: rgba(244, 199, 106, 0.05) !important;
+  border: 1px solid var(--hud-line) !important;
+  padding: 0 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  z-index: 30;
+}
+
+/* 6. 按钮重塑 - 数字化仪表感 */
+body[data-ui-style="terminal"] .action,
+body[data-ui-style="terminal"] .pill {
+  border-radius: 4px !important;
+  border: 1px solid var(--term-gold) !important;
+  background: rgba(244, 199, 106, 0.05) !important;
+  color: var(--term-gold) !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 2px !important;
+}
+
+body[data-ui-style="terminal"] .action:hover {
+  background: var(--term-gold) !important;
+  color: #000 !important;
+  box-shadow: 0 0 20px var(--term-gold-glow) !important;
+}
+
+/* 7. 隐藏不需要的装饰 */
+body[data-ui-style="terminal"] #gridMainHead,
+body[data-ui-style="terminal"] #gridMainToolbarSpacer,
+body[data-ui-style="terminal"] #gridCloseSidebar,
+body[data-ui-style="terminal"] .editor-tab-close {
+  display: none !important;
+}
+
+/* 8. 文本层增强 */
+body[data-ui-style="terminal"] .code-text {
+  text-shadow: 0 0 5px rgba(244, 199, 106, 0.2) !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* 9. 滚动条 - 极细极光 */
+body[data-ui-style="terminal"] ::-webkit-scrollbar { width: 3px !important; }
+body[data-ui-style="terminal"] ::-webkit-scrollbar-thumb { background: var(--term-gold) !important; }
