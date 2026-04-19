@@ -4,11 +4,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_USER="${SUDO_USER:-$USER}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+DEBIAN_STANDARD_VERSION="${STYIO_TOOLCHAIN_DEBIAN_STANDARD_VERSION:-13}"
+LLVM_STANDARD_SERIES="${STYIO_TOOLCHAIN_LLVM_STANDARD_SERIES:-18.1.x}"
+CMAKE_STANDARD_VERSION="${STYIO_TOOLCHAIN_CMAKE_STANDARD_VERSION:-3.31.6}"
+PYTHON_STANDARD_VERSION="${STYIO_TOOLCHAIN_PYTHON_STANDARD_VERSION:-$(tr -d '[:space:]' < "$ROOT/.python-version")}"
+NODE_STANDARD_VERSION="${STYIO_TOOLCHAIN_NODE_STANDARD_VERSION:-$(tr -d '[:space:]' < "$ROOT/.nvmrc")}"
+FLUTTER_STANDARD_VERSION="${STYIO_TOOLCHAIN_FLUTTER_STANDARD_VERSION:-$(tr -d '[:space:]' < "$ROOT/.flutter-version")}"
+DART_STANDARD_VERSION="${STYIO_TOOLCHAIN_DART_STANDARD_VERSION:-3.11.5}"
+CHROMIUM_STANDARD_VERSION="${STYIO_TOOLCHAIN_CHROMIUM_STANDARD_VERSION:-$(tr -d '[:space:]' < "$ROOT/.chromium-version")}"
 FLUTTER_HOME="${STYIO_VIEW_FLUTTER_HOME:-$TARGET_HOME/develop/flutter}"
 ANDROID_SDK_ROOT="${STYIO_VIEW_ANDROID_SDK_ROOT:-$TARGET_HOME/Android/Sdk}"
 ANDROID_PLATFORM="${STYIO_VIEW_ANDROID_PLATFORM:-android-36}"
 ANDROID_BUILD_TOOLS="${STYIO_VIEW_ANDROID_BUILD_TOOLS:-36.0.0}"
 ANDROID_NDK_VERSION="${STYIO_VIEW_ANDROID_NDK_VERSION:-28.2.13676358}"
+NODE_INSTALL_ROOT="${STYIO_VIEW_NODE_INSTALL_ROOT:-/usr/local/lib/nodejs}"
 
 usage() {
   cat <<EOF
@@ -28,6 +37,15 @@ Optional environment:
                                  Default: $ANDROID_BUILD_TOOLS
   STYIO_VIEW_ANDROID_NDK_VERSION Android NDK package
                                  Default: $ANDROID_NDK_VERSION
+
+Standardized baseline:
+  Debian                  $DEBIAN_STANDARD_VERSION (trixie)
+  LLVM / Clang            $LLVM_STANDARD_SERIES via clang-18
+  CMake / CTest           $CMAKE_STANDARD_VERSION
+  Python                  $PYTHON_STANDARD_VERSION
+  Node.js                 v$NODE_STANDARD_VERSION LTS
+  Flutter / Dart          $FLUTTER_STANDARD_VERSION / $DART_STANDARD_VERSION
+  Chromium                $CHROMIUM_STANDARD_VERSION
 EOF
 }
 
@@ -52,6 +70,17 @@ as_root() {
   fi
 
   fail "sudo is required to install system packages"
+}
+
+report_standard_baseline() {
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  if [[ "${ID:-}" == "debian" && "${VERSION_ID:-}" == "$DEBIAN_STANDARD_VERSION" ]]; then
+    log "host matches the standardized dev baseline: Debian $DEBIAN_STANDARD_VERSION"
+    return
+  fi
+
+  log "host is ${PRETTY_NAME:-unknown}; standardized dev baseline is Debian $DEBIAN_STANDARD_VERSION (trixie). Continuing with the compatible Debian/Ubuntu bootstrap path."
 }
 
 ensure_debian_like() {
@@ -83,8 +112,6 @@ install_system_packages() {
     liblzma-dev
     mesa-utils
     ninja-build
-    nodejs
-    npm
     pkg-config
     python3
     python3-pip
@@ -100,13 +127,74 @@ install_system_packages() {
   as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
 }
 
+node_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64)
+      echo "x64"
+      ;;
+    aarch64|arm64)
+      echo "arm64"
+      ;;
+    *)
+      fail "unsupported architecture for official Node.js binaries: $(uname -m)"
+      ;;
+  esac
+}
+
+install_node() {
+  local arch version archive url workdir
+
+  if command -v node >/dev/null 2>&1; then
+    version="$(node --version 2>/dev/null || true)"
+    if [[ "$version" == "v$NODE_STANDARD_VERSION" ]]; then
+      log "Node.js already matches standardized version $version"
+      return
+    fi
+  fi
+
+  arch="$(node_arch)"
+  archive="node-v${NODE_STANDARD_VERSION}-linux-${arch}.tar.xz"
+  url="https://nodejs.org/dist/v${NODE_STANDARD_VERSION}/${archive}"
+  workdir="$(mktemp -d)"
+  trap 'rm -rf "$workdir"' RETURN
+
+  log "installing official Node.js v$NODE_STANDARD_VERSION into $NODE_INSTALL_ROOT"
+  wget -qO "$workdir/$archive" "$url"
+  as_root mkdir -p "$NODE_INSTALL_ROOT"
+  as_root rm -rf "$NODE_INSTALL_ROOT/node-v${NODE_STANDARD_VERSION}-linux-${arch}"
+  as_root tar -xJf "$workdir/$archive" -C "$NODE_INSTALL_ROOT"
+  as_root ln -sf "$NODE_INSTALL_ROOT/node-v${NODE_STANDARD_VERSION}-linux-${arch}/bin/node" /usr/local/bin/node
+  as_root ln -sf "$NODE_INSTALL_ROOT/node-v${NODE_STANDARD_VERSION}-linux-${arch}/bin/npm" /usr/local/bin/npm
+  as_root ln -sf "$NODE_INSTALL_ROOT/node-v${NODE_STANDARD_VERSION}-linux-${arch}/bin/npx" /usr/local/bin/npx
+  as_root ln -sf "$NODE_INSTALL_ROOT/node-v${NODE_STANDARD_VERSION}-linux-${arch}/bin/corepack" /usr/local/bin/corepack
+}
+
 install_flutter() {
-  if [[ -d "$FLUTTER_HOME/.git" ]]; then
-    log "using existing Flutter checkout at $FLUTTER_HOME"
-  else
-    log "cloning Flutter stable into $FLUTTER_HOME"
-    mkdir -p "$(dirname "$FLUTTER_HOME")"
-    git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_HOME"
+  local current_version=""
+  local archive="flutter_linux_${FLUTTER_STANDARD_VERSION}-stable.tar.xz"
+  local url="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/${archive}"
+  local workdir
+
+  if [[ -r "$FLUTTER_HOME/version" ]]; then
+    current_version="$(tr -d '[:space:]' < "$FLUTTER_HOME/version")"
+  fi
+
+  if [[ "$current_version" == "$FLUTTER_STANDARD_VERSION" ]]; then
+    log "Flutter already matches standardized version $FLUTTER_STANDARD_VERSION"
+    return
+  fi
+
+  workdir="$(mktemp -d)"
+  trap 'rm -rf "$workdir"' RETURN
+
+  log "installing Flutter $FLUTTER_STANDARD_VERSION into $FLUTTER_HOME"
+  mkdir -p "$(dirname "$FLUTTER_HOME")"
+  rm -rf "$FLUTTER_HOME"
+  wget -qO "$workdir/$archive" "$url"
+  tar -xJf "$workdir/$archive" -C "$workdir"
+  mv "$workdir/flutter" "$FLUTTER_HOME"
+  if [[ $EUID -eq 0 && "$TARGET_USER" != "root" ]]; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$FLUTTER_HOME"
   fi
 }
 
@@ -142,6 +230,9 @@ install_android_cmdline_tools() {
   rm -rf "$ANDROID_SDK_ROOT/cmdline-tools/latest"
   mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
   mv "$workdir/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+  if [[ $EUID -eq 0 && "$TARGET_USER" != "root" ]]; then
+    chown -R "$TARGET_USER":"$TARGET_USER" "$ANDROID_SDK_ROOT"
+  fi
 }
 
 configure_android_sdk() {
@@ -168,13 +259,25 @@ configure_android_sdk() {
 
 install_repo_dependencies() {
   log "installing prototype npm dependencies"
-  (cd "$ROOT/prototype" && npm install)
+  (cd "$ROOT/prototype" && npm ci)
 
   log "installing Flutter package dependencies"
   (
     cd "$ROOT/frontend/styio_view_app"
     "$FLUTTER_HOME/bin/flutter" pub get
   )
+}
+
+verify_tool_versions() {
+  local node_version chromium_version flutter_version
+
+  node_version="$(node --version 2>/dev/null || true)"
+  chromium_version="$(chromium --product-version 2>/dev/null || true)"
+  flutter_version="$("$FLUTTER_HOME/bin/flutter" --version --machine 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["frameworkVersion"])' 2>/dev/null || true)"
+
+  [[ "$node_version" == "v$NODE_STANDARD_VERSION" ]] || fail "Node.js version mismatch: expected v$NODE_STANDARD_VERSION, got ${node_version:-missing}"
+  [[ "$chromium_version" == "$CHROMIUM_STANDARD_VERSION" ]] || fail "Chromium version mismatch: expected $CHROMIUM_STANDARD_VERSION, got ${chromium_version:-missing}"
+  [[ "$flutter_version" == "$FLUTTER_STANDARD_VERSION" ]] || fail "Flutter version mismatch: expected $FLUTTER_STANDARD_VERSION, got ${flutter_version:-missing}"
 }
 
 print_summary() {
@@ -184,6 +287,15 @@ print_summary() {
   cat <<EOF
 
 styio-view bootstrap complete.
+
+Standardized baseline:
+  Debian:        $DEBIAN_STANDARD_VERSION (trixie)
+  LLVM series:   $LLVM_STANDARD_SERIES
+  CMake/CTest:   $CMAKE_STANDARD_VERSION
+  Python:        $PYTHON_STANDARD_VERSION
+  Node.js:       v$NODE_STANDARD_VERSION
+  Flutter/Dart:  $FLUTTER_STANDARD_VERSION / $DART_STANDARD_VERSION
+  Chromium:      $CHROMIUM_STANDARD_VERSION
 
 Suggested shell exports:
   export FLUTTER_HOME="$FLUTTER_HOME"
@@ -208,11 +320,14 @@ main() {
   fi
 
   ensure_debian_like
+  report_standard_baseline
   install_system_packages
+  install_node
   install_flutter
   install_android_cmdline_tools
   configure_android_sdk
   install_repo_dependencies
+  verify_tool_versions
   print_summary
 }
 

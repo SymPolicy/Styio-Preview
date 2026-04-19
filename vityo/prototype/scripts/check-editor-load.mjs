@@ -14,7 +14,8 @@ const PROTOTYPE_ROOT = path.resolve(__dirname, "..");
 const DEFAULT_URL = process.env.STYIO_EDITOR_URL ?? "http://127.0.0.1:4173/editor.html";
 const CHROME_PATH =
   process.env.STYIO_CHROME_PATH ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  process.env.CHROME_EXECUTABLE ??
+  "/usr/bin/chromium";
 const ARTIFACT_DIR = path.join(PROTOTYPE_ROOT, ".artifacts");
 const SCREENSHOT_PATH = path.join(ARTIFACT_DIR, "editor-load-failure.png");
 const SERVER_READY_TIMEOUT_MS = 15000;

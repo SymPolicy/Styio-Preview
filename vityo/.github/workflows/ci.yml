@@ -12,6 +12,11 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      STYIO_PYTHON_VERSION: "3.13.5"
+      STYIO_NODE_VERSION: "24.15.0"
+      STYIO_FLUTTER_VERSION: "3.41.7"
+      STYIO_CHROMIUM_VERSION: "147.0.7727.101"
 
     steps:
       - name: Checkout styio-view
@@ -31,30 +36,39 @@ jobs:
           repository: Unka-Malloc/styio-spio
           path: styio-spio
 
-      - name: Set up Python
+      - name: Set up standardized Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ env.STYIO_PYTHON_VERSION }}
 
-      - name: Set up Node.js
+      - name: Set up standardized Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.STYIO_NODE_VERSION }}
 
-      - name: Set up Flutter
+      - name: Set up standardized Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ env.STYIO_FLUTTER_VERSION }}
 
-      - name: Install Chromium
+      - name: Install standardized Chromium
         run: |
           sudo apt-get update
           sudo apt-get install -y chromium
+          test "$(chromium --product-version)" = "${STYIO_CHROMIUM_VERSION}"
+
+      - name: Verify standardized toolchain
+        run: |
+          python3 --version | grep -F "${STYIO_PYTHON_VERSION}"
+          node --version | grep -F "v${STYIO_NODE_VERSION}"
+          npm --version
+          flutter --version | head -n1 | grep -F "${STYIO_FLUTTER_VERSION}"
+          chromium --product-version | grep -F "${STYIO_CHROMIUM_VERSION}"
 
       - name: Restore repository dependencies
         working-directory: styio-view
         run: |
-          cd prototype && npm install
+          cd prototype && npm ci
           cd ../frontend/styio_view_app && flutter pub get
 
       - name: Docs gate

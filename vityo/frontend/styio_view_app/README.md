@@ -10,6 +10,8 @@
 
 仓库级 bootstrap、共享工具链和常用构建命令见 [../../docs/BUILD-AND-DEV-ENV.md](../../docs/BUILD-AND-DEV-ENV.md)；本页只负责 Flutter 主壳自身的实现和平台 runner 细节。
 
+当前标准 Flutter 基线固定为 `3.41.7`，配套 Dart SDK 固定为 `3.11.5`。
+
 ## 当前状态
 
 当前目录已经具备可运行的 Flutter 工程，当前本机验证状态：

@@ -18,15 +18,27 @@ From the repository root:
 ./scripts/bootstrap-dev-env.sh
 ```
 
-That script installs the Linux/Web/Flutter/Android toolchains used by this repository, provisions Flutter and the Android SDK under the current user account, and restores the in-repo `npm` and `flutter pub` dependencies.
+That script installs the Linux/Web/Flutter/Android toolchains used by this repository, provisions Flutter and the Android SDK under the current user account, installs the official Node.js `v24.15.0` LTS binary line, and restores the in-repo `npm` and `flutter pub` dependencies.
+
+## Standardized Baseline
+
+`styio-view` now follows the same shared project-level version discipline used by `styio-nightly` and `styio-spio` where the tool overlaps:
+
+1. Development host standard: Debian `13` (`trixie`).
+2. Compiler helper toolchain standard: LLVM / Clang `18.1.x` and CMake / CTest `3.31.6`.
+3. Validation Python standard: `3.13.5`.
+4. Node.js standard for prototype tooling: `v24.15.0` LTS.
+5. Flutter / Dart standard: `3.41.7` / `3.11.5`.
+6. Chromium standard for web verification: `147.0.7727.101`.
+7. CI mirror: GitHub Actions on `ubuntu-24.04`, plus exact Python, Node.js, Flutter, and Chromium version pins before validation steps.
 
 ## Required Toolchains
 
-1. Flutter stable with the Linux, Web, and Android targets enabled.
+1. Flutter `3.41.7` with Dart `3.11.5` and the Linux, Web, and Android targets enabled.
 2. Android SDK command-line tools, platform tools, build tools, and NDK.
-3. Chromium for local web verification.
-4. Node.js and npm for the handwritten prototype.
-5. Python 3 for docs and repository hygiene scripts.
+3. Chromium `147.0.7727.101` for local web verification.
+4. Node.js `v24.15.0` LTS and npm for the handwritten prototype.
+5. Python `3.13.5` for docs and repository hygiene scripts.
 
 ## Typical Build And Test Commands
 
@@ -43,6 +55,7 @@ Handwritten prototype:
 
 ```bash
 cd prototype
+npm ci
 npm run selftest:editor
 ```
 
