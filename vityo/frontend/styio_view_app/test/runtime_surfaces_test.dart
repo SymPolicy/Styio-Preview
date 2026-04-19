@@ -487,22 +487,22 @@ void main() {
 }
 
 ProjectGraphSnapshot _projectGraph() {
-  return ProjectGraphSnapshot(
+  return const ProjectGraphSnapshot(
     id: '/workspace/demo/spio.toml',
     title: 'demo/app',
     kind: ProjectKind.package,
     workspaceRoot: '/workspace/demo',
-    workspaceMembers: const <String>[],
+    workspaceMembers: <String>[],
     manifestPath: '/workspace/demo/spio.toml',
     lockfilePath: '/workspace/demo/spio.lock',
     toolchainPinPath: '/workspace/demo/spio-toolchain.toml',
     vendorRoot: '/workspace/demo/.spio/vendor',
     buildRoot: '/workspace/demo/.spio/build',
-    packages: const <ProjectPackageSnapshot>[],
-    dependencies: const <ProjectDependencySnapshot>[],
-    targets: const <ProjectTargetDescriptor>[],
-    editorFiles: const <String>['/workspace/demo/src/main.styio'],
-    toolchain: const ToolchainStatusSnapshot(
+    packages: <ProjectPackageSnapshot>[],
+    dependencies: <ProjectDependencySnapshot>[],
+    targets: <ProjectTargetDescriptor>[],
+    editorFiles: <String>['/workspace/demo/src/main.styio'],
+    toolchain: ToolchainStatusSnapshot(
       source: ToolchainResolutionSource.projectPin,
       detail: 'test fixture toolchain',
       channel: 'stable',
@@ -510,7 +510,7 @@ ProjectGraphSnapshot _projectGraph() {
     ),
     lockState: ProjectLockState.unknown,
     vendorState: ProjectVendorState.present,
-    activeCompiler: const CompilerHandshakeSnapshot(
+    activeCompiler: CompilerHandshakeSnapshot(
       binaryPath: '/toolchains/styio/bin/styio',
       tool: 'styio',
       compilerVersion: '0.0.1',
@@ -532,6 +532,6 @@ ProjectGraphSnapshot _projectGraph() {
         'runtime_event_stream': true,
       },
     ),
-    notes: const <String>[],
+    notes: <String>[],
   );
 }

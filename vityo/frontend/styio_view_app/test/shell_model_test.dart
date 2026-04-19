@@ -43,7 +43,7 @@ void main() {
         platformTarget: PlatformTarget.macos,
         definitions: const [],
       ),
-      nativeModuleLoader: NoopNativeModuleLoader(
+      nativeModuleLoader: const NoopNativeModuleLoader(
         platformTarget: PlatformTarget.macos,
       ),
       editorController: EditorSessionController(
@@ -105,7 +105,7 @@ void main() {
         platformTarget: PlatformTarget.macos,
         definitions: const [],
       ),
-      nativeModuleLoader: NoopNativeModuleLoader(
+      nativeModuleLoader: const NoopNativeModuleLoader(
         platformTarget: PlatformTarget.macos,
       ),
       editorController: EditorSessionController(
@@ -168,7 +168,7 @@ void main() {
         platformTarget: PlatformTarget.macos,
         definitions: const [],
       ),
-      nativeModuleLoader: NoopNativeModuleLoader(
+      nativeModuleLoader: const NoopNativeModuleLoader(
         platformTarget: PlatformTarget.macos,
       ),
       editorController: EditorSessionController(
@@ -244,7 +244,7 @@ void main() {
         platformTarget: PlatformTarget.macos,
         definitions: const [],
       ),
-      nativeModuleLoader: NoopNativeModuleLoader(
+      nativeModuleLoader: const NoopNativeModuleLoader(
         platformTarget: PlatformTarget.macos,
       ),
       editorController: EditorSessionController(
@@ -324,7 +324,7 @@ void main() {
         platformTarget: PlatformTarget.macos,
         definitions: const [],
       ),
-      nativeModuleLoader: NoopNativeModuleLoader(
+      nativeModuleLoader: const NoopNativeModuleLoader(
         platformTarget: PlatformTarget.macos,
       ),
       editorController: EditorSessionController(

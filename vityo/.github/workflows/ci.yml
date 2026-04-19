@@ -1,0 +1,68 @@
+name: styio-ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - agent-dev
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout styio-view
+        uses: actions/checkout@v5
+        with:
+          path: styio-view
+
+      - name: Checkout styio-nightly sibling repository
+        uses: actions/checkout@v5
+        with:
+          repository: Unka-Malloc/styio-nightly
+          path: styio-nightly
+
+      - name: Checkout styio-spio sibling repository
+        uses: actions/checkout@v5
+        with:
+          repository: Unka-Malloc/styio-spio
+          path: styio-spio
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium
+
+      - name: Restore repository dependencies
+        working-directory: styio-view
+        run: |
+          cd prototype && npm install
+          cd ../frontend/styio_view_app && flutter pub get
+
+      - name: Docs gate
+        working-directory: styio-view
+        run: ./scripts/docs-gate.sh
+
+      - name: Checkpoint health
+        working-directory: styio-view
+        env:
+          STYIO_CHROME_PATH: /usr/bin/chromium
+        run: ./scripts/checkpoint-health.sh

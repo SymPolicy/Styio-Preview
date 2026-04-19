@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:convert';
 import 'dart:io';
 
@@ -1197,7 +1198,10 @@ void _emitHostedScenarioReport({
 }
 
 void _emitScenarioReport(Map<String, Object?> report) {
-  print('STYIO_VIEW_PRODUCT_REPORT ${jsonEncode(report)}');
+  developer.log(
+    'STYIO_VIEW_PRODUCT_REPORT ${jsonEncode(report)}',
+    name: 'styio.view.product_gate',
+  );
 }
 
 Map<String, Object?> _artifactPresence({

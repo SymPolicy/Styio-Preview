@@ -72,11 +72,14 @@ class AppBootstrap {
     final workspaceController = WorkspaceController(
       projectSnapshot: projectSnapshot,
     );
-    final executionAdapterFactory =
-        (ProjectGraphSnapshot refreshedProjectGraph) => createExecutionAdapter(
-              platformTarget: platformTarget,
-              projectGraph: refreshedProjectGraph,
-            );
+    Future<ExecutionAdapter> executionAdapterFactory(
+      ProjectGraphSnapshot refreshedProjectGraph,
+    ) {
+      return createExecutionAdapter(
+        platformTarget: platformTarget,
+        projectGraph: refreshedProjectGraph,
+      );
+    }
     final executionAdapter = await executionAdapterFactory(projectSnapshot);
     final runtimeEventAdapter = createRuntimeEventAdapter(
       platformTarget: platformTarget,

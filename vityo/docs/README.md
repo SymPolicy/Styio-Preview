@@ -2,7 +2,7 @@
 
 **Purpose:** 定义 `docs/` 树的范围、入口和维护规则；具体主题分别由各目录下的 `README.md`、`INDEX.md` 和权威文档负责。
 
-**Last updated:** 2026-04-16
+**Last updated:** 2026-04-19
 
 ## Tree Contract
 
@@ -24,19 +24,20 @@
 ## Entry Points
 
 1. 目录索引：[INDEX.md](./INDEX.md)
-2. 产品规格：[design/Styio-View-Product-Spec.md](./design/Styio-View-Product-Spec.md)
-3. 系统架构：[design/Styio-View-System-Architecture.md](./design/Styio-View-System-Architecture.md)
-4. 文档策略：[specs/DOCUMENTATION-POLICY.md](./specs/DOCUMENTATION-POLICY.md)
-5. 当前状态摘要：[rollups/CURRENT-STATE.md](./rollups/CURRENT-STATE.md)
-6. 实施计划：[plans/Styio-View-Implementation-Plan.md](./plans/Styio-View-Implementation-Plan.md)
-7. 文件治理对齐计划镜像：[plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md](./plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md)
-8. 里程碑入口：[milestones/INDEX.md](./milestones/INDEX.md)
-9. ADR 入口：[adr/INDEX.md](./adr/INDEX.md)
-10. 产品合同入口：[contracts/INDEX.md](./contracts/INDEX.md)
-11. `styio` 对接入口：[for-styio/INDEX.md](./for-styio/INDEX.md)
-12. `spio` 对接入口：[for-spio/INDEX.md](./for-spio/INDEX.md)
-13. 手写 Web IDE 工程手册：[specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md](./specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md)
-14. 团队协作入口：[teams/COORDINATION-RUNBOOK.md](./teams/COORDINATION-RUNBOOK.md)
+2. 构建与开发环境：[BUILD-AND-DEV-ENV.md](./BUILD-AND-DEV-ENV.md)
+3. 产品规格：[design/Styio-View-Product-Spec.md](./design/Styio-View-Product-Spec.md)
+4. 系统架构：[design/Styio-View-System-Architecture.md](./design/Styio-View-System-Architecture.md)
+5. 文档策略：[specs/DOCUMENTATION-POLICY.md](./specs/DOCUMENTATION-POLICY.md)
+6. 当前状态摘要：[rollups/CURRENT-STATE.md](./rollups/CURRENT-STATE.md)
+7. 实施计划：[plans/Styio-View-Implementation-Plan.md](./plans/Styio-View-Implementation-Plan.md)
+8. 文件治理对齐计划镜像：[plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md](./plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md)
+9. 里程碑入口：[milestones/INDEX.md](./milestones/INDEX.md)
+10. ADR 入口：[adr/INDEX.md](./adr/INDEX.md)
+11. 产品合同入口：[contracts/INDEX.md](./contracts/INDEX.md)
+12. `styio` 对接入口：[for-styio/INDEX.md](./for-styio/INDEX.md)
+13. `spio` 对接入口：[for-spio/INDEX.md](./for-spio/INDEX.md)
+14. 手写 Web IDE 工程手册：[specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md](./specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md)
+15. 团队协作入口：[teams/COORDINATION-RUNBOOK.md](./teams/COORDINATION-RUNBOOK.md)
 
 ## Maintenance Rules
 

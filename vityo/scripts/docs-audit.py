@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import os
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +85,8 @@ def main() -> int:
     errors.extend(check_history_names())
     errors.extend(run_check([sys.executable, "scripts/docs-index.py", "--check"]))
     errors.extend(run_check([sys.executable, "scripts/docs-lifecycle.py", "validate"]))
+    if os.environ.get("STYIO_SKIP_TEAM_DOC_GATE") != "1":
+        errors.extend(run_check([sys.executable, "scripts/team-docs-gate.py"]))
 
     if errors:
         sys.stderr.write("docs audit failed:\n")

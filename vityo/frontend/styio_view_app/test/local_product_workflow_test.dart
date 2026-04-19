@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:convert';
 import 'dart:io';
 
@@ -916,7 +917,7 @@ Future<ShellModel> _createLocalShell() async {
       platformTarget: PlatformTarget.macos,
       definitions: const [],
     ),
-    nativeModuleLoader: NoopNativeModuleLoader(
+    nativeModuleLoader: const NoopNativeModuleLoader(
       platformTarget: PlatformTarget.macos,
     ),
     editorController: editorController,
@@ -1194,7 +1195,10 @@ void _emitLocalScenarioReport({
 }
 
 void _emitScenarioReport(Map<String, Object?> report) {
-  print('STYIO_VIEW_PRODUCT_REPORT ${jsonEncode(report)}');
+  developer.log(
+    'STYIO_VIEW_PRODUCT_REPORT ${jsonEncode(report)}',
+    name: 'styio.view.product_gate',
+  );
 }
 
 Map<String, Object?> _artifactPresence({

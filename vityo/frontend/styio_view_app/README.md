@@ -8,6 +8,8 @@
 4. `ProjectGraphAdapter / ExecutionAdapter / RuntimeEventAdapter` 的产品级消费面
 5. `CLI / FFI / Cloud` 三类 adapter route 的统一能力快照
 
+仓库级 bootstrap、共享工具链和常用构建命令见 [../../docs/BUILD-AND-DEV-ENV.md](../../docs/BUILD-AND-DEV-ENV.md)；本页只负责 Flutter 主壳自身的实现和平台 runner 细节。
+
 ## 当前状态
 
 当前目录已经具备可运行的 Flutter 工程，当前本机验证状态：
@@ -36,6 +38,12 @@
 22. `Project Graph` 现在已细化到 `workspace members / packages / dependencies / targets` 四层展示，并继续保持 canonical file inference 与正式 machine payload 解耦
 
 ## 生成六端 runner
+
+在一台新的 Debian/Ubuntu 容器或虚拟机上，可先从仓库根目录运行：
+
+```bash
+./scripts/bootstrap-dev-env.sh
+```
 
 在安装 Flutter SDK 之后执行：
 

@@ -995,15 +995,6 @@ _ProjectWorkflowSelection _selectProjectWorkflow({
     }
   }
 
-  if (target == null) {
-    return const _ProjectWorkflowSelection(
-      command: 'build',
-      kind: 'build',
-      args: <String>[],
-      successMessage: 'Project build completed through spio.',
-    );
-  }
-
   switch (target.kind) {
     case ProjectTargetKind.test:
       return _ProjectWorkflowSelection(
@@ -1312,6 +1303,8 @@ Future<void> _createLinkOrCopy({
         final linkTarget = await Link(sourcePath).target();
         await Link(overlayPath).create(linkTarget);
         return;
+      case FileSystemEntityType.pipe:
+      case FileSystemEntityType.unixDomainSock:
       case FileSystemEntityType.notFound:
         return;
     }
@@ -1354,6 +1347,8 @@ Future<void> _deleteOverlayEntity(String path) async {
     case FileSystemEntityType.link:
       await Link(path).delete();
       return;
+    case FileSystemEntityType.pipe:
+    case FileSystemEntityType.unixDomainSock:
     case FileSystemEntityType.notFound:
       return;
   }

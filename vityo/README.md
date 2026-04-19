@@ -11,14 +11,29 @@ Styio View 是面向 `styio` 生态的专属编辑器与运行视窗项目。
 
 文档入口见 [docs/README.md](/Users/unka/DevSpace/styio-view/docs/README.md)。
 
+仓库级构建与新环境入口见 [docs/BUILD-AND-DEV-ENV.md](docs/BUILD-AND-DEV-ENV.md)。
+
 可直接查看的高保真原型入口见 [prototype/index.html](/Users/unka/DevSpace/styio-view/prototype/index.html)。
 
 人工维护的 Web Editor 入口见 [prototype/editor.html](/Users/unka/DevSpace/styio-view/prototype/editor.html)。
 
 实际实现入口见 [frontend/styio_view_app/README.md](/Users/unka/DevSpace/styio-view/frontend/styio_view_app/README.md)。
 
+## Fresh Linux Bootstrap
+
+在一台新的 Debian/Ubuntu 容器或虚拟机上，可直接运行：
+
+```bash
+./scripts/bootstrap-dev-env.sh
+```
+
+这条脚本会安装 `styio-view` 的 Linux 桌面、Web、Flutter 和 Android 开发依赖，并补齐 `prototype/` 与 `frontend/styio_view_app/` 的仓内依赖。
+
+更完整的构建、测试和子系统入口见 [docs/BUILD-AND-DEV-ENV.md](docs/BUILD-AND-DEV-ENV.md)。
+
 ## Repository Hygiene Gate
 
 1. GitHub Actions workflow `Repository Hygiene Gate` 会在每次 `push` 和 `pull_request` 时执行 `python3 scripts/check_repo_hygiene.py`
-2. 这道门禁会阻断生成目录、依赖目录、打包产物后缀，以及未被明确允许的二进制文件进入仓库
-3. 合法的图片类资产需要放在当前允许的前端资源路径下；若确实需要新增二进制资产，应在脚本里补一条窄范围 allowlist，而不是放宽通用规则
+2. 统一入口现在是 `python3 scripts/repo-hygiene-gate.py`；`scripts/check_repo_hygiene.py` 只保留兼容包装
+3. 这道门禁会阻断生成目录、依赖目录、打包产物后缀，以及未被明确允许的二进制文件进入仓库
+4. 合法的图片类资产需要放在当前允许的前端资源路径下；若确实需要新增二进制资产，应在脚本里补一条窄范围 allowlist，而不是放宽通用规则

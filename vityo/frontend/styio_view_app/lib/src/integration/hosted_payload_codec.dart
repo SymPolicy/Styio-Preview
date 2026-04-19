@@ -30,7 +30,9 @@ ProjectGraphSnapshot hostedProjectGraphSnapshotFromEnvelope(
 ) {
   final payload = envelope['payload'];
   if (payload is! Map<String, dynamic>) {
-    throw FormatException('Hosted project-graph response is missing payload.');
+    throw const FormatException(
+      'Hosted project-graph response is missing payload.',
+    );
   }
 
   final packages = (payload['packages'] as List? ?? const <Object>[])

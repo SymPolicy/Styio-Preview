@@ -14,12 +14,15 @@ Primary paths:
 
 1. `README.md`
 2. `docs/`
-3. `scripts/check_repo_hygiene.py`
+3. `scripts/repo-hygiene-gate.py`
 4. `scripts/docs-index.py`
 5. `scripts/docs-lifecycle.py`
 6. `scripts/docs-audit.py`
-7. `prototype/README.md`
-8. `frontend/styio_view_app/README.md`
+7. `scripts/team-docs-gate.py`
+8. `scripts/docs-gate.sh`
+9. `scripts/delivery-gate.sh`
+10. `prototype/README.md`
+11. `frontend/styio_view_app/README.md`
 
 Key SSOTs:
 
@@ -40,7 +43,7 @@ Key SSOTs:
 
 ## Change Classes
 
-1. Small: 链接修复、索引补全、history 补记或局部文案整理。运行 repo hygiene。
+1. Small: 链接修复、索引补全、history 补记或局部文案整理。运行 repo hygiene 和 docs gate。
 2. Medium: docs 树结构、里程碑映射、测试目录映射、archive/rollup lifecycle 或 handoff 路径变化。同步相关入口文档和 docs 自动化脚本。
 3. High: owner 文档迁移、文档策略重构、团队边界调整或交付纪律变化。走协调 review。
 
@@ -49,15 +52,12 @@ Key SSOTs:
 Minimum:
 
 ```bash
-python3 scripts/docs-audit.py
-python3 scripts/check_repo_hygiene.py
+./scripts/docs-gate.sh
+python3 scripts/repo-hygiene-gate.py --mode tracked
+./scripts/delivery-gate.sh --mode checkpoint --skip-health
 ```
 
-`scripts/check_repo_hygiene.py` 现在同时负责：
-
-1. 构建/依赖产物与意外二进制拦截；
-2. shared `.gitignore` baseline 与 fixture negate 规则检查；
-3. docs/file governance 关键脚本接线检查。
+`scripts/delivery-gate.sh` 会在交付时统一组合 repo hygiene、docs gate 和 checkpoint health。
 
 ## Cross-Team Dependencies
 

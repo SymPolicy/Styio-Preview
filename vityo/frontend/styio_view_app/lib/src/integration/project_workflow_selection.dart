@@ -61,15 +61,6 @@ ProjectWorkflowSelection selectProjectWorkflow({
     }
   }
 
-  if (target == null) {
-    return const ProjectWorkflowSelection(
-      command: 'build',
-      kind: 'build',
-      args: <String>[],
-      successMessage: 'Project build completed through spio.',
-    );
-  }
-
   switch (target.kind) {
     case ProjectTargetKind.test:
       return ProjectWorkflowSelection(

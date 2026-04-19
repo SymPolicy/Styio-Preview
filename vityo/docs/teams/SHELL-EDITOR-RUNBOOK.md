@@ -2,7 +2,7 @@
 
 **Purpose:** 提供 Flutter 主壳、编辑器核心、language UI 外壳与手写 Web Editor 主线的日常维护入口。
 
-**Last updated:** 2026-04-16
+**Last updated:** 2026-04-19
 
 ## Mission
 
@@ -20,6 +20,7 @@ Primary paths:
 6. `prototype/editor.js`
 7. `prototype/editor-modules/`
 8. `prototype/workspace/`
+9. `prototype/README.md`
 
 Key SSOTs:
 
@@ -33,6 +34,7 @@ Key SSOTs:
 2. 改动 `prototype/editor.html` 主线前，先按 handbook 检查分层、渲染切片和工作流约束。
 3. 若 Flutter 壳层和手写原型都受影响，先明确哪条是主验证线，再同步另一条的约束或 handoff。
 4. 变更编辑语义、光标、selection 或 inspector 流程时，同时检查测试目录映射是否要补。
+5. 手写原型入口或自测说明变化时，同批更新 `prototype/README.md`，不要把 focused editor 运行方式留在仓库级入口里漂移。
 
 ## Change Classes
 

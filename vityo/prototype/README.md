@@ -5,6 +5,8 @@
 这里同时也是当前仓库里“给人维护的 Web Editor 入口”。
 `frontend/styio_view_app/build/web` 之类的 Flutter 生成物只用于构建验证，不作为人工维护页面。
 
+仓库级 bootstrap、共享工具链和常用验证命令见 [../docs/BUILD-AND-DEV-ENV.md](../docs/BUILD-AND-DEV-ENV.md)；本页只描述手写原型本身。
+
 ## Files
 
 1. `index.html`: 页面结构
@@ -86,14 +88,15 @@
 ## Self-Test
 
 1. 在 `prototype/` 下运行 `npm run selftest:editor`
-2. 这条脚本会自动检查 `editor.html` 是否可打开，并在需要时自动启动 `dev_server.py`
-3. 自测会覆盖：
+2. 若使用仓库内的 `dev_server.py`，请显式设置 `STYIO_EDITOR_URL=http://127.0.0.1:4180/editor.html`
+3. 这条脚本会自动检查 `editor.html` 是否可打开，并在需要时自动启动 `dev_server.py`
+4. 自测会覆盖：
    - 页面基础资源加载
    - 侧边栏展开
    - 设置页切换
    - `Theme` 的 `Palette` 和 `Light / Dark`
    - `Symbol Highlight` 展开
-4. 若失败，会在 `prototype/.artifacts/editor-load-failure.png` 写出失败截图
+5. 若失败，会在 `prototype/.artifacts/editor-load-failure.png` 写出失败截图
 
 ## Maintenance Rule
 

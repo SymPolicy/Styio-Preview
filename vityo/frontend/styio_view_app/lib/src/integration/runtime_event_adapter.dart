@@ -115,7 +115,7 @@ RuntimeEventAdapter createRuntimeEventAdapter({
         level: AdapterCapabilityLevel.partial,
         detail:
             'Local CLI execution publishes replayable runtime event artifacts for completed sessions.',
-        supportedContractVersions: const <int>[1],
+        supportedContractVersions: <int>[1],
       ),
     ),
   );

@@ -202,7 +202,7 @@ void main() {
         packages: <ProjectPackageSnapshot>[],
         targets: <ProjectTargetDescriptor>[],
         editorFiles: <String>['/workspace/hosted-demo/src/main.styio'],
-        toolchain: ToolchainStatusSnapshot(
+        toolchain: const ToolchainStatusSnapshot(
           source: ToolchainResolutionSource.projectPin,
           detail: 'hosted pin',
         ),
