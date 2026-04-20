@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/flutter-workspace-common.sh"
 FLUTTER_DIR_DEFAULT="$ROOT/frontend/styio_view_app"
 WORK_DIR_DEFAULT="$ROOT/build/apple-device-workspaces"
 
@@ -53,41 +54,8 @@ ensure_macos() {
 ensure_flutter_bin() {
   local flutter_home="${STYIO_VIEW_FLUTTER_HOME:-$HOME/develop/flutter}"
   local flutter_bin="${STYIO_VIEW_FLUTTER_BIN:-$flutter_home/bin/flutter}"
-  if [[ -x "$flutter_bin" ]]; then
-    printf '%s\n' "$flutter_bin"
-    return
-  fi
-  if command -v flutter >/dev/null 2>&1; then
-    command -v flutter
-    return
-  fi
-  fail "flutter is not installed"
-}
-
-copy_flutter_project() {
-  local source_dir="$1"
-  local dest_root="$2"
-  local parent_name project_name
-
-  parent_name="$(dirname "$source_dir")"
-  project_name="$(basename "$source_dir")"
-  rm -rf "$dest_root"
-  mkdir -p "$dest_root"
-
-  (
-    cd "$parent_name"
-    tar \
-      --exclude="$project_name/build" \
-      --exclude="$project_name/.dart_tool" \
-      --exclude="$project_name/ios/Pods" \
-      --exclude="$project_name/macos/Pods" \
-      --exclude="$project_name/ios/.symlinks" \
-      --exclude="$project_name/macos/.symlinks" \
-      -cf - "$project_name"
-  ) | (
-    cd "$dest_root"
-    tar -xf -
-  )
+  styio_view_resolve_flutter_bin "$flutter_bin" "$flutter_home" \
+    || fail "flutter is not installed"
 }
 
 main() {
@@ -156,7 +124,7 @@ main() {
 
   local workspace_root="$WORK_DIR/$PROFILE"
   local app_dir="$workspace_root/$(basename "$FLUTTER_DIR")"
-  copy_flutter_project "$FLUTTER_DIR" "$workspace_root"
+  styio_view_copy_flutter_project "$FLUTTER_DIR" "$workspace_root"
 
   local -a cmd=()
   case "$family" in

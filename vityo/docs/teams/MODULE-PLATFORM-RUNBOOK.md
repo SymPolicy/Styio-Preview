@@ -2,7 +2,7 @@
 
 **Purpose:** 提供 module host、platform capability、六端 runner 与分发路径的日常维护入口。
 
-**Last updated:** 2026-04-16
+**Last updated:** 2026-04-21
 
 ## Mission
 
@@ -49,7 +49,7 @@ Minimum:
 
 ```bash
 cd frontend/styio_view_app && flutter analyze && flutter test
-python3 scripts/check_repo_hygiene.py
+python3 scripts/repo-hygiene-gate.py --mode tracked
 ```
 
 ## Cross-Team Dependencies

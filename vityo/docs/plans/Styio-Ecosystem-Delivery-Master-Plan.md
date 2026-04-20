@@ -2,7 +2,7 @@
 
 **Purpose:** 作为 `styio-view` 对三仓统一交付总纲的镜像入口，固定 IDE、runtime、AI、theme、module、mobile/cloud 路线与跨仓里程碑的映射关系。
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-04-21
 
 **Authority:** The canonical copy lives at [`styio-nightly/docs/plans/Styio-Ecosystem-Delivery-Master-Plan.md`](../../../../styio-nightly/docs/plans/Styio-Ecosystem-Delivery-Master-Plan.md).
 
@@ -22,7 +22,7 @@
 
 | 里程碑 | `view` 侧完成物 | 本仓权威文档 | 本仓最低 gate |
 |--------|------------------|--------------|---------------|
-| `M0` | 镜像总纲、文档策略、团队 runbook、implementation-plan 映射接线 | `docs/plans/Styio-Ecosystem-Delivery-Master-Plan.md` `docs/specs/DOCUMENTATION-POLICY.md` | `python3 scripts/check_repo_hygiene.py` |
+| `M0` | 镜像总纲、文档策略、团队 runbook、implementation-plan 映射接线 | `docs/plans/Styio-Ecosystem-Delivery-Master-Plan.md` `docs/specs/DOCUMENTATION-POLICY.md` | `python3 scripts/repo-hygiene-gate.py --mode tracked` |
 | `M1` | `nightly` 的 language/execution contract 正式消费，停止使用未发布语义 | `docs/for-styio/` `docs/contracts/` | adapter contract tests |
 | `M2` | `spio` 的 project graph/toolchain/source/registry payload 正式消费 | `docs/for-spio/` `docs/contracts/` | `flutter analyze && flutter test` |
 | `M3` | editor/project/execution/environment/deploy shell 闭合 | `docs/plans/Styio-View-Implementation-Plan.md` `docs/assets/workflow/TEST-CATALOG.md` | `flutter analyze && flutter test`，必要时 `npm run selftest:editor` |

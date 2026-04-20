@@ -2,7 +2,7 @@
 
 **Purpose:** Provide the repository-level entry point for bootstrapping a fresh machine, installing shared GUI toolchains, and routing contributors to the correct implementation surface.
 
-**Last updated:** 2026-04-20
+**Last updated:** 2026-04-21
 
 ## Who This Is For
 
@@ -39,6 +39,13 @@ For editor-integrated devcontainers, open [../.devcontainer/devcontainer.json](.
 | Windows | `windows` desktop + `web` | `windows+android` | `powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-dev-env-windows.ps1 [-WithAndroid]` |
 
 All host scripts install the standardized toolchain, then call the shared workspace bootstrap entrypoint to restore `npm` / `flutter pub` dependencies and generate the selected Flutter runners.
+
+Device verification stays host-driven:
+
+1. Linux / Android verification uses the shell profile tools plus `verify-android-device.sh`.
+2. Windows / Android verification uses the PowerShell profile tools plus `verify-android-device.ps1`.
+3. macOS / iOS / macOS verification uses `apple-platform-profile.sh` plus `verify-apple-device.sh`.
+4. The Linux container image is for shared desktop/Web/Android development and smoke builds; real mobile device verification still requires the corresponding host OS.
 
 ## Standardized Baseline
 
@@ -132,6 +139,8 @@ Real-device verification entrypoints:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-android-device.ps1 -Profile android-36 -DeviceId <adb-device-id> -Mode debug
 ```
+
+Use the same profile family for bootstrap, build, and device verification. Do not mix `android-35` bootstrap with `android-36` device verification unless you are explicitly testing a cross-profile mismatch.
 
 Flutter shell:
 

@@ -1,25 +1,17 @@
-import 'dart:convert';
-import 'dart:io';
-
 import '../platform/platform_target.dart';
 import 'hosted_control_plane.dart';
 import 'project_graph_contract.dart';
-import 'spio_cli_discovery.dart';
+import 'spio_cli_support.dart';
 import 'toolchain_management_adapter.dart';
-
-const String _missingSpioBinaryMessage =
-    'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.';
 
 ToolchainCommandResult _blockedToolchainCommandResult({
   required String command,
   required String statusMessage,
 }) {
-  return ToolchainCommandResult(
+  return blockedSpioCommandResult(
+    factory: _toolchainCommandResult,
     command: command,
-    status: ToolchainCommandStatus.blocked,
     statusMessage: statusMessage,
-    stdout: '',
-    stderr: '',
   );
 }
 
@@ -284,72 +276,12 @@ class _LocalCliToolchainManagementAdapter
       return blockedResult;
     }
 
-    final spioBinary = await resolveSpioBinary(
-      workspaceRoot: projectGraph.workspaceRoot,
+    return runLocalSpioCommand(
+      projectGraph: projectGraph,
+      command: command,
+      args: args,
+      factory: _toolchainCommandResult,
     );
-    if (spioBinary == null) {
-      return _blockedToolchainCommandResult(
-        command: command,
-        statusMessage: _missingSpioBinaryMessage,
-      );
-    }
-
-    try {
-      final result = await Process.run(
-        spioBinary,
-        args,
-        workingDirectory: projectGraph.workspaceRoot,
-      );
-      final stdout = '${result.stdout}';
-      final stderr = '${result.stderr}';
-      final successPayload = _parseJsonObject(stdout);
-      final failurePayload = _parseJsonObject(stderr);
-      if (result.exitCode == 0) {
-        return ToolchainCommandResult(
-          command: command,
-          status: ToolchainCommandStatus.succeeded,
-          statusMessage:
-              successPayload?['message'] as String? ??
-              '$command completed through spio.',
-          stdout: stdout,
-          stderr: stderr,
-          payload: successPayload,
-        );
-      }
-
-      return ToolchainCommandResult(
-        command: command,
-        status: ToolchainCommandStatus.failed,
-        statusMessage:
-            failurePayload?['message'] as String? ??
-            '$command exited with code ${result.exitCode}.',
-        stdout: stdout,
-        stderr: stderr,
-        errorPayload: failurePayload,
-      );
-    } on ProcessException catch (error) {
-      return ToolchainCommandResult(
-        command: command,
-        status: ToolchainCommandStatus.failed,
-        statusMessage: 'Failed to execute spio: ${error.message}',
-        stdout: '',
-        stderr: '',
-      );
-    }
-  }
-}
-
-Map<String, dynamic>? _parseJsonObject(String text) {
-  final trimmed = text.trim();
-  if (!trimmed.startsWith('{')) {
-    return null;
-  }
-
-  try {
-    final decoded = jsonDecode(trimmed);
-    return decoded is Map<String, dynamic> ? decoded : null;
-  } on FormatException {
-    return null;
   }
 }
 
@@ -381,5 +313,29 @@ ToolchainCommandResult _toolchainCommandResultFromHostedResponse({
     stdout: stdout,
     stderr: stderr,
     errorPayload: response['error_payload'] as Map<String, dynamic>?,
+  );
+}
+
+ToolchainCommandResult _toolchainCommandResult({
+  required LocalSpioCommandOutcome outcome,
+  required String command,
+  required String statusMessage,
+  required String stdout,
+  required String stderr,
+  Map<String, dynamic>? payload,
+  Map<String, dynamic>? errorPayload,
+}) {
+  return ToolchainCommandResult(
+    command: command,
+    status: switch (outcome) {
+      LocalSpioCommandOutcome.blocked => ToolchainCommandStatus.blocked,
+      LocalSpioCommandOutcome.succeeded => ToolchainCommandStatus.succeeded,
+      LocalSpioCommandOutcome.failed => ToolchainCommandStatus.failed,
+    },
+    statusMessage: statusMessage,
+    stdout: stdout,
+    stderr: stderr,
+    payload: payload,
+    errorPayload: errorPayload,
   );
 }

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/flutter-workspace-common.sh"
 PROFILE_FILE="${STYIO_VIEW_APPLE_PROFILE_FILE:-$ROOT/toolchain/apple-platform-profiles.csv}"
 FLUTTER_HOME="${STYIO_VIEW_FLUTTER_HOME:-$HOME/develop/flutter}"
 FLUTTER_BIN="${STYIO_VIEW_FLUTTER_BIN:-$FLUTTER_HOME/bin/flutter}"
@@ -60,26 +61,13 @@ fail() {
   exit 1
 }
 
-trim() {
-  local value="$1"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "$value"
-}
-
 ensure_macos() {
   [[ "$(uname -s)" == "Darwin" ]] || fail "Apple build profiles require macOS"
 }
 
 ensure_flutter_bin() {
-  if [[ -x "$FLUTTER_BIN" ]]; then
-    return
-  fi
-  if command -v flutter >/dev/null 2>&1; then
-    FLUTTER_BIN="$(command -v flutter)"
-    return
-  fi
-  fail "flutter is not installed. Set STYIO_VIEW_FLUTTER_BIN or STYIO_VIEW_FLUTTER_HOME."
+  FLUTTER_BIN="$(styio_view_resolve_flutter_bin "$FLUTTER_BIN" "$FLUTTER_HOME")" \
+    || fail "flutter is not installed. Set STYIO_VIEW_FLUTTER_BIN or STYIO_VIEW_FLUTTER_HOME."
 }
 
 load_profiles() {
@@ -87,18 +75,18 @@ load_profiles() {
 
   [[ -r "$PROFILE_FILE" ]] || fail "Apple profile file is missing: $PROFILE_FILE"
   while IFS= read -r line || [[ -n "$line" ]]; do
-    line="$(trim "$line")"
+    line="$(styio_view_trim "$line")"
     [[ -n "$line" ]] || continue
     [[ "$line" == \#* ]] && continue
     [[ "$line" == name,* ]] && continue
 
     IFS=, read -r name family ios_target macos_target developer_dir default_flag <<<"$line"
-    name="$(trim "$name")"
-    family="$(trim "$family")"
-    ios_target="$(trim "$ios_target")"
-    macos_target="$(trim "$macos_target")"
-    developer_dir="$(trim "$developer_dir")"
-    default_flag="$(trim "$default_flag")"
+    name="$(styio_view_trim "$name")"
+    family="$(styio_view_trim "$family")"
+    ios_target="$(styio_view_trim "$ios_target")"
+    macos_target="$(styio_view_trim "$macos_target")"
+    developer_dir="$(styio_view_trim "$developer_dir")"
+    default_flag="$(styio_view_trim "$default_flag")"
 
     [[ -n "$name" ]] || continue
     PROFILE_ORDER+=("$name")
@@ -127,7 +115,7 @@ profiles_from_csv() {
   [[ -n "$csv" ]] || fail "profile list is required"
   IFS=, read -r -a raw <<<"$csv"
   for token in "${raw[@]}"; do
-    token="$(trim "$token")"
+    token="$(styio_view_trim "$token")"
     [[ -n "$token" ]] || continue
     require_profile "$token"
     result+=("$token")
@@ -224,32 +212,6 @@ run_with_profile() {
   exec "$@"
 }
 
-copy_flutter_project() {
-  local source_dir="$1"
-  local dest_root="$2"
-  local parent_name project_name
-
-  parent_name="$(dirname "$source_dir")"
-  project_name="$(basename "$source_dir")"
-  rm -rf "$dest_root"
-  mkdir -p "$dest_root"
-
-  (
-    cd "$parent_name"
-    tar \
-      --exclude="$project_name/build" \
-      --exclude="$project_name/.dart_tool" \
-      --exclude="$project_name/ios/Pods" \
-      --exclude="$project_name/macos/Pods" \
-      --exclude="$project_name/ios/.symlinks" \
-      --exclude="$project_name/macos/.symlinks" \
-      -cf - "$project_name"
-  ) | (
-    cd "$dest_root"
-    tar -xf -
-  )
-}
-
 build_for_profile() {
   local profile="$1"
   local flutter_dir="$2"
@@ -271,7 +233,7 @@ build_for_profile() {
   outputs_root="$out_dir/$profile"
   cache_dir=".dart_tool-$profile"
 
-  copy_flutter_project "$flutter_dir" "$workspace_root"
+  styio_view_copy_flutter_project "$flutter_dir" "$workspace_root"
 
   case "$family" in
     ios)

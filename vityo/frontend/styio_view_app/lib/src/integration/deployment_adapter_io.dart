@@ -1,11 +1,8 @@
-import 'dart:convert';
-import 'dart:io';
-
 import '../platform/platform_target.dart';
 import 'deployment_adapter.dart';
 import 'hosted_control_plane.dart';
 import 'project_graph_contract.dart';
-import 'spio_cli_discovery.dart';
+import 'spio_cli_support.dart';
 
 Future<DeploymentAdapter> createPlatformDeploymentAdapter({
   required PlatformTarget platformTarget,
@@ -20,9 +17,7 @@ Future<DeploymentAdapter> createPlatformDeploymentAdapter({
 }
 
 class _HostedDeploymentAdapter implements DeploymentAdapter {
-  const _HostedDeploymentAdapter({
-    required this.hostedClient,
-  });
+  const _HostedDeploymentAdapter({required this.hostedClient});
 
   final HostedControlPlaneClient hostedClient;
 
@@ -157,9 +152,7 @@ class _HostedDeploymentAdapter implements DeploymentAdapter {
 }
 
 class _LocalCliDeploymentAdapter implements DeploymentAdapter {
-  const _LocalCliDeploymentAdapter({
-    required this.platformTarget,
-  });
+  const _LocalCliDeploymentAdapter({required this.platformTarget});
 
   final PlatformTarget platformTarget;
 
@@ -265,90 +258,35 @@ class _LocalCliDeploymentAdapter implements DeploymentAdapter {
   }) async {
     if (platformTarget == PlatformTarget.ios ||
         platformTarget == PlatformTarget.web) {
-      return DeploymentCommandResult(
+      return blockedSpioCommandResult(
+        factory: _deploymentCommandResult,
         command: command,
-        status: DeploymentCommandStatus.blocked,
         statusMessage:
             '${platformTarget.label} does not expose local spio deployment commands.',
-        stdout: '',
-        stderr: '',
       );
     }
 
     final manifestPath = projectGraph.manifestPath;
     if (manifestPath == null || manifestPath.isEmpty) {
-      return DeploymentCommandResult(
+      return blockedSpioCommandResult(
+        factory: _deploymentCommandResult,
         command: command,
-        status: DeploymentCommandStatus.blocked,
         statusMessage:
             'Deployment commands require a resolved spio manifest path.',
-        stdout: '',
-        stderr: '',
       );
     }
 
-    final spioBinary = await resolveSpioBinary(
-      workspaceRoot: projectGraph.workspaceRoot,
+    return runLocalSpioCommand(
+      projectGraph: projectGraph,
+      command: command,
+      args: args,
+      factory: _deploymentCommandResult,
     );
-    if (spioBinary == null) {
-      return DeploymentCommandResult(
-        command: command,
-        status: DeploymentCommandStatus.blocked,
-        statusMessage:
-            'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.',
-        stdout: '',
-        stderr: '',
-      );
-    }
-
-    try {
-      final result = await Process.run(
-        spioBinary,
-        args,
-        workingDirectory: projectGraph.workspaceRoot,
-      );
-      final stdout = '${result.stdout}';
-      final stderr = '${result.stderr}';
-      final successPayload = _parseJsonObject(stdout);
-      final failurePayload = _parseJsonObject(stderr);
-      if (result.exitCode == 0) {
-        return DeploymentCommandResult(
-          command: command,
-          status: DeploymentCommandStatus.succeeded,
-          statusMessage: successPayload?['message'] as String? ??
-              '$command completed through spio.',
-          stdout: stdout,
-          stderr: stderr,
-          payload: successPayload,
-        );
-      }
-
-      return DeploymentCommandResult(
-        command: command,
-        status: DeploymentCommandStatus.failed,
-        statusMessage: failurePayload?['message'] as String? ??
-            '$command exited with code ${result.exitCode}.',
-        stdout: stdout,
-        stderr: stderr,
-        errorPayload: failurePayload,
-      );
-    } on ProcessException catch (error) {
-      return DeploymentCommandResult(
-        command: command,
-        status: DeploymentCommandStatus.failed,
-        statusMessage: 'Failed to execute spio: ${error.message}',
-        stdout: '',
-        stderr: '',
-      );
-    }
   }
 }
 
 class _ResolvedPublishPackage {
-  const _ResolvedPublishPackage({
-    this.packageName,
-    this.blockedResult,
-  });
+  const _ResolvedPublishPackage({this.packageName, this.blockedResult});
 
   final String? packageName;
   final DeploymentCommandResult? blockedResult;
@@ -382,14 +320,17 @@ _ResolvedPublishPackage _resolvePublishPackage({
     final headline = blockedPackages.isEmpty
         ? 'No publish-ready package is available for deployment.'
         : 'No publish-ready package is available: ${blockedPackages.map((package) => package.packageName).join(', ')}.';
-    final details = blockedPackages.take(2).expand((package) {
-      if (package.blockingReasons.isEmpty) {
-        return <String>[];
-      }
-      return <String>[
-        '${package.packageName}: ${package.blockingReasons.join(' | ')}',
-      ];
-    }).join(' ');
+    final details = blockedPackages
+        .take(2)
+        .expand((package) {
+          if (package.blockingReasons.isEmpty) {
+            return <String>[];
+          }
+          return <String>[
+            '${package.packageName}: ${package.blockingReasons.join(' | ')}',
+          ];
+        })
+        .join(' ');
     return _ResolvedPublishPackage(
       blockedResult: DeploymentCommandResult(
         command: 'publish',
@@ -418,24 +359,7 @@ List<String> _manifestArgs(ProjectGraphSnapshot projectGraph) {
   if (manifestPath == null || manifestPath.isEmpty) {
     return const <String>[];
   }
-  return <String>[
-    '--manifest-path',
-    manifestPath,
-  ];
-}
-
-Map<String, dynamic>? _parseJsonObject(String text) {
-  final trimmed = text.trim();
-  if (!trimmed.startsWith('{')) {
-    return null;
-  }
-
-  try {
-    final decoded = jsonDecode(trimmed);
-    return decoded is Map<String, dynamic> ? decoded : null;
-  } on FormatException {
-    return null;
-  }
+  return spioManifestArgs(projectGraph);
 }
 
 DeploymentCommandResult _deploymentResultFromHostedResponse({
@@ -449,7 +373,8 @@ DeploymentCommandResult _deploymentResultFromHostedResponse({
     return DeploymentCommandResult(
       command: command,
       status: DeploymentCommandStatus.succeeded,
-      statusMessage: response['message'] as String? ??
+      statusMessage:
+          response['message'] as String? ??
           '$command completed through the hosted control plane.',
       stdout: stdout,
       stderr: stderr,
@@ -459,10 +384,35 @@ DeploymentCommandResult _deploymentResultFromHostedResponse({
   return DeploymentCommandResult(
     command: command,
     status: DeploymentCommandStatus.failed,
-    statusMessage: response['message'] as String? ??
+    statusMessage:
+        response['message'] as String? ??
         '$command failed through the hosted control plane.',
     stdout: stdout,
     stderr: stderr,
     errorPayload: response['error_payload'] as Map<String, dynamic>?,
+  );
+}
+
+DeploymentCommandResult _deploymentCommandResult({
+  required LocalSpioCommandOutcome outcome,
+  required String command,
+  required String statusMessage,
+  required String stdout,
+  required String stderr,
+  Map<String, dynamic>? payload,
+  Map<String, dynamic>? errorPayload,
+}) {
+  return DeploymentCommandResult(
+    command: command,
+    status: switch (outcome) {
+      LocalSpioCommandOutcome.blocked => DeploymentCommandStatus.blocked,
+      LocalSpioCommandOutcome.succeeded => DeploymentCommandStatus.succeeded,
+      LocalSpioCommandOutcome.failed => DeploymentCommandStatus.failed,
+    },
+    statusMessage: statusMessage,
+    stdout: stdout,
+    stderr: stderr,
+    payload: payload,
+    errorPayload: errorPayload,
   );
 }

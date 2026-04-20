@@ -2,7 +2,7 @@
 
 **Purpose:** 提供 `styio-view` 的日常协调入口；显式维护团队 ownership、review routing、升级路径和 checkpoint 纪律，但不替代产品规格、系统架构或 adapter 合同 SSOT。
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-04-21
 
 ## Mission
 
@@ -83,7 +83,7 @@ flowchart TB
 | Flutter 壳层或共享 UI 状态 | `cd frontend/styio_view_app && flutter analyze && flutter test` |
 | adapter / schema / handoff 合同 | 更新 `docs/contracts/`、`docs/for-styio/`、`docs/for-spio/` 与 `TEST-CATALOG` 对应映射 |
 | module lifecycle / distribution / capability | 更新 manifest、capability matrix、分发 schema 与测试目录条目 |
-| 文档结构或交付边界 | 更新相关 `README.md` / `INDEX.md` 并运行 `python3 scripts/check_repo_hygiene.py` |
+| 文档结构或交付边界 | 更新相关 `README.md` / `INDEX.md` 并运行 `python3 scripts/repo-hygiene-gate.py --mode tracked` |
 
 ## Handoff / Recovery
 

@@ -9,15 +9,15 @@ Styio View 是面向 `styio` 生态的专属编辑器与运行视窗项目。
 3. 上游 `styio` / `spio` 按 `styio-view` 的合同补齐机器接口
 4. 面向人维护的网页入口只保留手写的 `editor.html` 线；`frontend/styio_view_app/build/web` 这类 Flutter 生成物只用于构建验证，不作为人工维护页面
 
-文档入口见 [docs/README.md](/Users/unka/DevSpace/styio-view/docs/README.md)。
+文档入口见 [docs/README.md](docs/README.md)。
 
 仓库级构建与新环境入口见 [docs/BUILD-AND-DEV-ENV.md](docs/BUILD-AND-DEV-ENV.md)。
 
-可直接查看的高保真原型入口见 [prototype/index.html](/Users/unka/DevSpace/styio-view/prototype/index.html)。
+可直接查看的高保真原型入口见 [prototype/index.html](prototype/index.html)。
 
-人工维护的 Web Editor 入口见 [prototype/editor.html](/Users/unka/DevSpace/styio-view/prototype/editor.html)。
+人工维护的 Web Editor 入口见 [prototype/editor.html](prototype/editor.html)。
 
-实际实现入口见 [frontend/styio_view_app/README.md](/Users/unka/DevSpace/styio-view/frontend/styio_view_app/README.md)。
+实际实现入口见 [frontend/styio_view_app/README.md](frontend/styio_view_app/README.md)。
 
 ## Fresh Dev Environment
 
@@ -55,11 +55,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-dev-env-windows.ps1
 ./scripts/bootstrap-workspace.sh --platforms web,linux
 ```
 
-更完整的构建、测试和子系统入口见 [docs/BUILD-AND-DEV-ENV.md](docs/BUILD-AND-DEV-ENV.md)。
+更完整的构建、测试、profile 切换和真实设备验证入口见 [docs/BUILD-AND-DEV-ENV.md](docs/BUILD-AND-DEV-ENV.md)。
 
 ## Repository Hygiene Gate
 
-1. GitHub Actions workflow `Repository Hygiene Gate` 会在每次 `push` 和 `pull_request` 时执行 `python3 scripts/check_repo_hygiene.py`
-2. 统一入口现在是 `python3 scripts/repo-hygiene-gate.py`；`scripts/check_repo_hygiene.py` 只保留兼容包装
+1. GitHub Actions workflow `Repository Hygiene Gate` 会在每次 `push` 和 `pull_request` 时执行 `python3 scripts/repo-hygiene-gate.py`
+2. `python3 scripts/repo-hygiene-gate.py` 是仓库级权威入口
 3. 这道门禁会阻断生成目录、依赖目录、打包产物后缀，以及未被明确允许的二进制文件进入仓库
 4. 合法的图片类资产需要放在当前允许的前端资源路径下；若确实需要新增二进制资产，应在脚本里补一条窄范围 allowlist，而不是放宽通用规则

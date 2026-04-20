@@ -2,7 +2,7 @@
 
 **Purpose:** 提供 adapter 合同、integration 层以及上游 `styio` / `spio` handoff 文档的日常维护入口。
 
-**Last updated:** 2026-04-19
+**Last updated:** 2026-04-21
 
 ## Mission
 
@@ -49,7 +49,7 @@ Minimum:
 
 ```bash
 cd frontend/styio_view_app && flutter analyze && flutter test
-python3 scripts/check_repo_hygiene.py
+python3 scripts/repo-hygiene-gate.py --mode tracked
 ```
 
 ## Cross-Team Dependencies

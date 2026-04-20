@@ -1,11 +1,8 @@
-import 'dart:convert';
-import 'dart:io';
-
 import '../platform/platform_target.dart';
 import 'dependency_source_adapter.dart';
 import 'hosted_control_plane.dart';
 import 'project_graph_contract.dart';
-import 'spio_cli_discovery.dart';
+import 'spio_cli_support.dart';
 
 Future<DependencySourceAdapter> createPlatformDependencySourceAdapter({
   required PlatformTarget platformTarget,
@@ -20,9 +17,7 @@ Future<DependencySourceAdapter> createPlatformDependencySourceAdapter({
 }
 
 class _HostedDependencySourceAdapter implements DependencySourceAdapter {
-  const _HostedDependencySourceAdapter({
-    required this.hostedClient,
-  });
+  const _HostedDependencySourceAdapter({required this.hostedClient});
 
   final HostedControlPlaneClient hostedClient;
 
@@ -106,9 +101,7 @@ class _HostedDependencySourceAdapter implements DependencySourceAdapter {
 }
 
 class _LocalCliDependencySourceAdapter implements DependencySourceAdapter {
-  const _LocalCliDependencySourceAdapter({
-    required this.platformTarget,
-  });
+  const _LocalCliDependencySourceAdapter({required this.platformTarget});
 
   final PlatformTarget platformTarget;
 
@@ -166,69 +159,19 @@ class _LocalCliDependencySourceAdapter implements DependencySourceAdapter {
       command: command,
     );
     if (blockedReason != null) {
-      return DependencySourceCommandResult(
+      return blockedSpioCommandResult(
+        factory: _dependencyCommandResult,
         command: command,
-        status: DependencySourceCommandStatus.blocked,
         statusMessage: blockedReason,
-        stdout: '',
-        stderr: '',
       );
     }
 
-    final spioBinary = await resolveSpioBinary(
-      workspaceRoot: projectGraph.workspaceRoot,
+    return runLocalSpioCommand(
+      projectGraph: projectGraph,
+      command: command,
+      args: args,
+      factory: _dependencyCommandResult,
     );
-    if (spioBinary == null) {
-      return DependencySourceCommandResult(
-        command: command,
-        status: DependencySourceCommandStatus.blocked,
-        statusMessage:
-            'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.',
-        stdout: '',
-        stderr: '',
-      );
-    }
-
-    try {
-      final result = await Process.run(
-        spioBinary,
-        args,
-        workingDirectory: projectGraph.workspaceRoot,
-      );
-      final stdout = '${result.stdout}';
-      final stderr = '${result.stderr}';
-      final successPayload = _parseJsonObject(stdout);
-      final failurePayload = _parseJsonObject(stderr);
-      if (result.exitCode == 0) {
-        return DependencySourceCommandResult(
-          command: command,
-          status: DependencySourceCommandStatus.succeeded,
-          statusMessage: successPayload?['message'] as String? ??
-              '$command completed through spio.',
-          stdout: stdout,
-          stderr: stderr,
-          payload: successPayload,
-        );
-      }
-
-      return DependencySourceCommandResult(
-        command: command,
-        status: DependencySourceCommandStatus.failed,
-        statusMessage: failurePayload?['message'] as String? ??
-            '$command exited with code ${result.exitCode}.',
-        stdout: stdout,
-        stderr: stderr,
-        errorPayload: failurePayload,
-      );
-    } on ProcessException catch (error) {
-      return DependencySourceCommandResult(
-        command: command,
-        status: DependencySourceCommandStatus.failed,
-        statusMessage: 'Failed to execute spio: ${error.message}',
-        stdout: '',
-        stderr: '',
-      );
-    }
   }
 }
 
@@ -237,24 +180,7 @@ List<String> _manifestArgs(ProjectGraphSnapshot projectGraph) {
   if (manifestPath == null || manifestPath.isEmpty) {
     return const <String>[];
   }
-  return <String>[
-    '--manifest-path',
-    manifestPath,
-  ];
-}
-
-Map<String, dynamic>? _parseJsonObject(String text) {
-  final trimmed = text.trim();
-  if (!trimmed.startsWith('{')) {
-    return null;
-  }
-
-  try {
-    final decoded = jsonDecode(trimmed);
-    return decoded is Map<String, dynamic> ? decoded : null;
-  } on FormatException {
-    return null;
-  }
+  return spioManifestArgs(projectGraph);
 }
 
 DependencySourceCommandResult _dependencyResultFromHostedResponse({
@@ -268,7 +194,8 @@ DependencySourceCommandResult _dependencyResultFromHostedResponse({
     return DependencySourceCommandResult(
       command: command,
       status: DependencySourceCommandStatus.succeeded,
-      statusMessage: response['message'] as String? ??
+      statusMessage:
+          response['message'] as String? ??
           '$command completed through the hosted control plane.',
       stdout: stdout,
       stderr: stderr,
@@ -278,10 +205,36 @@ DependencySourceCommandResult _dependencyResultFromHostedResponse({
   return DependencySourceCommandResult(
     command: command,
     status: DependencySourceCommandStatus.failed,
-    statusMessage: response['message'] as String? ??
+    statusMessage:
+        response['message'] as String? ??
         '$command failed through the hosted control plane.',
     stdout: stdout,
     stderr: stderr,
     errorPayload: response['error_payload'] as Map<String, dynamic>?,
+  );
+}
+
+DependencySourceCommandResult _dependencyCommandResult({
+  required LocalSpioCommandOutcome outcome,
+  required String command,
+  required String statusMessage,
+  required String stdout,
+  required String stderr,
+  Map<String, dynamic>? payload,
+  Map<String, dynamic>? errorPayload,
+}) {
+  return DependencySourceCommandResult(
+    command: command,
+    status: switch (outcome) {
+      LocalSpioCommandOutcome.blocked => DependencySourceCommandStatus.blocked,
+      LocalSpioCommandOutcome.succeeded =>
+        DependencySourceCommandStatus.succeeded,
+      LocalSpioCommandOutcome.failed => DependencySourceCommandStatus.failed,
+    },
+    statusMessage: statusMessage,
+    stdout: stdout,
+    stderr: stderr,
+    payload: payload,
+    errorPayload: errorPayload,
   );
 }

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/flutter-workspace-common.sh"
 PROFILE_FILE="${STYIO_VIEW_ANDROID_PROFILE_FILE:-$ROOT/toolchain/android-sdk-profiles.csv}"
 ANDROID_SDK_ROOT="${STYIO_VIEW_ANDROID_SDK_ROOT:-$HOME/Android/Sdk}"
 FLUTTER_HOME="${STYIO_VIEW_FLUTTER_HOME:-$HOME/develop/flutter}"
@@ -72,52 +73,25 @@ fail() {
   exit 1
 }
 
-default_java_home() {
-  if [[ -n "${JAVA_HOME:-}" ]]; then
-    printf '%s\n' "$JAVA_HOME"
-    return
-  fi
-
-  case "$(uname -s)" in
-    Darwin)
-      if [[ -x /usr/libexec/java_home ]]; then
-        /usr/libexec/java_home 2>/dev/null || true
-      fi
-      ;;
-    Linux)
-      if [[ -d /usr/lib/jvm/default-java ]]; then
-        printf '%s\n' "/usr/lib/jvm/default-java"
-      fi
-      ;;
-  esac
-}
-
-trim() {
-  local value="$1"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "$value"
-}
-
 load_profiles() {
   local line name platform compile_sdk target_sdk min_sdk build_tools ndk_version default_flag
 
   [[ -r "$PROFILE_FILE" ]] || fail "Android profile file is missing: $PROFILE_FILE"
   while IFS= read -r line || [[ -n "$line" ]]; do
-    line="$(trim "$line")"
+    line="$(styio_view_trim "$line")"
     [[ -n "$line" ]] || continue
     [[ "$line" == \#* ]] && continue
     [[ "$line" == name,* ]] && continue
 
     IFS=, read -r name platform compile_sdk target_sdk min_sdk build_tools ndk_version default_flag <<<"$line"
-    name="$(trim "$name")"
-    platform="$(trim "$platform")"
-    compile_sdk="$(trim "$compile_sdk")"
-    target_sdk="$(trim "$target_sdk")"
-    min_sdk="$(trim "$min_sdk")"
-    build_tools="$(trim "$build_tools")"
-    ndk_version="$(trim "$ndk_version")"
-    default_flag="$(trim "$default_flag")"
+    name="$(styio_view_trim "$name")"
+    platform="$(styio_view_trim "$platform")"
+    compile_sdk="$(styio_view_trim "$compile_sdk")"
+    target_sdk="$(styio_view_trim "$target_sdk")"
+    min_sdk="$(styio_view_trim "$min_sdk")"
+    build_tools="$(styio_view_trim "$build_tools")"
+    ndk_version="$(styio_view_trim "$ndk_version")"
+    default_flag="$(styio_view_trim "$default_flag")"
 
     [[ -n "$name" ]] || continue
     PROFILE_ORDER+=("$name")
@@ -153,7 +127,7 @@ profiles_from_csv() {
 
   IFS=, read -r -a raw <<<"$csv"
   for token in "${raw[@]}"; do
-    token="$(trim "$token")"
+    token="$(styio_view_trim "$token")"
     [[ -n "$token" ]] || continue
     require_profile "$token"
     result+=("$token")
@@ -161,17 +135,6 @@ profiles_from_csv() {
 
   [[ ${#result[@]} -gt 0 ]] || fail "no valid Android profiles selected"
   printf '%s\n' "${result[@]}"
-}
-
-ensure_flutter_bin() {
-  if [[ -x "$FLUTTER_BIN" ]]; then
-    return
-  fi
-  if command -v flutter >/dev/null 2>&1; then
-    FLUTTER_BIN="$(command -v flutter)"
-    return
-  fi
-  fail "flutter is not installed. Set STYIO_VIEW_FLUTTER_BIN or STYIO_VIEW_FLUTTER_HOME."
 }
 
 export_profile_env() {
@@ -188,7 +151,7 @@ export_profile_env() {
   export ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT"
   export ANDROID_HOME="$ANDROID_SDK_ROOT"
   local java_home
-  java_home="$(default_java_home)"
+  java_home="$(styio_view_default_java_home)"
   if [[ -n "$java_home" ]]; then
     export JAVA_HOME="$java_home"
   fi
@@ -226,7 +189,7 @@ export ORG_GRADLE_PROJECT_styioAndroidBuildRoot="../../build/${profile}"
 EOF
 
   local java_home
-  java_home="$(default_java_home)"
+  java_home="$(styio_view_default_java_home)"
   if [[ -n "$java_home" ]]; then
     printf 'export JAVA_HOME="%s"\n' "$java_home"
   fi
@@ -305,30 +268,6 @@ run_with_profile() {
   exec "$@"
 }
 
-copy_flutter_project() {
-  local source_dir="$1"
-  local dest_root="$2"
-  local parent_name project_name
-
-  parent_name="$(dirname "$source_dir")"
-  project_name="$(basename "$source_dir")"
-  rm -rf "$dest_root"
-  mkdir -p "$dest_root"
-
-  (
-    cd "$parent_name"
-    tar \
-      --exclude="$project_name/build" \
-      --exclude="$project_name/.dart_tool" \
-      --exclude="$project_name/.gradle" \
-      --exclude="$project_name/android/.gradle" \
-      -cf - "$project_name"
-  ) | (
-    cd "$dest_root"
-    tar -xf -
-  )
-}
-
 build_for_profile() {
   local profile="$1"
   local artifact="$2"
@@ -346,8 +285,13 @@ build_for_profile() {
   local -a cmd=()
 
   require_profile "$profile"
-  ensure_flutter_bin
-  copy_flutter_project "$flutter_dir" "$workspace_root"
+  FLUTTER_BIN="$(styio_view_resolve_flutter_bin "$FLUTTER_BIN" "$FLUTTER_HOME")" \
+    || fail "flutter is not installed. Set STYIO_VIEW_FLUTTER_BIN or STYIO_VIEW_FLUTTER_HOME."
+  styio_view_copy_flutter_project \
+    "$flutter_dir" \
+    "$workspace_root" \
+    ".gradle" \
+    "android/.gradle"
 
   cmd=("$FLUTTER_BIN" "build" "$artifact" "--$mode" "--android-project-cache-dir" "$cache_dir")
   cmd+=("--android-project-arg" "styioAndroidProfile=$profile")

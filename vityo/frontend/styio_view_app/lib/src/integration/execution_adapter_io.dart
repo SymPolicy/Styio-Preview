@@ -12,6 +12,7 @@ import 'project_workflow_selection.dart';
 import 'project_graph_contract.dart';
 import 'runtime_event_adapter.dart';
 import 'spio_cli_discovery.dart';
+import 'spio_cli_support.dart';
 
 const AdapterCapabilitySnapshot
 _iosLocalCliExecutionCapabilitySnapshot = AdapterCapabilitySnapshot(
@@ -37,9 +38,6 @@ _iosLocalCliExecutionCapabilitySnapshot = AdapterCapabilitySnapshot(
 
 const String _missingLocalStyioBinaryMessage =
     'No local styio binary was resolved. Set STYIO_VIEW_STYIO_BIN or install styio through spio.';
-
-const String _missingLocalSpioBinaryMessage =
-    'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.';
 
 const ExecutionSession _iosCloudOnlyExecutionSession = ExecutionSession(
   sessionId: 'ios-cloud-only',
@@ -488,7 +486,7 @@ Future<ExecutionSession> _runProjectWorkflow({
   if (spioBinary == null) {
     return _blockedRunExecutionSession(
       sessionId: 'missing-spio-binary',
-      message: _missingLocalSpioBinaryMessage,
+      message: missingLocalSpioBinaryMessage,
     );
   }
   final useWorkflowPayloads = await _supportsSpioWorkflowSuccessPayloads(
@@ -534,7 +532,8 @@ Future<ExecutionSession> _runProjectWorkflow({
         return session;
       }
     }
-    final failurePayload = _parseJsonObject(stderr) ?? _parseJsonObject(stdout);
+    final failurePayload =
+        parseJsonObjectPayload(stderr) ?? parseJsonObjectPayload(stdout);
     final sessionId =
         _workflowSessionIdFromPayload(failurePayload) ??
         DateTime.now().microsecondsSinceEpoch.toString();
@@ -1464,20 +1463,6 @@ String _appendRelativePath(String rootPath, String relativePath) {
     return '$rootPath$relativePath';
   }
   return '$rootPath${Platform.pathSeparator}$relativePath';
-}
-
-Map<String, dynamic>? _parseJsonObject(String text) {
-  final trimmed = text.trim();
-  if (trimmed.isEmpty || !trimmed.startsWith('{')) {
-    return null;
-  }
-
-  try {
-    final decoded = jsonDecode(trimmed);
-    return decoded is Map<String, dynamic> ? decoded : null;
-  } on FormatException {
-    return null;
-  }
 }
 
 _ParsedDiagnosticRecord? _parseDiagnosticLine(
