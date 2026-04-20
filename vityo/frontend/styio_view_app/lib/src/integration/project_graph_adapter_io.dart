@@ -8,8 +8,8 @@ import 'hosted_payload_codec.dart';
 import 'project_graph_adapter.dart';
 import 'project_graph_contract.dart';
 
-Map<String, String> Function() _environmentProvider =
-    () => Platform.environment;
+Map<String, String> Function() _environmentProvider = () =>
+    Platform.environment;
 
 void debugOverrideProjectGraphEnvironment(Map<String, String>? environment) {
   _environmentProvider = environment == null
@@ -50,32 +50,31 @@ class _HostedProjectGraphAdapter implements ProjectGraphAdapter {
   String? _workspaceId;
 
   @override
-  AdapterCapabilitySnapshot get capabilitySnapshot =>
-      const AdapterCapabilitySnapshot(
-        adapterKind: AdapterKind.cloud,
-        languageService: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.partial,
-          detail:
-              'Hosted language service stays reserved behind the cloud route.',
-        ),
-        projectGraph: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.available,
-          detail:
-              'Hosted workspaces publish project graph through the hosted control plane.',
-          supportedContractVersions: <int>[1],
-        ),
-        execution: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.available,
-          detail: 'Hosted execution is live through the shared control plane.',
-          supportedContractVersions: <int>[1],
-        ),
-        runtimeEvents: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.available,
-          detail:
-              'Hosted execution publishes replayable runtime event payloads through the shared control plane.',
-          supportedContractVersions: <int>[1],
-        ),
-      );
+  AdapterCapabilitySnapshot
+  get capabilitySnapshot => const AdapterCapabilitySnapshot(
+    adapterKind: AdapterKind.cloud,
+    languageService: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.partial,
+      detail: 'Hosted language service stays reserved behind the cloud route.',
+    ),
+    projectGraph: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.available,
+      detail:
+          'Hosted workspaces publish project graph through the hosted control plane.',
+      supportedContractVersions: <int>[1],
+    ),
+    execution: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.available,
+      detail: 'Hosted execution is live through the shared control plane.',
+      supportedContractVersions: <int>[1],
+    ),
+    runtimeEvents: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.available,
+      detail:
+          'Hosted execution publishes replayable runtime event payloads through the shared control plane.',
+      supportedContractVersions: <int>[1],
+    ),
+  );
 
   @override
   Future<ProjectGraphSnapshot> loadProjectGraph() async {
@@ -101,31 +100,29 @@ class _LocalProjectGraphAdapter implements ProjectGraphAdapter {
 
   @override
   AdapterCapabilitySnapshot get capabilitySnapshot => AdapterCapabilitySnapshot(
-        adapterKind: AdapterKind.cli,
-        languageService: const AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'Language-service data still needs a published styio contract.',
-        ),
-        projectGraph: AdapterEndpointCapability(
-          level: _projectGraphCapabilityLevel(),
-          detail: _projectGraphCapabilityDetail(),
-          supportedContractVersions:
-              projectGraphSupport.publishedPayloadAvailable
-                  ? const <int>[1]
-                  : const <int>[],
-        ),
-        execution: const AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'Execution capability is provided by the dedicated execution adapter.',
-        ),
-        runtimeEvents: const AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'Runtime events are not exposed through the current CLI project graph path.',
-        ),
-      );
+    adapterKind: AdapterKind.cli,
+    languageService: const AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.unavailable,
+      detail: 'Language-service data still needs a published styio contract.',
+    ),
+    projectGraph: AdapterEndpointCapability(
+      level: _projectGraphCapabilityLevel(),
+      detail: _projectGraphCapabilityDetail(),
+      supportedContractVersions: projectGraphSupport.publishedPayloadAvailable
+          ? const <int>[1]
+          : const <int>[],
+    ),
+    execution: const AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.unavailable,
+      detail:
+          'Execution capability is provided by the dedicated execution adapter.',
+    ),
+    runtimeEvents: const AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.unavailable,
+      detail:
+          'Runtime events are not exposed through the current CLI project graph path.',
+    ),
+  );
 
   @override
   Future<ProjectGraphSnapshot> loadProjectGraph() async {
@@ -146,13 +143,14 @@ class _LocalProjectGraphAdapter implements ProjectGraphAdapter {
     final hasManifest = await manifestFile.exists();
     final publishedToolchainEnvironmentResult =
         projectGraphSupport.toolchainStateAvailable
-            ? await _loadPublishedToolchainEnvironment(
-                spioBinary: projectGraphSupport.binaryPath,
-                manifestPath: hasManifest ? manifestFile.path : null,
-                styioBinaryOverride: styioBinaryOverride,
-              )
-            : const _PublishedPayloadLoadResult<
-                ToolchainEnvironmentSnapshot>.success(null);
+        ? await _loadPublishedToolchainEnvironment(
+            spioBinary: projectGraphSupport.binaryPath,
+            manifestPath: hasManifest ? manifestFile.path : null,
+            styioBinaryOverride: styioBinaryOverride,
+          )
+        : const _PublishedPayloadLoadResult<
+            ToolchainEnvironmentSnapshot
+          >.success(null);
     final publishedToolchainEnvironment =
         publishedToolchainEnvironmentResult.payload;
     _lastToolchainStatePayloadFailure =
@@ -170,7 +168,8 @@ class _LocalProjectGraphAdapter implements ProjectGraphAdapter {
         workspaceRoot: rootDirectory.path,
         activeFilePath: fallbackFile,
         title: 'Scratch Project',
-        toolchain: publishedToolchainEnvironment?.toolchain ??
+        toolchain:
+            publishedToolchainEnvironment?.toolchain ??
             ToolchainStatusSnapshot(
               source: toolchainPin == null
                   ? ToolchainResolutionSource.unavailable
@@ -194,8 +193,8 @@ class _LocalProjectGraphAdapter implements ProjectGraphAdapter {
       );
     }
 
-    final publishedSnapshotResult = projectGraphSupport
-            .publishedPayloadAvailable
+    final publishedSnapshotResult =
+        projectGraphSupport.publishedPayloadAvailable
         ? await _loadPublishedProjectGraph(
             spioBinary: projectGraphSupport.binaryPath,
             manifestPath: manifestFile.path,
@@ -206,11 +205,14 @@ class _LocalProjectGraphAdapter implements ProjectGraphAdapter {
     _lastProjectGraphPayloadFailure = publishedSnapshotResult.failure;
     if (publishedSnapshot != null) {
       return publishedSnapshot.copyWith(
-        toolchain: publishedToolchainEnvironment?.toolchain ??
+        toolchain:
+            publishedToolchainEnvironment?.toolchain ??
             publishedSnapshot.toolchain,
-        activeCompiler: publishedToolchainEnvironment?.activeCompiler ??
+        activeCompiler:
+            publishedToolchainEnvironment?.activeCompiler ??
             publishedSnapshot.activeCompiler,
-        toolchainEnvironment: publishedToolchainEnvironment ??
+        toolchainEnvironment:
+            publishedToolchainEnvironment ??
             publishedSnapshot.toolchainEnvironment,
         projectGraphPayloadFailure: _lastProjectGraphPayloadFailure,
         toolchainStatePayloadFailure: _lastToolchainStatePayloadFailure,
@@ -266,8 +268,8 @@ class _LocalProjectGraphAdapter implements ProjectGraphAdapter {
 
     final manifestKind = parsedRoot.workspaceMembers.isNotEmpty
         ? (parsedRoot.package != null
-            ? ProjectKind.combinedRoot
-            : ProjectKind.workspace)
+              ? ProjectKind.combinedRoot
+              : ProjectKind.workspace)
         : ProjectKind.package;
     final editorFiles = <String>{
       for (final target in targets) target.filePath,
@@ -439,6 +441,55 @@ class _MutableTarget {
   String? path;
 }
 
+enum _ManifestSection {
+  root,
+  package,
+  workspace,
+  dependencies,
+  devDependencies,
+  toolchain,
+  lib,
+  bin,
+  test,
+  other,
+}
+
+const Map<String, _ManifestSection> _manifestSectionByHeader =
+    <String, _ManifestSection>{
+      '': _ManifestSection.root,
+      'package': _ManifestSection.package,
+      'workspace': _ManifestSection.workspace,
+      'dependencies': _ManifestSection.dependencies,
+      'dev-dependencies': _ManifestSection.devDependencies,
+      'toolchain': _ManifestSection.toolchain,
+      'lib': _ManifestSection.lib,
+      'bin': _ManifestSection.bin,
+      'test': _ManifestSection.test,
+    };
+
+const Map<_ManifestSection, ProjectDependencyKind> _dependencyKindBySection =
+    <_ManifestSection, ProjectDependencyKind>{
+      _ManifestSection.dependencies: ProjectDependencyKind.runtime,
+      _ManifestSection.devDependencies: ProjectDependencyKind.dev,
+    };
+
+const Map<_ManifestSection, ProjectTargetKind> _inlineTargetKindBySection =
+    <_ManifestSection, ProjectTargetKind>{
+      _ManifestSection.lib: ProjectTargetKind.lib,
+    };
+
+const Map<_ManifestSection, ProjectTargetKind> _arrayTargetKindBySection =
+    <_ManifestSection, ProjectTargetKind>{
+      _ManifestSection.bin: ProjectTargetKind.bin,
+      _ManifestSection.test: ProjectTargetKind.test,
+    };
+
+enum _InlineDependencyShape { pathOrWorkspace, git, registry, unknown }
+
+_ManifestSection _manifestSectionFromHeader(String section) {
+  return _manifestSectionByHeader[section] ?? _ManifestSection.other;
+}
+
 Future<_ParsedManifest> _parseManifest({
   required String manifestPath,
   required String workspaceRoot,
@@ -452,7 +503,7 @@ Future<_ParsedManifest> _parseManifest({
   final targets = <ProjectTargetDescriptor>[];
   final parsedDependencies = <_ParsedDependency>[];
   _MutableTarget? pendingTarget;
-  var section = '';
+  var section = _ManifestSection.root;
   String? toolchainChannel;
   String? toolchainVersion;
 
@@ -487,21 +538,18 @@ Future<_ParsedManifest> _parseManifest({
     }
     if (line.startsWith('[[') && line.endsWith(']]')) {
       flushPendingTarget();
-      section = line.substring(2, line.length - 2).trim();
-      switch (section) {
-        case 'bin':
-          pendingTarget = _MutableTarget(kind: ProjectTargetKind.bin);
-        case 'test':
-          pendingTarget = _MutableTarget(kind: ProjectTargetKind.test);
-      }
+      section = _manifestSectionFromHeader(
+        line.substring(2, line.length - 2).trim(),
+      );
+      pendingTarget = _targetForSection(section, isArrayHeader: true);
       continue;
     }
     if (line.startsWith('[') && line.endsWith(']')) {
       flushPendingTarget();
-      section = line.substring(1, line.length - 1).trim();
-      if (section == 'lib') {
-        pendingTarget = _MutableTarget(kind: ProjectTargetKind.lib);
-      }
+      section = _manifestSectionFromHeader(
+        line.substring(1, line.length - 1).trim(),
+      );
+      pendingTarget = _targetForSection(section, isArrayHeader: false);
       continue;
     }
 
@@ -511,9 +559,16 @@ Future<_ParsedManifest> _parseManifest({
     }
     final key = line.substring(0, separator).trim();
     final value = line.substring(separator + 1).trim();
+    final dependencyKind = _dependencyKindBySection[section];
+    if (dependencyKind != null) {
+      parsedDependencies.add(
+        _parseDependency(name: key, value: value, kind: dependencyKind),
+      );
+      continue;
+    }
 
     switch (section) {
-      case 'package':
+      case _ManifestSection.package:
         if (key == 'name') {
           packageName = _parseString(value);
         } else if (key == 'version') {
@@ -521,43 +576,35 @@ Future<_ParsedManifest> _parseManifest({
         } else if (key == 'publish') {
           packagePublishEnabled = _parseBool(value) ?? false;
         }
-      case 'workspace':
+      case _ManifestSection.workspace:
         if (key == 'members') {
           workspaceMembers.addAll(_parseStringArray(value));
         }
-      case 'dependencies':
-        parsedDependencies.add(
-          _parseDependency(
-            name: key,
-            value: value,
-            kind: ProjectDependencyKind.runtime,
-          ),
-        );
-      case 'dev-dependencies':
-        parsedDependencies.add(
-          _parseDependency(
-            name: key,
-            value: value,
-            kind: ProjectDependencyKind.dev,
-          ),
-        );
-      case 'toolchain':
+      case _ManifestSection.toolchain:
         if (key == 'channel') {
           toolchainChannel = _parseString(value);
         } else if (key == 'version') {
           toolchainVersion = _parseString(value);
         }
-      case 'lib':
-        if (key == 'path') {
-          pendingTarget?.path = _parseString(value);
-        }
-      case 'bin':
-      case 'test':
-        if (key == 'name') {
-          pendingTarget?.name = _parseString(value);
-        } else if (key == 'path') {
-          pendingTarget?.path = _parseString(value);
-        }
+      case _ManifestSection.lib:
+        _applyTargetField(
+          pendingTarget: pendingTarget,
+          key: key,
+          value: value,
+          supportsName: false,
+        );
+      case _ManifestSection.bin:
+      case _ManifestSection.test:
+        _applyTargetField(
+          pendingTarget: pendingTarget,
+          key: key,
+          value: value,
+          supportsName: true,
+        );
+      case _ManifestSection.dependencies:
+      case _ManifestSection.devDependencies:
+      case _ManifestSection.root:
+      case _ManifestSection.other:
     }
   }
 
@@ -671,6 +718,31 @@ Future<_ParsedToolchain> _parseToolchainPin(String toolchainPinPath) async {
   return _ParsedToolchain(channel: channel, version: version);
 }
 
+_MutableTarget? _targetForSection(
+  _ManifestSection section, {
+  required bool isArrayHeader,
+}) {
+  final targetKind = isArrayHeader
+      ? _arrayTargetKindBySection[section]
+      : _inlineTargetKindBySection[section];
+  return targetKind == null ? null : _MutableTarget(kind: targetKind);
+}
+
+void _applyTargetField({
+  required _MutableTarget? pendingTarget,
+  required String key,
+  required String value,
+  required bool supportsName,
+}) {
+  if (key == 'path') {
+    pendingTarget?.path = _parseString(value);
+    return;
+  }
+  if (supportsName && key == 'name') {
+    pendingTarget?.name = _parseString(value);
+  }
+}
+
 Future<CompilerHandshakeSnapshot?> _probeCompiler({
   required Directory startDirectory,
 }) async {
@@ -747,7 +819,8 @@ Future<CompilerHandshakeSnapshot?> _probeCompiler({
         continue;
       }
       final contracts = <String, List<int>>{};
-      final rawContracts = decoded['supported_contract_versions'] ??
+      final rawContracts =
+          decoded['supported_contract_versions'] ??
           decoded['supported_contracts'];
       if (rawContracts is Map<String, dynamic>) {
         for (final entry in rawContracts.entries) {
@@ -770,7 +843,8 @@ Future<CompilerHandshakeSnapshot?> _probeCompiler({
             .whereType<String>()
             .toList(growable: false),
         supportedContractVersions: contracts,
-        integrationPhase: decoded['active_integration_phase'] as String? ??
+        integrationPhase:
+            decoded['active_integration_phase'] as String? ??
             (contracts['compile_plan']?.isNotEmpty == true
                 ? 'compile-plan-live'
                 : 'bootstrap-single-file'),
@@ -824,7 +898,8 @@ Future<_SpioProjectGraphSupport> _probeSpioProjectGraphSupport({
       if (decoded is! Map<String, dynamic>) {
         continue;
       }
-      final rawContracts = decoded['supported_contract_versions'] ??
+      final rawContracts =
+          decoded['supported_contract_versions'] ??
           decoded['supported_contracts'];
       if (rawContracts is! Map<String, dynamic>) {
         continue;
@@ -834,7 +909,8 @@ Future<_SpioProjectGraphSupport> _probeSpioProjectGraphSupport({
       if (versions is List && versions.whereType<num>().contains(1)) {
         return _SpioProjectGraphSupport(
           publishedPayloadAvailable: true,
-          toolchainStateAvailable: toolchainVersions is List &&
+          toolchainStateAvailable:
+              toolchainVersions is List &&
               toolchainVersions.whereType<num>().contains(1),
           binaryPath: candidate,
           detail:
@@ -843,7 +919,8 @@ Future<_SpioProjectGraphSupport> _probeSpioProjectGraphSupport({
       }
       return _SpioProjectGraphSupport(
         publishedPayloadAvailable: false,
-        toolchainStateAvailable: toolchainVersions is List &&
+        toolchainStateAvailable:
+            toolchainVersions is List &&
             toolchainVersions.whereType<num>().contains(1),
         binaryPath: candidate,
         detail:
@@ -863,7 +940,7 @@ Future<_SpioProjectGraphSupport> _probeSpioProjectGraphSupport({
 }
 
 Future<_PublishedPayloadLoadResult<ProjectGraphSnapshot>>
-    _loadPublishedProjectGraph({
+_loadPublishedProjectGraph({
   required String? spioBinary,
   required String manifestPath,
   required String? styioBinaryOverride,
@@ -953,30 +1030,30 @@ Future<_PublishedPayloadLoadResult<ProjectGraphSnapshot>>
           .toList(growable: false);
       final managedToolchains =
           decoded['managed_toolchains'] is Map<String, dynamic>
-              ? _managedToolchainStateFromPayload(
-                  decoded['managed_toolchains'] as Map<String, dynamic>,
-                )
-              : const ManagedToolchainStateSnapshot();
+          ? _managedToolchainStateFromPayload(
+              decoded['managed_toolchains'] as Map<String, dynamic>,
+            )
+          : const ManagedToolchainStateSnapshot();
       final projectPin = decoded['toolchain_pin_path'] is String
           ? ProjectToolchainPinSnapshot(
               path: decoded['toolchain_pin_path'] as String,
               channel: decoded['toolchain'] is Map<String, dynamic>
                   ? (decoded['toolchain'] as Map<String, dynamic>)['channel']
-                      as String?
+                        as String?
                   : null,
               version: decoded['toolchain'] is Map<String, dynamic>
                   ? (decoded['toolchain'] as Map<String, dynamic>)['version']
-                      as String?
+                        as String?
                   : null,
               installPresent: false,
             )
           : null;
       final packageDistribution =
           decoded['package_distribution'] is Map<String, dynamic>
-              ? _packageDistributionFromPayload(
-                  decoded['package_distribution'] as Map<String, dynamic>,
-                )
-              : _derivePackageDistributionFromPackages(packages);
+          ? _packageDistributionFromPayload(
+              decoded['package_distribution'] as Map<String, dynamic>,
+            )
+          : _derivePackageDistributionFromPackages(packages);
       final sourceState = decoded['source_state'] is Map<String, dynamic>
           ? _projectSourceStateFromPayload(
               decoded['source_state'] as Map<String, dynamic>,
@@ -1055,14 +1132,15 @@ Future<_PublishedPayloadLoadResult<ProjectGraphSnapshot>>
 }
 
 Future<_PublishedPayloadLoadResult<ToolchainEnvironmentSnapshot>>
-    _loadPublishedToolchainEnvironment({
+_loadPublishedToolchainEnvironment({
   required String? spioBinary,
   required String? manifestPath,
   required String? styioBinaryOverride,
 }) async {
   if (spioBinary == null || spioBinary.isEmpty) {
     return const _PublishedPayloadLoadResult<
-        ToolchainEnvironmentSnapshot>.failure(
+      ToolchainEnvironmentSnapshot
+    >.failure(
       PublishedPayloadFailure(
         command: 'spio tool status --json',
         detail:
@@ -1096,7 +1174,8 @@ Future<_PublishedPayloadLoadResult<ToolchainEnvironmentSnapshot>>
     final decoded = jsonDecode(result.stdout as String);
     if (decoded is! Map<String, dynamic>) {
       return const _PublishedPayloadLoadResult<
-          ToolchainEnvironmentSnapshot>.failure(
+        ToolchainEnvironmentSnapshot
+      >.failure(
         PublishedPayloadFailure(
           command: 'spio tool status --json',
           detail:
@@ -1139,7 +1218,8 @@ Future<_PublishedPayloadLoadResult<ToolchainEnvironmentSnapshot>>
         toolchain: toolchain,
         candidateBinaryPath: decoded['toolchain'] is Map<String, dynamic>
             ? (decoded['toolchain']
-                as Map<String, dynamic>)['candidate_binary_path'] as String?
+                      as Map<String, dynamic>)['candidate_binary_path']
+                  as String?
             : null,
         projectPin: decoded['project_pin'] is Map<String, dynamic>
             ? _projectToolchainPinFromPayload(
@@ -1191,100 +1271,90 @@ String? _environmentValue(String name) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
+const Map<String, ProjectKind> _projectKindByWireValue = <String, ProjectKind>{
+  'package': ProjectKind.package,
+  'workspace': ProjectKind.workspace,
+  'combined-root': ProjectKind.combinedRoot,
+  'hosted': ProjectKind.hosted,
+  'scratch': ProjectKind.scratch,
+};
+
+const Map<String, ProjectTargetKind> _projectTargetKindByWireValue =
+    <String, ProjectTargetKind>{
+      'lib': ProjectTargetKind.lib,
+      'test': ProjectTargetKind.test,
+      'bin': ProjectTargetKind.bin,
+    };
+
+const Map<String, ProjectDependencyKind> _projectDependencyKindByWireValue =
+    <String, ProjectDependencyKind>{
+      'dev': ProjectDependencyKind.dev,
+      'runtime': ProjectDependencyKind.runtime,
+    };
+
+const Map<String, ProjectDependencySourceKind>
+_projectDependencySourceKindByWireValue = <String, ProjectDependencySourceKind>{
+  'path': ProjectDependencySourceKind.path,
+  'git': ProjectDependencySourceKind.git,
+  'registry': ProjectDependencySourceKind.registry,
+  'unknown': ProjectDependencySourceKind.unknown,
+};
+
+const Map<String, ProjectLockState> _lockStateByWireValue =
+    <String, ProjectLockState>{
+      'fresh': ProjectLockState.fresh,
+      'stale': ProjectLockState.stale,
+      'missing': ProjectLockState.missing,
+      'unknown': ProjectLockState.unknown,
+    };
+
+const Map<String, ProjectVendorState> _vendorStateByWireValue =
+    <String, ProjectVendorState>{
+      'present': ProjectVendorState.present,
+      'missing': ProjectVendorState.missing,
+      'unknown': ProjectVendorState.unknown,
+    };
+
+const Map<String, ToolchainResolutionSource> _toolchainSourceByWireValue =
+    <String, ToolchainResolutionSource>{
+      'project-pin': ToolchainResolutionSource.projectPin,
+      'managed-current': ToolchainResolutionSource.managedCurrent,
+      'environment': ToolchainResolutionSource.environment,
+      'unknown': ToolchainResolutionSource.unknown,
+      'unavailable': ToolchainResolutionSource.unavailable,
+    };
+
 ProjectKind _projectKindFromString(String? raw) {
-  switch (raw) {
-    case 'package':
-      return ProjectKind.package;
-    case 'workspace':
-      return ProjectKind.workspace;
-    case 'combined-root':
-      return ProjectKind.combinedRoot;
-    case 'hosted':
-      return ProjectKind.hosted;
-    case 'scratch':
-    default:
-      return ProjectKind.scratch;
-  }
+  return _projectKindByWireValue[raw] ?? ProjectKind.scratch;
 }
 
 ProjectTargetKind _projectTargetKindFromString(String? raw) {
-  switch (raw) {
-    case 'lib':
-      return ProjectTargetKind.lib;
-    case 'test':
-      return ProjectTargetKind.test;
-    case 'bin':
-    default:
-      return ProjectTargetKind.bin;
-  }
+  return _projectTargetKindByWireValue[raw] ?? ProjectTargetKind.bin;
 }
 
 ProjectDependencyKind _projectDependencyKindFromString(String? raw) {
-  switch (raw) {
-    case 'dev':
-      return ProjectDependencyKind.dev;
-    case 'runtime':
-    default:
-      return ProjectDependencyKind.runtime;
-  }
+  return _projectDependencyKindByWireValue[raw] ??
+      ProjectDependencyKind.runtime;
 }
 
 ProjectDependencySourceKind _projectDependencySourceKindFromString(
   String? raw,
 ) {
-  switch (raw) {
-    case 'path':
-      return ProjectDependencySourceKind.path;
-    case 'git':
-      return ProjectDependencySourceKind.git;
-    case 'registry':
-      return ProjectDependencySourceKind.registry;
-    case 'unknown':
-    default:
-      return ProjectDependencySourceKind.unknown;
-  }
+  return _projectDependencySourceKindByWireValue[raw] ??
+      ProjectDependencySourceKind.unknown;
 }
 
 ProjectLockState _lockStateFromString(String? raw) {
-  switch (raw) {
-    case 'fresh':
-      return ProjectLockState.fresh;
-    case 'stale':
-      return ProjectLockState.stale;
-    case 'missing':
-      return ProjectLockState.missing;
-    case 'unknown':
-    default:
-      return ProjectLockState.unknown;
-  }
+  return _lockStateByWireValue[raw] ?? ProjectLockState.unknown;
 }
 
 ProjectVendorState _vendorStateFromString(String? raw) {
-  switch (raw) {
-    case 'present':
-      return ProjectVendorState.present;
-    case 'missing':
-      return ProjectVendorState.missing;
-    case 'unknown':
-    default:
-      return ProjectVendorState.unknown;
-  }
+  return _vendorStateByWireValue[raw] ?? ProjectVendorState.unknown;
 }
 
 ToolchainResolutionSource _toolchainSourceFromString(String? raw) {
-  switch (raw) {
-    case 'project-pin':
-      return ToolchainResolutionSource.projectPin;
-    case 'managed-current':
-      return ToolchainResolutionSource.managedCurrent;
-    case 'environment':
-      return ToolchainResolutionSource.environment;
-    case 'unknown':
-      return ToolchainResolutionSource.unknown;
-    case 'unavailable':
-    default:
-      return ToolchainResolutionSource.unavailable;
-  }
+  return _toolchainSourceByWireValue[raw] ??
+      ToolchainResolutionSource.unavailable;
 }
 
 ProjectTargetDescriptor _projectTargetFromPayload(
@@ -1321,7 +1391,8 @@ ProjectDependencySnapshot _projectDependencyFromPayload(
     gitRevision: payload['rev'] as String?,
     registryRoot: registryRoot,
     requestedVersion: requestedVersion,
-    publishBlocking: payload['publish_blocking'] as bool? ??
+    publishBlocking:
+        payload['publish_blocking'] as bool? ??
         (sourceKind == ProjectDependencySourceKind.path ||
             sourceKind == ProjectDependencySourceKind.git ||
             sourceKind == ProjectDependencySourceKind.unknown ||
@@ -1361,99 +1432,102 @@ PackageDistributionSnapshot? _derivePackageDistributionFromPackages(
   }
 
   final registrySources = <String, _MutableRegistrySourceSummary>{};
-  final distributionPackages = packages.map((package) {
-    final blockingReasons = <String>[];
-    var runtimeRegistryDependencies = 0;
-    var runtimePathDependencies = 0;
-    var runtimeGitDependencies = 0;
-    var devRegistryDependencies = 0;
-    var devPathDependencies = 0;
-    var devGitDependencies = 0;
+  final distributionPackages = packages
+      .map((package) {
+        final blockingReasons = <String>[];
+        var runtimeRegistryDependencies = 0;
+        var runtimePathDependencies = 0;
+        var runtimeGitDependencies = 0;
+        var devRegistryDependencies = 0;
+        var devPathDependencies = 0;
+        var devGitDependencies = 0;
 
-    if (!package.publishEnabled) {
-      blockingReasons.add('package publish = false');
-    }
+        if (!package.publishEnabled) {
+          blockingReasons.add('package publish = false');
+        }
 
-    for (final dependency in package.dependencies) {
-      switch (dependency.sourceKind) {
-        case ProjectDependencySourceKind.registry:
-          if (dependency.kind == ProjectDependencyKind.dev) {
-            devRegistryDependencies += 1;
-          } else {
-            runtimeRegistryDependencies += 1;
+        for (final dependency in package.dependencies) {
+          switch (dependency.sourceKind) {
+            case ProjectDependencySourceKind.registry:
+              if (dependency.kind == ProjectDependencyKind.dev) {
+                devRegistryDependencies += 1;
+              } else {
+                runtimeRegistryDependencies += 1;
+              }
+              final registryRoot = dependency.registryRoot;
+              if (registryRoot != null && registryRoot.isNotEmpty) {
+                registrySources
+                    .putIfAbsent(
+                      registryRoot,
+                      () => _MutableRegistrySourceSummary(
+                        registryRoot: registryRoot,
+                        transport: _registryTransportFromRoot(registryRoot),
+                      ),
+                    )
+                    .notePackage(package.packageName);
+              }
+              break;
+            case ProjectDependencySourceKind.path:
+              if (dependency.kind == ProjectDependencyKind.dev) {
+                devPathDependencies += 1;
+              } else {
+                runtimePathDependencies += 1;
+              }
+              _appendUniqueNote(
+                blockingReasons,
+                'dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] uses a local path or workspace source: ${dependency.dependencyName}',
+              );
+              break;
+            case ProjectDependencySourceKind.git:
+              if (dependency.kind == ProjectDependencyKind.dev) {
+                devGitDependencies += 1;
+              } else {
+                runtimeGitDependencies += 1;
+              }
+              _appendUniqueNote(
+                blockingReasons,
+                'dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] uses a git source: ${dependency.dependencyName}',
+              );
+              break;
+            case ProjectDependencySourceKind.unknown:
+              if (dependency.publishBlocking) {
+                _appendUniqueNote(
+                  blockingReasons,
+                  'dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] is not registry-addressable: ${dependency.dependencyName}',
+                );
+              }
+              break;
           }
-          final registryRoot = dependency.registryRoot;
-          if (registryRoot != null && registryRoot.isNotEmpty) {
-            registrySources
-                .putIfAbsent(
-                  registryRoot,
-                  () => _MutableRegistrySourceSummary(
-                    registryRoot: registryRoot,
-                    transport: _registryTransportFromRoot(registryRoot),
-                  ),
-                )
-                .notePackage(package.packageName);
-          }
-          break;
-        case ProjectDependencySourceKind.path:
-          if (dependency.kind == ProjectDependencyKind.dev) {
-            devPathDependencies += 1;
-          } else {
-            runtimePathDependencies += 1;
-          }
-          _appendUniqueNote(
-            blockingReasons,
-            'dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] uses a local path or workspace source: ${dependency.dependencyName}',
-          );
-          break;
-        case ProjectDependencySourceKind.git:
-          if (dependency.kind == ProjectDependencyKind.dev) {
-            devGitDependencies += 1;
-          } else {
-            runtimeGitDependencies += 1;
-          }
-          _appendUniqueNote(
-            blockingReasons,
-            'dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] uses a git source: ${dependency.dependencyName}',
-          );
-          break;
-        case ProjectDependencySourceKind.unknown:
-          if (dependency.publishBlocking) {
+
+          if (dependency.publishBlocking &&
+              dependency.sourceKind == ProjectDependencySourceKind.registry) {
             _appendUniqueNote(
               blockingReasons,
-              'dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] is not registry-addressable: ${dependency.dependencyName}',
+              'registry dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] is incomplete: ${dependency.dependencyName}',
             );
           }
-          break;
-      }
+        }
 
-      if (dependency.publishBlocking &&
-          dependency.sourceKind == ProjectDependencySourceKind.registry) {
-        _appendUniqueNote(
-          blockingReasons,
-          'registry dependency in [${dependency.kind == ProjectDependencyKind.dev ? 'dev-dependencies' : 'dependencies'}] is incomplete: ${dependency.dependencyName}',
+        final publishReady = package.publishEnabled && blockingReasons.isEmpty;
+        return PackageDistributionPackageSnapshot(
+          packageName: package.packageName,
+          manifestPath: package.manifestPath,
+          publishEnabled: package.publishEnabled,
+          publishReady: publishReady,
+          blockingReasons: blockingReasons,
+          runtimeRegistryDependencies: runtimeRegistryDependencies,
+          runtimePathDependencies: runtimePathDependencies,
+          runtimeGitDependencies: runtimeGitDependencies,
+          devRegistryDependencies: devRegistryDependencies,
+          devPathDependencies: devPathDependencies,
+          devGitDependencies: devGitDependencies,
         );
-      }
-    }
+      })
+      .toList(growable: false);
 
-    final publishReady = package.publishEnabled && blockingReasons.isEmpty;
-    return PackageDistributionPackageSnapshot(
-      packageName: package.packageName,
-      manifestPath: package.manifestPath,
-      publishEnabled: package.publishEnabled,
-      publishReady: publishReady,
-      blockingReasons: blockingReasons,
-      runtimeRegistryDependencies: runtimeRegistryDependencies,
-      runtimePathDependencies: runtimePathDependencies,
-      runtimeGitDependencies: runtimeGitDependencies,
-      devRegistryDependencies: devRegistryDependencies,
-      devPathDependencies: devPathDependencies,
-      devGitDependencies: devGitDependencies,
-    );
-  }).toList(growable: false);
-
-  final publishablePackages =
-      distributionPackages.where((package) => package.publishReady).length;
+  final publishablePackages = distributionPackages
+      .where((package) => package.publishReady)
+      .length;
 
   return PackageDistributionSnapshot(
     schemaVersion: 1,
@@ -1702,7 +1776,8 @@ CompilerHandshakeSnapshot _compilerHandshakeFromPayload(
         .whereType<String>()
         .toList(growable: false),
     supportedContractVersions: contracts,
-    integrationPhase: payload['integration_phase'] as String? ??
+    integrationPhase:
+        payload['integration_phase'] as String? ??
         payload['active_integration_phase'] as String? ??
         'unknown',
     supportedAdapterModes:
@@ -1853,19 +1928,7 @@ _ParsedDependency _parseDependency({
 }) {
   final trimmed = value.trim();
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    final body = trimmed.substring(1, trimmed.length - 1);
-    final entries = <String, String>{};
-    for (final fragment in body.split(',')) {
-      final separator = fragment.contains(':')
-          ? fragment.indexOf(':')
-          : fragment.indexOf('=');
-      if (separator == -1) {
-        continue;
-      }
-      final key = fragment.substring(0, separator).trim();
-      final entryValue = fragment.substring(separator + 1).trim();
-      entries[key] = _parseString(entryValue);
-    }
+    final entries = _parseInlineTableEntries(trimmed);
     final path = entries['path'];
     final git = entries['git'];
     final rev = entries['rev'];
@@ -1874,63 +1937,65 @@ _ParsedDependency _parseDependency({
     final packageIdentity = entries['package'];
     final workspace = entries['workspace'];
     final isWorkspaceReference = path != null || workspace == 'true';
-    if (path != null || workspace == 'true') {
-      return _ParsedDependency(
-        name: name,
-        kind: kind,
-        requirement: path != null
-            ? 'path:$path'
-            : (workspace == 'true' ? 'workspace' : trimmed),
-        isWorkspaceReference: isWorkspaceReference,
-        sourceKind: ProjectDependencySourceKind.path,
-        packageIdentity: packageIdentity,
-        pathSource: path,
-        publishBlocking: true,
-      );
+    switch (_inlineDependencyShapeFromEntries(entries)) {
+      case _InlineDependencyShape.pathOrWorkspace:
+        return _ParsedDependency(
+          name: name,
+          kind: kind,
+          requirement: path != null
+              ? 'path:$path'
+              : (workspace == 'true' ? 'workspace' : trimmed),
+          isWorkspaceReference: isWorkspaceReference,
+          sourceKind: ProjectDependencySourceKind.path,
+          packageIdentity: packageIdentity,
+          pathSource: path,
+          publishBlocking: true,
+        );
+      case _InlineDependencyShape.git:
+        return _ParsedDependency(
+          name: name,
+          kind: kind,
+          requirement: rev == null ? 'git:$git' : 'git:$git#$rev',
+          isWorkspaceReference: false,
+          sourceKind: ProjectDependencySourceKind.git,
+          packageIdentity: packageIdentity,
+          gitSource: git,
+          gitRevision: rev,
+          publishBlocking: true,
+        );
+      case _InlineDependencyShape.registry:
+        final publishBlocking =
+            registry == null ||
+            registry.isEmpty ||
+            packageIdentity == null ||
+            packageIdentity.isEmpty ||
+            version == null ||
+            version.isEmpty;
+        return _ParsedDependency(
+          name: name,
+          kind: kind,
+          requirement: version == null
+              ? 'registry:$registry'
+              : 'registry:$registry@$version',
+          isWorkspaceReference: false,
+          sourceKind: ProjectDependencySourceKind.registry,
+          packageIdentity: packageIdentity,
+          registryRoot: registry,
+          requestedVersion: version,
+          publishBlocking: publishBlocking,
+        );
+      case _InlineDependencyShape.unknown:
+        return _ParsedDependency(
+          name: name,
+          kind: kind,
+          requirement: version ?? trimmed,
+          isWorkspaceReference: isWorkspaceReference,
+          sourceKind: ProjectDependencySourceKind.unknown,
+          packageIdentity: packageIdentity,
+          requestedVersion: version,
+          publishBlocking: true,
+        );
     }
-    if (git != null) {
-      return _ParsedDependency(
-        name: name,
-        kind: kind,
-        requirement: rev == null ? 'git:$git' : 'git:$git#$rev',
-        isWorkspaceReference: false,
-        sourceKind: ProjectDependencySourceKind.git,
-        packageIdentity: packageIdentity,
-        gitSource: git,
-        gitRevision: rev,
-        publishBlocking: true,
-      );
-    }
-    if (registry != null) {
-      final publishBlocking = registry.isEmpty ||
-          packageIdentity == null ||
-          packageIdentity.isEmpty ||
-          version == null ||
-          version.isEmpty;
-      return _ParsedDependency(
-        name: name,
-        kind: kind,
-        requirement: version == null
-            ? 'registry:$registry'
-            : 'registry:$registry@$version',
-        isWorkspaceReference: false,
-        sourceKind: ProjectDependencySourceKind.registry,
-        packageIdentity: packageIdentity,
-        registryRoot: registry,
-        requestedVersion: version,
-        publishBlocking: publishBlocking,
-      );
-    }
-    return _ParsedDependency(
-      name: name,
-      kind: kind,
-      requirement: version ?? trimmed,
-      isWorkspaceReference: isWorkspaceReference,
-      sourceKind: ProjectDependencySourceKind.unknown,
-      packageIdentity: packageIdentity,
-      requestedVersion: version,
-      publishBlocking: true,
-    );
   }
 
   return _ParsedDependency(
@@ -1941,6 +2006,39 @@ _ParsedDependency _parseDependency({
     sourceKind: ProjectDependencySourceKind.unknown,
     publishBlocking: true,
   );
+}
+
+Map<String, String> _parseInlineTableEntries(String raw) {
+  final body = raw.substring(1, raw.length - 1);
+  final entries = <String, String>{};
+  for (final fragment in body.split(',')) {
+    final separator = fragment.contains(':')
+        ? fragment.indexOf(':')
+        : fragment.indexOf('=');
+    if (separator == -1) {
+      continue;
+    }
+    entries[fragment.substring(0, separator).trim()] = _parseString(
+      fragment.substring(separator + 1).trim(),
+    );
+  }
+  return entries;
+}
+
+// Inline source markers are mutually exclusive; precedence matches legacy parsing.
+_InlineDependencyShape _inlineDependencyShapeFromEntries(
+  Map<String, String> entries,
+) {
+  if (entries.containsKey('path') || entries['workspace'] == 'true') {
+    return _InlineDependencyShape.pathOrWorkspace;
+  }
+  if (entries.containsKey('git')) {
+    return _InlineDependencyShape.git;
+  }
+  if (entries.containsKey('registry')) {
+    return _InlineDependencyShape.registry;
+  }
+  return _InlineDependencyShape.unknown;
 }
 
 bool? _parseBool(String value) {

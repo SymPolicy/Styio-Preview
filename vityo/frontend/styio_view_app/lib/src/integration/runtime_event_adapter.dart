@@ -38,7 +38,7 @@ RuntimeEventAdapter createRuntimeEventAdapter({
     platformTarget: platformTarget,
   );
   if (hostedConfig != null) {
-    return const _HostedPublishedRuntimeEventAdapter(
+    return const _PublishedRuntimeEventAdapter(
       capabilitySnapshot: AdapterCapabilitySnapshot(
         adapterKind: AdapterKind.cloud,
         languageService: AdapterEndpointCapability(
@@ -67,9 +67,8 @@ RuntimeEventAdapter createRuntimeEventAdapter({
     );
   }
 
-  if (platformTarget == PlatformTarget.ios ||
-      platformTarget == PlatformTarget.web) {
-    return const NoopRuntimeEventAdapter(
+  return switch (platformTarget) {
+    PlatformTarget.ios || PlatformTarget.web => const NoopRuntimeEventAdapter(
       capabilitySnapshot: AdapterCapabilitySnapshot(
         adapterKind: AdapterKind.cloud,
         languageService: AdapterEndpointCapability(
@@ -91,40 +90,38 @@ RuntimeEventAdapter createRuntimeEventAdapter({
               'Cloud runtime events will flow once the hosted route is published.',
         ),
       ),
-    );
-  }
-
-  return const _LocalPublishedRuntimeEventAdapter(
-    capabilitySnapshot: AdapterCapabilitySnapshot(
-      adapterKind: AdapterKind.cli,
-      languageService: AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.unavailable,
-        detail:
-            'CLI runtime event adapter does not expose language-service data.',
-      ),
-      projectGraph: AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.unavailable,
-        detail: 'CLI runtime event adapter does not expose project graph data.',
-      ),
-      execution: AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.partial,
-        detail:
-            'CLI execution is live for single-file and spio-routed project workflows.',
-      ),
-      runtimeEvents: AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.partial,
-        detail:
-            'Local CLI execution publishes replayable runtime event artifacts for completed sessions.',
-        supportedContractVersions: <int>[1],
+    ),
+    _ => const _PublishedRuntimeEventAdapter(
+      capabilitySnapshot: AdapterCapabilitySnapshot(
+        adapterKind: AdapterKind.cli,
+        languageService: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail:
+              'CLI runtime event adapter does not expose language-service data.',
+        ),
+        projectGraph: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.unavailable,
+          detail:
+              'CLI runtime event adapter does not expose project graph data.',
+        ),
+        execution: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.partial,
+          detail:
+              'CLI execution is live for single-file and spio-routed project workflows.',
+        ),
+        runtimeEvents: AdapterEndpointCapability(
+          level: AdapterCapabilityLevel.partial,
+          detail:
+              'Local CLI execution publishes replayable runtime event artifacts for completed sessions.',
+          supportedContractVersions: <int>[1],
+        ),
       ),
     ),
-  );
+  };
 }
 
 class NoopRuntimeEventAdapter implements RuntimeEventAdapter {
-  const NoopRuntimeEventAdapter({
-    required this.capabilitySnapshot,
-  });
+  const NoopRuntimeEventAdapter({required this.capabilitySnapshot});
 
   @override
   final AdapterCapabilitySnapshot capabilitySnapshot;
@@ -135,38 +132,22 @@ class NoopRuntimeEventAdapter implements RuntimeEventAdapter {
   }
 }
 
-class _HostedPublishedRuntimeEventAdapter implements RuntimeEventAdapter {
-  const _HostedPublishedRuntimeEventAdapter({
-    required this.capabilitySnapshot,
-  });
+class _PublishedRuntimeEventAdapter implements RuntimeEventAdapter {
+  const _PublishedRuntimeEventAdapter({required this.capabilitySnapshot});
 
   @override
   final AdapterCapabilitySnapshot capabilitySnapshot;
 
   @override
   Stream<RuntimeEventEnvelope> sessionEvents(String sessionId) {
-    final events = _runtimeEventRegistry[sessionId];
-    if (events == null || events.isEmpty) {
-      return const Stream<RuntimeEventEnvelope>.empty();
-    }
-    return Stream<RuntimeEventEnvelope>.fromIterable(events);
+    return _publishedRuntimeEvents(sessionId);
   }
 }
 
-class _LocalPublishedRuntimeEventAdapter implements RuntimeEventAdapter {
-  const _LocalPublishedRuntimeEventAdapter({
-    required this.capabilitySnapshot,
-  });
-
-  @override
-  final AdapterCapabilitySnapshot capabilitySnapshot;
-
-  @override
-  Stream<RuntimeEventEnvelope> sessionEvents(String sessionId) {
-    final events = _runtimeEventRegistry[sessionId];
-    if (events == null || events.isEmpty) {
-      return const Stream<RuntimeEventEnvelope>.empty();
-    }
-    return Stream<RuntimeEventEnvelope>.fromIterable(events);
+Stream<RuntimeEventEnvelope> _publishedRuntimeEvents(String sessionId) {
+  final events = _runtimeEventRegistry[sessionId];
+  if (events == null || events.isEmpty) {
+    return const Stream<RuntimeEventEnvelope>.empty();
   }
+  return Stream<RuntimeEventEnvelope>.fromIterable(events);
 }

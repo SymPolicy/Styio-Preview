@@ -34,11 +34,13 @@ Key SSOTs:
 3. 上游缺能力时，把缺口记在 `for-styio/` 或 `for-spio/`，不要直接在前端层静默降级产品语义。
 4. 若 contract 与既有计划或实现冲突，先显式指出冲突，再改文档和代码。
 5. integration 层的卫生修复如果改变了 workflow selection、runtime event replay、hosted payload 解码、overlay 文件系统枚举覆盖或 Web-only hosted shim，也要同步记录到本 runbook 或对应合同文档，避免代码表面和交接说明漂移。
+6. 对 manifest section、target kind、dependency source kind、toolchain source 这类离散 wire value，优先使用共享映射表或 enum helper，不要在多个 parser/adapter 里复制字符串判断。
+7. 对 blocked-result、missing-binary、cloud-only fallback 这类 adapter 返回值，优先收成共享 helper，避免 execution / toolchain / runtime adapters 各自维护一份近似但会漂移的消息和状态。
 
 ## Change Classes
 
 1. Small: 合同说明补全、integration 层局部适配或 handoff 文案清理。更新相应索引。
-2. Medium: schema 字段、adapter failure 语义、capability snapshot、payload parser、project workflow selection 或 runtime event surface 变化。补测试目录映射。
+2. Medium: schema 字段、adapter failure 语义、capability snapshot、payload parser、project workflow selection、manifest section parsing、wire-value 映射或 runtime event surface 变化。补测试目录映射。
 3. High: 主合同分层、责任边界、上游 handoff 模式或 hosted workspace 生命周期变化。走协调 review 并补 ADR。
 
 ## Required Gates

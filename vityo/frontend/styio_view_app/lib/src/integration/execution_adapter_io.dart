@@ -13,6 +13,60 @@ import 'project_graph_contract.dart';
 import 'runtime_event_adapter.dart';
 import 'spio_cli_discovery.dart';
 
+const AdapterCapabilitySnapshot
+_iosLocalCliExecutionCapabilitySnapshot = AdapterCapabilitySnapshot(
+  adapterKind: AdapterKind.cli,
+  languageService: AdapterEndpointCapability(
+    level: AdapterCapabilityLevel.unavailable,
+    detail: 'iOS does not expose local CLI language execution.',
+  ),
+  projectGraph: AdapterEndpointCapability(
+    level: AdapterCapabilityLevel.unavailable,
+    detail:
+        'Project graph is not driven through the local execution path on iOS.',
+  ),
+  execution: AdapterEndpointCapability(
+    level: AdapterCapabilityLevel.unavailable,
+    detail: 'iOS execution remains cloud-routed by policy.',
+  ),
+  runtimeEvents: AdapterEndpointCapability(
+    level: AdapterCapabilityLevel.unavailable,
+    detail: 'Runtime events remain cloud-routed on iOS.',
+  ),
+);
+
+const String _missingLocalStyioBinaryMessage =
+    'No local styio binary was resolved. Set STYIO_VIEW_STYIO_BIN or install styio through spio.';
+
+const String _missingLocalSpioBinaryMessage =
+    'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.';
+
+const ExecutionSession _iosCloudOnlyExecutionSession = ExecutionSession(
+  sessionId: 'ios-cloud-only',
+  kind: 'run',
+  status: ExecutionSessionStatus.blocked,
+  statusMessage:
+      'iOS execution is cloud-only and is not routed through the local CLI adapter.',
+  diagnostics: <Diagnostic>[],
+  stdoutEvents: <ExecutionLogEvent>[],
+  stderrEvents: <ExecutionLogEvent>[],
+);
+
+ExecutionSession _blockedRunExecutionSession({
+  required String sessionId,
+  required String message,
+}) {
+  return ExecutionSession(
+    sessionId: sessionId,
+    kind: 'run',
+    status: ExecutionSessionStatus.blocked,
+    statusMessage: message,
+    diagnostics: const <Diagnostic>[],
+    stdoutEvents: const <ExecutionLogEvent>[],
+    stderrEvents: const <ExecutionLogEvent>[],
+  );
+}
+
 Future<ExecutionAdapter> createPlatformExecutionAdapter({
   required PlatformTarget platformTarget,
   required ProjectGraphSnapshot projectGraph,
@@ -47,29 +101,30 @@ class _HostedExecutionAdapter implements ExecutionAdapter {
   final HostedControlPlaneClient hostedClient;
 
   @override
-  AdapterCapabilitySnapshot get capabilitySnapshot => const AdapterCapabilitySnapshot(
-        adapterKind: AdapterKind.cloud,
-        languageService: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.partial,
-          detail: 'Hosted language service stays reserved behind the cloud route.',
-        ),
-        projectGraph: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.available,
-          detail: 'Hosted project graph is live through the shared control plane.',
-          supportedContractVersions: <int>[1],
-        ),
-        execution: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.available,
-          detail: 'Hosted execution is live through the shared control plane.',
-          supportedContractVersions: <int>[1],
-        ),
-        runtimeEvents: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.available,
-          detail:
-              'Hosted execution publishes runtime event payloads through the shared control plane.',
-          supportedContractVersions: <int>[1],
-        ),
-      );
+  AdapterCapabilitySnapshot
+  get capabilitySnapshot => const AdapterCapabilitySnapshot(
+    adapterKind: AdapterKind.cloud,
+    languageService: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.partial,
+      detail: 'Hosted language service stays reserved behind the cloud route.',
+    ),
+    projectGraph: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.available,
+      detail: 'Hosted project graph is live through the shared control plane.',
+      supportedContractVersions: <int>[1],
+    ),
+    execution: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.available,
+      detail: 'Hosted execution is live through the shared control plane.',
+      supportedContractVersions: <int>[1],
+    ),
+    runtimeEvents: AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.available,
+      detail:
+          'Hosted execution publishes runtime event payloads through the shared control plane.',
+      supportedContractVersions: <int>[1],
+    ),
+  );
 
   @override
   Future<ExecutionSession> runActiveDocument({
@@ -80,15 +135,10 @@ class _HostedExecutionAdapter implements ExecutionAdapter {
   }) async {
     final workspaceId = projectGraph.hostedWorkspace?.workspaceId;
     if (workspaceId == null || workspaceId.isEmpty) {
-      return const ExecutionSession(
+      return _blockedRunExecutionSession(
         sessionId: 'missing-hosted-workspace',
-        kind: 'run',
-        status: ExecutionSessionStatus.blocked,
-        statusMessage:
+        message:
             'Hosted workspace identity is unavailable for cloud execution.',
-        diagnostics: <Diagnostic>[],
-        stdoutEvents: <ExecutionLogEvent>[],
-        stderrEvents: <ExecutionLogEvent>[],
       );
     }
 
@@ -99,29 +149,29 @@ class _HostedExecutionAdapter implements ExecutionAdapter {
     try {
       final response = switch (workflow.command) {
         'test' => await hostedClient.testWorkflow(
-            workspaceId: workspaceId,
-            activeFilePath: activeFilePath,
-            documentText: document.text,
-            packageName: workflow.packageName,
-            targetName: workflow.targetName,
-            targetKind: workflow.targetKind,
-          ),
+          workspaceId: workspaceId,
+          activeFilePath: activeFilePath,
+          documentText: document.text,
+          packageName: workflow.packageName,
+          targetName: workflow.targetName,
+          targetKind: workflow.targetKind,
+        ),
         'build' => await hostedClient.buildWorkflow(
-            workspaceId: workspaceId,
-            activeFilePath: activeFilePath,
-            documentText: document.text,
-            packageName: workflow.packageName,
-            targetName: workflow.targetName,
-            targetKind: workflow.targetKind,
-          ),
+          workspaceId: workspaceId,
+          activeFilePath: activeFilePath,
+          documentText: document.text,
+          packageName: workflow.packageName,
+          targetName: workflow.targetName,
+          targetKind: workflow.targetKind,
+        ),
         _ => await hostedClient.runWorkflow(
-            workspaceId: workspaceId,
-            activeFilePath: activeFilePath,
-            documentText: document.text,
-            packageName: workflow.packageName,
-            targetName: workflow.targetName,
-            targetKind: workflow.targetKind,
-          ),
+          workspaceId: workspaceId,
+          activeFilePath: activeFilePath,
+          documentText: document.text,
+          packageName: workflow.packageName,
+          targetName: workflow.targetName,
+          targetKind: workflow.targetKind,
+        ),
       };
       final decoded = executionSessionFromHostedResponse(
         response: response,
@@ -166,95 +216,13 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
   final CompilerHandshakeSnapshot? compiler;
 
   @override
-  AdapterCapabilitySnapshot get capabilitySnapshot {
-    if (platformTarget == PlatformTarget.ios) {
-      return const AdapterCapabilitySnapshot(
-        adapterKind: AdapterKind.cli,
-        languageService: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail: 'iOS does not expose local CLI language execution.',
-        ),
-        projectGraph: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'Project graph is not driven through the local execution path on iOS.',
-        ),
-        execution: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail: 'iOS execution remains cloud-routed by policy.',
-        ),
-        runtimeEvents: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail: 'Runtime events remain cloud-routed on iOS.',
-        ),
-      );
-    }
-
-    if (compiler == null) {
-      return const AdapterCapabilitySnapshot(
-        adapterKind: AdapterKind.cli,
-        languageService: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'No published local styio binary was resolved for CLI language services.',
-        ),
-        projectGraph: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'Project graph is handled by the dedicated project graph adapter.',
-        ),
-        execution: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'No local styio binary was resolved. Set STYIO_VIEW_STYIO_BIN or install styio through spio.',
-        ),
-        runtimeEvents: AdapterEndpointCapability(
-          level: AdapterCapabilityLevel.unavailable,
-          detail:
-              'Runtime events require a published execution/runtime contract.',
-        ),
-      );
-    }
-
-    final hasProjectExecution =
-        projectGraph.hasManifest && compiler!.supportsContract('compile_plan');
-    final hasRuntimeEvents = compiler!.supportsContract('runtime_events');
-    final executionDetail = hasProjectExecution
-        ? 'Project execution routes through spio build/run/test with live compile-plan v1 handoff.'
-        : projectGraph.hasManifest
-            ? 'Project execution remains blocked until the active compiler advertises compile-plan support.'
-            : 'CLI execution is available through published single-file entry plus jsonl diagnostics.';
-
-    return AdapterCapabilitySnapshot(
-      adapterKind: AdapterKind.cli,
-      languageService: const AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.partial,
-        detail:
-            'Published CLI contract currently provides machine-info and jsonl diagnostics only.',
-      ),
-      projectGraph: const AdapterEndpointCapability(
-        level: AdapterCapabilityLevel.unavailable,
-        detail:
-            'Project graph is handled by the dedicated project graph adapter.',
-      ),
-      execution: AdapterEndpointCapability(
-        level: hasProjectExecution || !projectGraph.hasManifest
-            ? AdapterCapabilityLevel.available
-            : AdapterCapabilityLevel.partial,
-        detail: executionDetail,
-      ),
-      runtimeEvents: AdapterEndpointCapability(
-        level: hasRuntimeEvents
-            ? AdapterCapabilityLevel.available
-            : AdapterCapabilityLevel.unavailable,
-        detail: hasRuntimeEvents
-            ? 'Runtime events route through the published styio runtime_events contract.'
-            : 'Runtime events stay unavailable until styio publishes a runtime event machine contract.',
-        supportedContractVersions:
-            hasRuntimeEvents ? const <int>[1] : const <int>[],
-      ),
-    );
-  }
+  AdapterCapabilitySnapshot get capabilitySnapshot => switch (platformTarget) {
+    PlatformTarget.ios => _iosLocalCliExecutionCapabilitySnapshot,
+    _ => _localCliExecutionCapabilitySnapshot(
+      projectGraph: projectGraph,
+      compiler: compiler,
+    ),
+  };
 
   @override
   Future<ExecutionSession> runActiveDocument({
@@ -263,44 +231,32 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
     required DocumentState document,
     required String activeFilePath,
   }) async {
-    if (platformTarget == PlatformTarget.ios) {
-      return const ExecutionSession(
-        sessionId: 'ios-cloud-only',
-        kind: 'run',
-        status: ExecutionSessionStatus.blocked,
-        statusMessage:
-            'iOS execution is cloud-only and is not routed through the local CLI adapter.',
-        diagnostics: <Diagnostic>[],
-        stdoutEvents: <ExecutionLogEvent>[],
-        stderrEvents: <ExecutionLogEvent>[],
-      );
+    switch (platformTarget) {
+      case PlatformTarget.ios:
+        return _iosCloudOnlyExecutionSession;
+      case PlatformTarget.web:
+      case PlatformTarget.windows:
+      case PlatformTarget.linux:
+      case PlatformTarget.android:
+      case PlatformTarget.macos:
+      case PlatformTarget.unknown:
+        break;
     }
 
     final resolvedCompiler = compiler;
     if (resolvedCompiler == null) {
-      return const ExecutionSession(
+      return _blockedRunExecutionSession(
         sessionId: 'missing-styio-binary',
-        kind: 'run',
-        status: ExecutionSessionStatus.blocked,
-        statusMessage:
-            'No local styio binary was resolved. Set STYIO_VIEW_STYIO_BIN or install styio through spio.',
-        diagnostics: <Diagnostic>[],
-        stdoutEvents: <ExecutionLogEvent>[],
-        stderrEvents: <ExecutionLogEvent>[],
+        message: _missingLocalStyioBinaryMessage,
       );
     }
 
     if (projectGraph.hasManifest) {
       if (!resolvedCompiler.supportsContract('compile_plan')) {
-        return const ExecutionSession(
+        return _blockedRunExecutionSession(
           sessionId: 'compile-plan-preview-only',
-          kind: 'run',
-          status: ExecutionSessionStatus.blocked,
-          statusMessage:
+          message:
               'Project build/run is blocked because the active styio binary does not advertise compile-plan support.',
-          diagnostics: <Diagnostic>[],
-          stdoutEvents: <ExecutionLogEvent>[],
-          stderrEvents: <ExecutionLogEvent>[],
         );
       }
       return _runProjectWorkflow(
@@ -357,6 +313,76 @@ class _LocalCliExecutionAdapter implements ExecutionAdapter {
       await _cleanupPreparedExecutionInput(preparedInput);
     }
   }
+}
+
+AdapterCapabilitySnapshot _localCliExecutionCapabilitySnapshot({
+  required ProjectGraphSnapshot projectGraph,
+  required CompilerHandshakeSnapshot? compiler,
+}) {
+  if (compiler == null) {
+    return const AdapterCapabilitySnapshot(
+      adapterKind: AdapterKind.cli,
+      languageService: AdapterEndpointCapability(
+        level: AdapterCapabilityLevel.unavailable,
+        detail:
+            'No published local styio binary was resolved for CLI language services.',
+      ),
+      projectGraph: AdapterEndpointCapability(
+        level: AdapterCapabilityLevel.unavailable,
+        detail:
+            'Project graph is handled by the dedicated project graph adapter.',
+      ),
+      execution: AdapterEndpointCapability(
+        level: AdapterCapabilityLevel.unavailable,
+        detail: _missingLocalStyioBinaryMessage,
+      ),
+      runtimeEvents: AdapterEndpointCapability(
+        level: AdapterCapabilityLevel.unavailable,
+        detail:
+            'Runtime events require a published execution/runtime contract.',
+      ),
+    );
+  }
+
+  final hasProjectExecution =
+      projectGraph.hasManifest && compiler.supportsContract('compile_plan');
+  final hasRuntimeEvents = compiler.supportsContract('runtime_events');
+  final executionDetail = hasProjectExecution
+      ? 'Project execution routes through spio build/run/test with live compile-plan v1 handoff.'
+      : projectGraph.hasManifest
+      ? 'Project execution remains blocked until the active compiler advertises compile-plan support.'
+      : 'CLI execution is available through published single-file entry plus jsonl diagnostics.';
+
+  return AdapterCapabilitySnapshot(
+    adapterKind: AdapterKind.cli,
+    languageService: const AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.partial,
+      detail:
+          'Published CLI contract currently provides machine-info and jsonl diagnostics only.',
+    ),
+    projectGraph: const AdapterEndpointCapability(
+      level: AdapterCapabilityLevel.unavailable,
+      detail:
+          'Project graph is handled by the dedicated project graph adapter.',
+    ),
+    execution: AdapterEndpointCapability(
+      level: hasProjectExecution || !projectGraph.hasManifest
+          ? AdapterCapabilityLevel.available
+          : AdapterCapabilityLevel.partial,
+      detail: executionDetail,
+    ),
+    runtimeEvents: AdapterEndpointCapability(
+      level: hasRuntimeEvents
+          ? AdapterCapabilityLevel.available
+          : AdapterCapabilityLevel.unavailable,
+      detail: hasRuntimeEvents
+          ? 'Runtime events route through the published styio runtime_events contract.'
+          : 'Runtime events stay unavailable until styio publishes a runtime event machine contract.',
+      supportedContractVersions: hasRuntimeEvents
+          ? const <int>[1]
+          : const <int>[],
+    ),
+  );
 }
 
 class _ProjectWorkflowSelection {
@@ -436,10 +462,7 @@ class _ParsedDiagnostics {
 }
 
 class _ParsedDiagnosticRecord {
-  const _ParsedDiagnosticRecord({
-    this.diagnostic,
-    this.logMessage,
-  });
+  const _ParsedDiagnosticRecord({this.diagnostic, this.logMessage});
 
   final Diagnostic? diagnostic;
   final String? logMessage;
@@ -453,14 +476,9 @@ Future<ExecutionSession> _runProjectWorkflow({
 }) async {
   final manifestPath = projectGraph.manifestPath;
   if (manifestPath == null) {
-    return const ExecutionSession(
+    return _blockedRunExecutionSession(
       sessionId: 'missing-manifest',
-      kind: 'run',
-      status: ExecutionSessionStatus.blocked,
-      statusMessage: 'Project execution requires a resolved spio manifest.',
-      diagnostics: <Diagnostic>[],
-      stdoutEvents: <ExecutionLogEvent>[],
-      stderrEvents: <ExecutionLogEvent>[],
+      message: 'Project execution requires a resolved spio manifest.',
     );
   }
 
@@ -468,15 +486,9 @@ Future<ExecutionSession> _runProjectWorkflow({
     workspaceRoot: projectGraph.workspaceRoot,
   );
   if (spioBinary == null) {
-    return const ExecutionSession(
+    return _blockedRunExecutionSession(
       sessionId: 'missing-spio-binary',
-      kind: 'run',
-      status: ExecutionSessionStatus.blocked,
-      statusMessage:
-          'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.',
-      diagnostics: <Diagnostic>[],
-      stdoutEvents: <ExecutionLogEvent>[],
-      stderrEvents: <ExecutionLogEvent>[],
+      message: _missingLocalSpioBinaryMessage,
     );
   }
   final useWorkflowPayloads = await _supportsSpioWorkflowSuccessPayloads(
@@ -496,18 +508,15 @@ Future<ExecutionSession> _runProjectWorkflow({
   final normalizedPath = preparedInput.pathOverlay?.normalize;
 
   try {
-    final result = await Process.run(
-        spioBinary,
-        <String>[
-          if (useWorkflowPayloads) '--json',
-          workflow.command,
-          '--manifest-path',
-          preparedInput.manifestPath,
-          '--styio-bin',
-          compiler.binaryPath,
-          ...workflow.args,
-        ],
-        workingDirectory: preparedInput.workspaceRoot);
+    final result = await Process.run(spioBinary, <String>[
+      if (useWorkflowPayloads) '--json',
+      workflow.command,
+      '--manifest-path',
+      preparedInput.manifestPath,
+      '--styio-bin',
+      compiler.binaryPath,
+      ...workflow.args,
+    ], workingDirectory: preparedInput.workspaceRoot);
 
     final stdout = '${result.stdout}';
     final stderr = '${result.stderr}';
@@ -526,13 +535,16 @@ Future<ExecutionSession> _runProjectWorkflow({
       }
     }
     final failurePayload = _parseJsonObject(stderr) ?? _parseJsonObject(stdout);
-    final sessionId = _workflowSessionIdFromPayload(failurePayload) ??
+    final sessionId =
+        _workflowSessionIdFromPayload(failurePayload) ??
         DateTime.now().microsecondsSinceEpoch.toString();
     final runtimeEvents = await _readWorkflowRuntimeEvents(
-      rawRuntimeEvents:
-          failurePayload == null ? null : failurePayload['runtime_events'],
-      runtimeEventsPath:
-          failurePayload == null ? null : failurePayload['runtime_events_path'],
+      rawRuntimeEvents: failurePayload == null
+          ? null
+          : failurePayload['runtime_events'],
+      runtimeEventsPath: failurePayload == null
+          ? null
+          : failurePayload['runtime_events_path'],
       sessionId: sessionId,
       workspaceRoot: preparedInput.workspaceRoot,
       normalizePath: normalizedPath,
@@ -569,7 +581,7 @@ Future<ExecutionSession> _runProjectWorkflow({
       statusMessage: result.exitCode == 0
           ? workflow.successMessage
           : (failurePayload?['message'] as String? ??
-              'spio ${workflow.command} exited with code ${result.exitCode}.'),
+                'spio ${workflow.command} exited with code ${result.exitCode}.'),
       diagnostics: <Diagnostic>[
         ...payloadDiagnostics.diagnostics,
         ...stdoutChannel.diagnostics,
@@ -658,7 +670,8 @@ Future<ExecutionSession?> _sessionFromWorkflowSuccessPayload({
       return null;
     }
 
-    final sessionId = _workflowSessionIdFromPayload(decoded) ??
+    final sessionId =
+        _workflowSessionIdFromPayload(decoded) ??
         DateTime.now().microsecondsSinceEpoch.toString();
     final runtimeEvents = await _readWorkflowRuntimeEvents(
       rawRuntimeEvents: decoded['runtime_events'],
@@ -877,7 +890,8 @@ RuntimeEventEnvelope? _parseRuntimeEventObject(
     return null;
   }
 
-  final resolvedSessionId = _stringValue(decoded['session_id']) ??
+  final resolvedSessionId =
+      _stringValue(decoded['session_id']) ??
       _stringValue(decoded['sessionId']) ??
       sessionId;
   final timestampValue = _stringValue(decoded['timestamp']);
@@ -894,7 +908,8 @@ RuntimeEventEnvelope? _parseRuntimeEventObject(
         _intValue(decoded['schema_version'] ?? decoded['schemaVersion']) ?? 1,
     sessionId: resolvedSessionId,
     sequence: _intValue(decoded['sequence']) ?? 0,
-    timestamp: DateTime.tryParse(timestampValue ?? '')?.toUtc() ??
+    timestamp:
+        DateTime.tryParse(timestampValue ?? '')?.toUtc() ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     eventKind: eventKind,
     origin: _stringValue(decoded['origin']) ?? 'styio.runtime',
@@ -976,8 +991,8 @@ _ProjectWorkflowSelection _selectProjectWorkflow({
     final packageTargets = packageName == null
         ? const <ProjectTargetDescriptor>[]
         : projectGraph.targets
-            .where((candidate) => candidate.packageName == packageName)
-            .toList(growable: false);
+              .where((candidate) => candidate.packageName == packageName)
+              .toList(growable: false);
     if (packageTargets.length == 1) {
       target = packageTargets.single;
     } else if (projectGraph.targets.length == 1) {
@@ -986,8 +1001,9 @@ _ProjectWorkflowSelection _selectProjectWorkflow({
       return _ProjectWorkflowSelection(
         command: 'build',
         kind: 'build',
-        args:
-            packageName == null ? const <String>[] : _packageArgs(packageName),
+        args: packageName == null
+            ? const <String>[]
+            : _packageArgs(packageName),
         successMessage: packageName == null
             ? 'Project build completed through spio.'
             : 'Project package build completed through spio.',
@@ -1011,10 +1027,7 @@ _ProjectWorkflowSelection _selectProjectWorkflow({
       return _ProjectWorkflowSelection(
         command: 'build',
         kind: 'build',
-        args: <String>[
-          ..._packageArgs(target.packageName),
-          '--lib',
-        ],
+        args: <String>[..._packageArgs(target.packageName), '--lib'],
         successMessage: 'Project library build completed through spio.',
       );
     case ProjectTargetKind.bin:
@@ -1050,15 +1063,17 @@ Future<_PreparedExecutionInput> _prepareSingleFileExecutionInput({
       document: document,
     );
     return _PreparedExecutionInput(
-      filePath: overlay.pathOverlay.overlayPathForSource(activeFilePath) ??
+      filePath:
+          overlay.pathOverlay.overlayPathForSource(activeFilePath) ??
           activeFilePath,
       temporaryDirectory: overlay.temporaryDirectory,
       pathOverlay: overlay.pathOverlay,
     );
   }
 
-  final tempDirectory =
-      await Directory.systemTemp.createTemp('styio-view-run-');
+  final tempDirectory = await Directory.systemTemp.createTemp(
+    'styio-view-run-',
+  );
   final tempFile = File(
     '${tempDirectory.path}${Platform.pathSeparator}main.styio',
   );
@@ -1070,7 +1085,8 @@ Future<_PreparedExecutionInput> _prepareSingleFileExecutionInput({
 }
 
 Future<void> _cleanupPreparedExecutionInput(
-    _PreparedExecutionInput input) async {
+  _PreparedExecutionInput input,
+) async {
   final temporaryDirectory = input.temporaryDirectory;
   if (temporaryDirectory == null) {
     return;
@@ -1145,7 +1161,8 @@ Future<bool> _shouldUseDocumentOverlay({
 Future<String> _singleFileOverlayRoot(String activeFilePath) async {
   var current = File(activeFilePath).parent.absolute;
   while (true) {
-    final hasConfig = await File(
+    final hasConfig =
+        await File(
           '${current.path}${Platform.pathSeparator}styio.toml',
         ).exists() ||
         await File(
@@ -1162,11 +1179,8 @@ Future<String> _singleFileOverlayRoot(String activeFilePath) async {
   }
 }
 
-Future<
-    ({
-      Directory temporaryDirectory,
-      _PathOverlayMapping pathOverlay,
-    })> _createDocumentOverlay({
+Future<({Directory temporaryDirectory, _PathOverlayMapping pathOverlay})>
+_createDocumentOverlay({
   required String sourceRoot,
   required String activeFilePath,
   required DocumentState document,
@@ -1190,9 +1204,9 @@ Future<
 Future<Directory> _createSiblingOverlayDirectory(String sourceRoot) async {
   final parentDirectory = Directory(sourceRoot).absolute.parent;
   final sourceName = Directory(sourceRoot).uri.pathSegments.lastWhere(
-        (segment) => segment.isNotEmpty,
-        orElse: () => 'workspace',
-      );
+    (segment) => segment.isNotEmpty,
+    orElse: () => 'workspace',
+  );
   try {
     return parentDirectory.createTemp('.styio-view-$sourceName-');
   } on FileSystemException {
@@ -1271,10 +1285,7 @@ Future<void> _linkChildrenIntoOverlay({
         FileSystemEntityType.notFound) {
       continue;
     }
-    await _createLinkOrCopy(
-      sourcePath: entity.path,
-      overlayPath: overlayPath,
-    );
+    await _createLinkOrCopy(sourcePath: entity.path, overlayPath: overlayPath);
   }
 }
 
@@ -1286,8 +1297,10 @@ Future<void> _createLinkOrCopy({
     await Link(overlayPath).create(sourcePath);
     return;
   } on FileSystemException {
-    final entityType =
-        await FileSystemEntity.type(sourcePath, followLinks: false);
+    final entityType = await FileSystemEntity.type(
+      sourcePath,
+      followLinks: false,
+    );
     switch (entityType) {
       case FileSystemEntityType.directory:
         await _copyDirectory(
@@ -1326,8 +1339,10 @@ Future<void> _copyDirectory({
     if (name.isEmpty) {
       continue;
     }
-    final destinationPath =
-        _appendRelativePath(destinationDirectory.path, name);
+    final destinationPath = _appendRelativePath(
+      destinationDirectory.path,
+      name,
+    );
     await _createLinkOrCopy(
       sourcePath: entity.path,
       overlayPath: destinationPath,
@@ -1527,12 +1542,14 @@ _ParsedDiagnosticRecord? _parseDiagnosticObject(
     activeFilePath: activeFilePath,
     normalizePath: normalizePath,
   );
-  final hasDiagnosticMarker = category != null ||
+  final hasDiagnosticMarker =
+      category != null ||
       kind == 'diagnostic' ||
       type == 'diagnostic' ||
       decoded['diagnostic'] == true ||
       decoded['eventKind'] == 'diagnostic.emitted';
-  final hasPayloadShape = severityLabel != null ||
+  final hasPayloadShape =
+      severityLabel != null ||
       _stringValue(decoded['code']) != null ||
       _stringValue(decoded['subcode']) != null ||
       _stringValue(decoded['file']) != null ||
@@ -1582,7 +1599,7 @@ String? _diagnosticMessage(Map<String, dynamic> decoded) {
     'text',
     'detail',
     'reason',
-    'raw'
+    'raw',
   ]) {
     final value = _messageValue(decoded[key]);
     if (value != null && value.isNotEmpty) {

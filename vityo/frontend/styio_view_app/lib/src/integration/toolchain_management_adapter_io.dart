@@ -7,6 +7,36 @@ import 'project_graph_contract.dart';
 import 'spio_cli_discovery.dart';
 import 'toolchain_management_adapter.dart';
 
+const String _missingSpioBinaryMessage =
+    'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.';
+
+ToolchainCommandResult _blockedToolchainCommandResult({
+  required String command,
+  required String statusMessage,
+}) {
+  return ToolchainCommandResult(
+    command: command,
+    status: ToolchainCommandStatus.blocked,
+    statusMessage: statusMessage,
+    stdout: '',
+    stderr: '',
+  );
+}
+
+ToolchainCommandResult? _unsupportedLocalToolchainPlatformResult({
+  required PlatformTarget platformTarget,
+  required String command,
+}) {
+  return switch (platformTarget) {
+    PlatformTarget.ios || PlatformTarget.web => _blockedToolchainCommandResult(
+      command: command,
+      statusMessage:
+          '${platformTarget.label} does not expose local spio toolchain management.',
+    ),
+    _ => null,
+  };
+}
+
 Future<ToolchainManagementAdapter> createPlatformToolchainManagementAdapter({
   required PlatformTarget platformTarget,
 }) async {
@@ -35,140 +65,95 @@ class _HostedToolchainManagementAdapter implements ToolchainManagementAdapter {
   Future<ToolchainCommandResult> installManagedCompiler({
     required ProjectGraphSnapshot projectGraph,
     required String styioBinaryPath,
-  }) async {
-    final workspaceId = projectGraph.hostedWorkspace?.workspaceId;
-    if (workspaceId == null || workspaceId.isEmpty) {
-      return const ToolchainCommandResult(
-        command: 'tool install',
-        status: ToolchainCommandStatus.blocked,
-        statusMessage:
-            'Hosted workspace identity is unavailable for tool install.',
-        stdout: '',
-        stderr: '',
-      );
-    }
-    try {
-      final response = await hostedClient.toolInstall(
-        workspaceId: workspaceId,
-        styioBinaryPath: styioBinaryPath,
-      );
-      return _toolchainCommandResultFromHostedResponse(
-        command: 'tool install',
-        response: response,
-      );
-    } catch (error) {
-      return ToolchainCommandResult(
-        command: 'tool install',
-        status: ToolchainCommandStatus.failed,
-        statusMessage: 'Hosted tool install failed: $error',
-        stdout: '',
-        stderr: '',
-      );
-    }
-  }
+  }) => _runHostedToolchainCommand(
+    projectGraph: projectGraph,
+    command: 'tool install',
+    unavailableMessage:
+        'Hosted workspace identity is unavailable for tool install.',
+    failurePrefix: 'Hosted tool install failed',
+    invoke: (workspaceId) => hostedClient.toolInstall(
+      workspaceId: workspaceId,
+      styioBinaryPath: styioBinaryPath,
+    ),
+  );
 
   @override
   Future<ToolchainCommandResult> useManagedCompiler({
     required ProjectGraphSnapshot projectGraph,
     required String compilerVersion,
     String? channel,
-  }) async {
-    final workspaceId = projectGraph.hostedWorkspace?.workspaceId;
-    if (workspaceId == null || workspaceId.isEmpty) {
-      return const ToolchainCommandResult(
-        command: 'tool use',
-        status: ToolchainCommandStatus.blocked,
-        statusMessage:
-            'Hosted workspace identity is unavailable for tool use.',
-        stdout: '',
-        stderr: '',
-      );
-    }
-    try {
-      final response = await hostedClient.toolUse(
-        workspaceId: workspaceId,
-        compilerVersion: compilerVersion,
-        channel: channel,
-      );
-      return _toolchainCommandResultFromHostedResponse(
-        command: 'tool use',
-        response: response,
-      );
-    } catch (error) {
-      return ToolchainCommandResult(
-        command: 'tool use',
-        status: ToolchainCommandStatus.failed,
-        statusMessage: 'Hosted tool use failed: $error',
-        stdout: '',
-        stderr: '',
-      );
-    }
-  }
+  }) => _runHostedToolchainCommand(
+    projectGraph: projectGraph,
+    command: 'tool use',
+    unavailableMessage:
+        'Hosted workspace identity is unavailable for tool use.',
+    failurePrefix: 'Hosted tool use failed',
+    invoke: (workspaceId) => hostedClient.toolUse(
+      workspaceId: workspaceId,
+      compilerVersion: compilerVersion,
+      channel: channel,
+    ),
+  );
 
   @override
   Future<ToolchainCommandResult> pinManagedCompiler({
     required ProjectGraphSnapshot projectGraph,
     required String compilerVersion,
     String? channel,
-  }) async {
-    final workspaceId = projectGraph.hostedWorkspace?.workspaceId;
-    if (workspaceId == null || workspaceId.isEmpty) {
-      return const ToolchainCommandResult(
-        command: 'tool pin',
-        status: ToolchainCommandStatus.blocked,
-        statusMessage:
-            'Hosted workspace identity is unavailable for tool pin.',
-        stdout: '',
-        stderr: '',
-      );
-    }
-    try {
-      final response = await hostedClient.toolPin(
-        workspaceId: workspaceId,
-        compilerVersion: compilerVersion,
-        channel: channel,
-      );
-      return _toolchainCommandResultFromHostedResponse(
-        command: 'tool pin',
-        response: response,
-      );
-    } catch (error) {
-      return ToolchainCommandResult(
-        command: 'tool pin',
-        status: ToolchainCommandStatus.failed,
-        statusMessage: 'Hosted tool pin failed: $error',
-        stdout: '',
-        stderr: '',
-      );
-    }
-  }
+  }) => _runHostedToolchainCommand(
+    projectGraph: projectGraph,
+    command: 'tool pin',
+    unavailableMessage:
+        'Hosted workspace identity is unavailable for tool pin.',
+    failurePrefix: 'Hosted tool pin failed',
+    invoke: (workspaceId) => hostedClient.toolPin(
+      workspaceId: workspaceId,
+      compilerVersion: compilerVersion,
+      channel: channel,
+    ),
+  );
 
   @override
   Future<ToolchainCommandResult> clearPinnedCompiler({
     required ProjectGraphSnapshot projectGraph,
+  }) => _runHostedToolchainCommand(
+    projectGraph: projectGraph,
+    command: 'tool pin',
+    unavailableMessage:
+        'Hosted workspace identity is unavailable for tool pin clear.',
+    failurePrefix: 'Hosted tool pin clear failed',
+    invoke: (workspaceId) =>
+        hostedClient.toolClearPin(workspaceId: workspaceId),
+  );
+
+  Future<ToolchainCommandResult> _runHostedToolchainCommand({
+    required ProjectGraphSnapshot projectGraph,
+    required String command,
+    required String unavailableMessage,
+    required String failurePrefix,
+    required Future<Map<String, dynamic>> Function(String workspaceId) invoke,
   }) async {
     final workspaceId = projectGraph.hostedWorkspace?.workspaceId;
     if (workspaceId == null || workspaceId.isEmpty) {
-      return const ToolchainCommandResult(
-        command: 'tool pin',
+      return ToolchainCommandResult(
+        command: command,
         status: ToolchainCommandStatus.blocked,
-        statusMessage:
-            'Hosted workspace identity is unavailable for tool pin clear.',
+        statusMessage: unavailableMessage,
         stdout: '',
         stderr: '',
       );
     }
     try {
-      final response = await hostedClient.toolClearPin(workspaceId: workspaceId);
+      final response = await invoke(workspaceId);
       return _toolchainCommandResultFromHostedResponse(
-        command: 'tool pin',
+        command: command,
         response: response,
       );
     } catch (error) {
       return ToolchainCommandResult(
-        command: 'tool pin',
+        command: command,
         status: ToolchainCommandStatus.failed,
-        statusMessage: 'Hosted tool pin clear failed: $error',
+        statusMessage: '$failurePrefix: $error',
         stdout: '',
         stderr: '',
       );
@@ -178,9 +163,7 @@ class _HostedToolchainManagementAdapter implements ToolchainManagementAdapter {
 
 class _LocalCliToolchainManagementAdapter
     implements ToolchainManagementAdapter {
-  const _LocalCliToolchainManagementAdapter({
-    required this.platformTarget,
-  });
+  const _LocalCliToolchainManagementAdapter({required this.platformTarget});
 
   final PlatformTarget platformTarget;
 
@@ -234,13 +217,10 @@ class _LocalCliToolchainManagementAdapter
     final manifestPath = projectGraph.manifestPath;
     if (manifestPath == null || manifestPath.isEmpty) {
       return Future<ToolchainCommandResult>.value(
-        const ToolchainCommandResult(
+        _blockedToolchainCommandResult(
           command: 'tool pin',
-          status: ToolchainCommandStatus.blocked,
           statusMessage:
               'Project pinning requires a resolved spio manifest path.',
-          stdout: '',
-          stderr: '',
         ),
       );
     }
@@ -270,13 +250,10 @@ class _LocalCliToolchainManagementAdapter
     final manifestPath = projectGraph.manifestPath;
     if (manifestPath == null || manifestPath.isEmpty) {
       return Future<ToolchainCommandResult>.value(
-        const ToolchainCommandResult(
+        _blockedToolchainCommandResult(
           command: 'tool pin',
-          status: ToolchainCommandStatus.blocked,
           statusMessage:
               'Clearing a project pin requires a resolved spio manifest path.',
-          stdout: '',
-          stderr: '',
         ),
       );
     }
@@ -299,29 +276,21 @@ class _LocalCliToolchainManagementAdapter
     required String command,
     required List<String> args,
   }) async {
-    if (platformTarget == PlatformTarget.ios ||
-        platformTarget == PlatformTarget.web) {
-      return ToolchainCommandResult(
-        command: command,
-        status: ToolchainCommandStatus.blocked,
-        statusMessage:
-            '${platformTarget.label} does not expose local spio toolchain management.',
-        stdout: '',
-        stderr: '',
-      );
+    final blockedResult = _unsupportedLocalToolchainPlatformResult(
+      platformTarget: platformTarget,
+      command: command,
+    );
+    if (blockedResult != null) {
+      return blockedResult;
     }
 
     final spioBinary = await resolveSpioBinary(
       workspaceRoot: projectGraph.workspaceRoot,
     );
     if (spioBinary == null) {
-      return ToolchainCommandResult(
+      return _blockedToolchainCommandResult(
         command: command,
-        status: ToolchainCommandStatus.blocked,
-        statusMessage:
-            'No spio binary was resolved. Set STYIO_VIEW_SPIO_BIN or keep styio-spio available in the local workspace.',
-        stdout: '',
-        stderr: '',
+        statusMessage: _missingSpioBinaryMessage,
       );
     }
 
@@ -339,7 +308,8 @@ class _LocalCliToolchainManagementAdapter
         return ToolchainCommandResult(
           command: command,
           status: ToolchainCommandStatus.succeeded,
-          statusMessage: successPayload?['message'] as String? ??
+          statusMessage:
+              successPayload?['message'] as String? ??
               '$command completed through spio.',
           stdout: stdout,
           stderr: stderr,
@@ -350,7 +320,8 @@ class _LocalCliToolchainManagementAdapter
       return ToolchainCommandResult(
         command: command,
         status: ToolchainCommandStatus.failed,
-        statusMessage: failurePayload?['message'] as String? ??
+        statusMessage:
+            failurePayload?['message'] as String? ??
             '$command exited with code ${result.exitCode}.',
         stdout: stdout,
         stderr: stderr,
@@ -393,7 +364,8 @@ ToolchainCommandResult _toolchainCommandResultFromHostedResponse({
     return ToolchainCommandResult(
       command: command,
       status: ToolchainCommandStatus.succeeded,
-      statusMessage: response['message'] as String? ??
+      statusMessage:
+          response['message'] as String? ??
           '$command completed through the hosted control plane.',
       stdout: stdout,
       stderr: stderr,
@@ -403,7 +375,8 @@ ToolchainCommandResult _toolchainCommandResultFromHostedResponse({
   return ToolchainCommandResult(
     command: command,
     status: ToolchainCommandStatus.failed,
-    statusMessage: response['message'] as String? ??
+    statusMessage:
+        response['message'] as String? ??
         '$command failed through the hosted control plane.',
     stdout: stdout,
     stderr: stderr,
