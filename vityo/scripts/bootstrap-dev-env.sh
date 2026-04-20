@@ -12,31 +12,44 @@ NODE_STANDARD_VERSION="${STYIO_TOOLCHAIN_NODE_STANDARD_VERSION:-$(tr -d '[:space
 FLUTTER_STANDARD_VERSION="${STYIO_TOOLCHAIN_FLUTTER_STANDARD_VERSION:-$(tr -d '[:space:]' < "$ROOT/.flutter-version")}"
 DART_STANDARD_VERSION="${STYIO_TOOLCHAIN_DART_STANDARD_VERSION:-3.11.5}"
 CHROMIUM_STANDARD_VERSION="${STYIO_TOOLCHAIN_CHROMIUM_STANDARD_VERSION:-$(tr -d '[:space:]' < "$ROOT/.chromium-version")}"
+ANDROID_CMDLINE_TOOLS_VERSION="${STYIO_VIEW_ANDROID_CMDLINE_TOOLS_VERSION:-14742923}"
+ANDROID_PROFILE_FILE="${STYIO_VIEW_ANDROID_PROFILE_FILE:-$ROOT/toolchain/android-sdk-profiles.csv}"
+ANDROID_PROFILES="${STYIO_VIEW_ANDROID_PROFILES:-android-35,android-36}"
+ANDROID_DEFAULT_PROFILE="${STYIO_VIEW_ANDROID_DEFAULT_PROFILE:-android-36}"
 FLUTTER_HOME="${STYIO_VIEW_FLUTTER_HOME:-$TARGET_HOME/develop/flutter}"
 ANDROID_SDK_ROOT="${STYIO_VIEW_ANDROID_SDK_ROOT:-$TARGET_HOME/Android/Sdk}"
-ANDROID_PLATFORM="${STYIO_VIEW_ANDROID_PLATFORM:-android-36}"
-ANDROID_BUILD_TOOLS="${STYIO_VIEW_ANDROID_BUILD_TOOLS:-36.0.0}"
-ANDROID_NDK_VERSION="${STYIO_VIEW_ANDROID_NDK_VERSION:-28.2.13676358}"
 NODE_INSTALL_ROOT="${STYIO_VIEW_NODE_INSTALL_ROOT:-/usr/local/lib/nodejs}"
+WITH_ANDROID=0
+SKIP_WORKSPACE_BOOTSTRAP=0
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0")
+Usage: $(basename "$0") [options]
 
 Install the Debian/Ubuntu packages and SDKs required to build, test, and run
-styio-view on a fresh Linux container or VM.
+styio-view on a fresh Linux host, container, or VM.
+
+Options:
+  --with-android            Install the Linux + Android combo toolchain
+  --android-profiles <csv>  Android SDK profiles to install (default: $ANDROID_PROFILES)
+  --android-default-profile <name>
+                            Default Android profile for shell snippets (default: $ANDROID_DEFAULT_PROFILE)
+  --skip-workspace-bootstrap
+                            Skip repo-local npm/flutter restore and runner bootstrap
+  -h, --help                Show this help
 
 Optional environment:
   STYIO_VIEW_FLUTTER_HOME        Flutter checkout location
                                  Default: $FLUTTER_HOME
   STYIO_VIEW_ANDROID_SDK_ROOT    Android SDK root
                                  Default: $ANDROID_SDK_ROOT
-  STYIO_VIEW_ANDROID_PLATFORM    Android platform package
-                                 Default: $ANDROID_PLATFORM
-  STYIO_VIEW_ANDROID_BUILD_TOOLS Android build-tools package
-                                 Default: $ANDROID_BUILD_TOOLS
-  STYIO_VIEW_ANDROID_NDK_VERSION Android NDK package
-                                 Default: $ANDROID_NDK_VERSION
+  STYIO_VIEW_ANDROID_PROFILE_FILE Android SDK profile csv
+                                 Default: $ANDROID_PROFILE_FILE
+  STYIO_VIEW_ANDROID_PROFILES    Android SDK profile set
+                                 Default: $ANDROID_PROFILES
+  STYIO_VIEW_ANDROID_DEFAULT_PROFILE
+                                 Default profile for shell exports
+                                 Default: $ANDROID_DEFAULT_PROFILE
 
 Standardized baseline:
   Debian                  $DEBIAN_STANDARD_VERSION (trixie)
@@ -50,11 +63,11 @@ EOF
 }
 
 log() {
-  printf '[styio-view env] %s\n' "$*"
+  printf '[styio-view linux env] %s\n' "$*"
 }
 
 fail() {
-  printf '[styio-view env] %s\n' "$*" >&2
+  printf '[styio-view linux env] %s\n' "$*" >&2
   exit 1
 }
 
@@ -105,7 +118,6 @@ install_system_packages() {
     clang-18
     cmake
     curl
-    default-jdk
     git
     libblkid-dev
     libgtk-3-dev
@@ -121,6 +133,10 @@ install_system_packages() {
     xz-utils
     zip
   )
+
+  if [[ $WITH_ANDROID -eq 1 ]]; then
+    packages+=(default-jdk)
+  fi
 
   log "installing system packages"
   as_root apt-get update
@@ -198,19 +214,13 @@ install_flutter() {
   fi
 }
 
-latest_android_cmdline_tools_archive() {
-  wget -qO- https://dl.google.com/android/repository/repository2-1.xml \
-    | grep -o 'commandlinetools-linux-[0-9]*_latest.zip' \
-    | head -n 1
+android_cmdline_tools_archive() {
+  echo "commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip"
 }
 
 install_android_cmdline_tools() {
   local archive_name
-  archive_name="$(latest_android_cmdline_tools_archive)"
-
-  if [[ -z "$archive_name" ]]; then
-    fail "unable to determine latest Android command-line tools archive"
-  fi
+  archive_name="$(android_cmdline_tools_archive)"
 
   if [[ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]]; then
     log "using existing Android command-line tools at $ANDROID_SDK_ROOT"
@@ -224,7 +234,7 @@ install_android_cmdline_tools() {
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' RETURN
 
-  wget -O "$workdir/$archive_name" "https://dl.google.com/android/repository/$archive_name"
+  wget -qO "$workdir/$archive_name" "https://dl.google.com/android/repository/$archive_name"
   unzip -q "$workdir/$archive_name" -d "$workdir"
 
   rm -rf "$ANDROID_SDK_ROOT/cmdline-tools/latest"
@@ -237,35 +247,33 @@ install_android_cmdline_tools() {
 
 configure_android_sdk() {
   local flutter_bin="$FLUTTER_HOME/bin/flutter"
-  local sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 
   export JAVA_HOME="/usr/lib/jvm/default-java"
   export ANDROID_HOME="$ANDROID_SDK_ROOT"
-  export PATH="$FLUTTER_HOME/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS:$PATH"
+  export PATH="$FLUTTER_HOME/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
-  log "configuring Flutter toolchains"
+  log "configuring Flutter toolchains for Android"
   "$flutter_bin" config --android-sdk "$ANDROID_SDK_ROOT" --enable-web --enable-linux-desktop --enable-android
 
-  log "accepting Android SDK licenses"
-  yes | "$sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null
+  log "installing Android SDK profiles: $ANDROID_PROFILES"
+  STYIO_VIEW_ANDROID_PROFILE_FILE="$ANDROID_PROFILE_FILE" \
+  STYIO_VIEW_ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+    "$ROOT/scripts/android-sdk-profile.sh" install --profiles "$ANDROID_PROFILES"
 
-  log "installing Android SDK packages"
-  yes | "$sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" \
-    "platform-tools" \
-    "platforms;$ANDROID_PLATFORM" \
-    "build-tools;$ANDROID_BUILD_TOOLS" \
-    "ndk;$ANDROID_NDK_VERSION" >/dev/null
+  STYIO_VIEW_ANDROID_PROFILE_FILE="$ANDROID_PROFILE_FILE" \
+  STYIO_VIEW_ANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+    "$ROOT/scripts/android-sdk-profile.sh" env "$ANDROID_DEFAULT_PROFILE" >/dev/null
 }
 
-install_repo_dependencies() {
-  log "installing prototype npm dependencies"
-  (cd "$ROOT/prototype" && npm ci)
-
-  log "installing Flutter package dependencies"
-  (
-    cd "$ROOT/frontend/styio_view_app"
-    "$FLUTTER_HOME/bin/flutter" pub get
-  )
+bootstrap_workspace() {
+  local workspace_cmd=("$ROOT/scripts/bootstrap-workspace.sh")
+  if [[ $WITH_ANDROID -eq 1 ]]; then
+    workspace_cmd+=(--platforms "web,linux,android")
+  else
+    workspace_cmd+=(--platforms "web,linux")
+  fi
+  log "bootstrapping repo workspace"
+  "${workspace_cmd[@]}"
 }
 
 verify_tool_versions() {
@@ -286,16 +294,18 @@ print_summary() {
 
   cat <<EOF
 
-styio-view bootstrap complete.
+styio-view Linux bootstrap complete.
 
-Standardized baseline:
-  Debian:        $DEBIAN_STANDARD_VERSION (trixie)
-  LLVM series:   $LLVM_STANDARD_SERIES
-  CMake/CTest:   $CMAKE_STANDARD_VERSION
-  Python:        $PYTHON_STANDARD_VERSION
-  Node.js:       v$NODE_STANDARD_VERSION
-  Flutter/Dart:  $FLUTTER_STANDARD_VERSION / $DART_STANDARD_VERSION
-  Chromium:      $CHROMIUM_STANDARD_VERSION
+Profile:
+  Host combo:     linux$( [[ $WITH_ANDROID -eq 1 ]] && printf '+android' )
+  Debian:         $DEBIAN_STANDARD_VERSION (trixie)
+  LLVM series:    $LLVM_STANDARD_SERIES
+  CMake/CTest:    $CMAKE_STANDARD_VERSION
+  Python:         $PYTHON_STANDARD_VERSION
+  Node.js:        v$NODE_STANDARD_VERSION
+  Flutter/Dart:   $FLUTTER_STANDARD_VERSION / $DART_STANDARD_VERSION
+  Chromium:       $CHROMIUM_STANDARD_VERSION
+  Android SDKs:   $( [[ $WITH_ANDROID -eq 1 ]] && printf '%s (default: %s)' "$ANDROID_PROFILES" "$ANDROID_DEFAULT_PROFILE" || printf 'not installed' )
 
 Suggested shell exports:
   export FLUTTER_HOME="$FLUTTER_HOME"
@@ -304,9 +314,13 @@ Suggested shell exports:
   export JAVA_HOME=/usr/lib/jvm/default-java
   export STYIO_CHROME_PATH="${chrome_bin:-/usr/bin/chromium}"
   export CHROME_EXECUTABLE="\$STYIO_CHROME_PATH"
-  export PATH="\$FLUTTER_HOME/bin:\$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:\$ANDROID_SDK_ROOT/platform-tools:\$ANDROID_SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS:\$PATH"
+  export PATH="\$FLUTTER_HOME/bin:\$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:\$ANDROID_SDK_ROOT/platform-tools:\$PATH"
 
 Typical next steps:
+  ./scripts/bootstrap-workspace.sh --platforms web,linux$( [[ $WITH_ANDROID -eq 1 ]] && printf ',android' )
+  ./scripts/android-sdk-profile.sh list
+  eval "\$(./scripts/android-sdk-profile.sh env $ANDROID_DEFAULT_PROFILE)"
+  ./scripts/android-sdk-profile.sh build --profiles $ANDROID_PROFILES --parallel --artifact apk --mode debug
   cd "$ROOT/frontend/styio_view_app" && "\$FLUTTER_HOME/bin/flutter" analyze
   cd "$ROOT/frontend/styio_view_app" && "\$FLUTTER_HOME/bin/flutter" test
   cd "$ROOT/prototype" && STYIO_EDITOR_URL=http://127.0.0.1:4180/editor.html npm run selftest:editor
@@ -314,19 +328,48 @@ EOF
 }
 
 main() {
-  if [[ "${1:-}" == "--help" ]]; then
-    usage
-    exit 0
-  fi
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --with-android)
+        WITH_ANDROID=1
+        shift
+        ;;
+      --android-profiles)
+        ANDROID_PROFILES="$2"
+        shift 2
+        ;;
+      --android-default-profile)
+        ANDROID_DEFAULT_PROFILE="$2"
+        shift 2
+        ;;
+      --skip-workspace-bootstrap)
+        SKIP_WORKSPACE_BOOTSTRAP=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown option: $1"
+        ;;
+    esac
+  done
 
   ensure_debian_like
   report_standard_baseline
   install_system_packages
   install_node
   install_flutter
-  install_android_cmdline_tools
-  configure_android_sdk
-  install_repo_dependencies
+  if [[ $WITH_ANDROID -eq 1 ]]; then
+    install_android_cmdline_tools
+    configure_android_sdk
+  else
+    "$FLUTTER_HOME/bin/flutter" config --enable-web --enable-linux-desktop >/dev/null
+  fi
+  if [[ $SKIP_WORKSPACE_BOOTSTRAP -eq 0 ]]; then
+    bootstrap_workspace
+  fi
   verify_tool_versions
   print_summary
 }

@@ -2,7 +2,7 @@
 
 **Purpose:** 提供 `styio-view` 文档树、里程碑、history、repo hygiene 与交付文档的日常维护入口。
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-04-20
 
 ## Mission
 
@@ -21,8 +21,24 @@ Primary paths:
 7. `scripts/team-docs-gate.py`
 8. `scripts/docs-gate.sh`
 9. `scripts/delivery-gate.sh`
-10. `prototype/README.md`
-11. `frontend/styio_view_app/README.md`
+10. `scripts/bootstrap-dev-env.sh`
+11. `scripts/bootstrap-dev-container.sh`
+12. `scripts/bootstrap-dev-env-macos.sh`
+13. `scripts/bootstrap-dev-env-windows.ps1`
+14. `scripts/bootstrap-workspace.sh`
+15. `scripts/bootstrap-workspace.ps1`
+16. `scripts/android-sdk-profile.sh`
+17. `scripts/android-sdk-profile.ps1`
+18. `scripts/apple-platform-profile.sh`
+19. `scripts/verify-android-device.sh`
+20. `scripts/verify-android-device.ps1`
+21. `scripts/verify-apple-device.sh`
+22. `docker/`
+23. `.devcontainer/`
+24. `toolchain/android-sdk-profiles.csv`
+25. `toolchain/apple-platform-profiles.csv`
+26. `prototype/README.md`
+27. `frontend/styio_view_app/README.md`
 
 Key SSOTs:
 
@@ -41,6 +57,10 @@ Key SSOTs:
 5. docs tree 变化时，同批运行 `docs-lifecycle.py`、`docs-index.py`、`docs-audit.py`，而不是只靠 `README/INDEX` 手工刷新。
 6. 根 `.gitignore` 若新增 temp/build/log/cache 类忽略规则，同批补 `docs/**` 与 `frontend/styio_view_app/test/**` 的显式 negate 规则，并让 `scripts/check_repo_hygiene.py` 通过。
 7. 仓库级 build/dev-env 文档必须保持固定版本基线显式一致：Debian 13、Python 3.13.5、Node.js v24.15.0 LTS、Flutter 3.41.7 / Dart 3.11.5、Chromium 147.0.7727.101；不得把这类版本描述回退成浮动 `stable`。
+8. 容器和宿主机开发环境入口必须一起维护：`Dockerfile`、`.devcontainer/`、Linux/macOS/Windows 一键安装脚本，以及可选 `+android` / `+ios` 组合矩阵，都要在仓库级 build/dev-env 入口里保持同一套说明。
+9. Linux Android 工具链是 profile 驱动：`toolchain/android-sdk-profiles.csv`、`scripts/android-sdk-profile.sh`、Linux bootstrap、容器镜像和仓库级 build/dev-env 文档必须同步更新；不得只改单一脚本里的 `android-36` 字面量。
+10. Windows Android profile 入口和 macOS Apple profile 入口必须与 Linux 规则同步：`scripts/android-sdk-profile.ps1`、`scripts/apple-platform-profile.sh`、`toolchain/apple-platform-profiles.csv`、macOS/Windows bootstrap 与仓库级 build/dev-env 文档要一起维护，不能只更新单一平台脚本。
+11. 真实设备验证入口也属于交付表面：Android bash/PowerShell 验证脚本和 Apple 设备验证脚本必须与 profile CSV、bootstrap、仓库级 build/dev-env 文档同步更新，不能单独漂移。
 
 ## Change Classes
 

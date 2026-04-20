@@ -19,15 +19,41 @@ Styio View 是面向 `styio` 生态的专属编辑器与运行视窗项目。
 
 实际实现入口见 [frontend/styio_view_app/README.md](/Users/unka/DevSpace/styio-view/frontend/styio_view_app/README.md)。
 
-## Fresh Linux Bootstrap
+## Fresh Dev Environment
 
-在一台新的 Debian/Ubuntu 容器或虚拟机上，可直接运行：
+容器 / 虚拟机：
+
+```bash
+./scripts/bootstrap-dev-container.sh
+```
+
+Linux 本机：
 
 ```bash
 ./scripts/bootstrap-dev-env.sh
+./scripts/bootstrap-dev-env.sh --with-android
 ```
 
-这条脚本会安装 `styio-view` 的 Linux 桌面、Web、Flutter 和 Android 开发依赖，并补齐 `prototype/` 与 `frontend/styio_view_app/` 的仓内依赖。
+macOS 本机：
+
+```bash
+./scripts/bootstrap-dev-env-macos.sh
+./scripts/bootstrap-dev-env-macos.sh --with-ios
+./scripts/bootstrap-dev-env-macos.sh --with-android
+```
+
+Windows 本机：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-dev-env-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-dev-env-windows.ps1 -WithAndroid
+```
+
+这套脚本会把 `styio-view` 的桌面 / Web 主线环境拉起，并按需附加 `linux+android`、`macos+ios`、`macos+android`、`windows+android` 组合开发工具链。共享 workspace 初始化入口是：
+
+```bash
+./scripts/bootstrap-workspace.sh --platforms web,linux
+```
 
 更完整的构建、测试和子系统入口见 [docs/BUILD-AND-DEV-ENV.md](docs/BUILD-AND-DEV-ENV.md)。
 
