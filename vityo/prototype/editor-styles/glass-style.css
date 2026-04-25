@@ -1,0 +1,33 @@
+/* Glass style uses backdrop blur for a translucent feeling. */
+
+body[data-ui-style="glass"] .workspace-shell {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+body[data-ui-style="glass"] .main-editor-card,
+body[data-ui-style="glass"] .side-drawer,
+body[data-ui-style="glass"] .editor-frame,
+body[data-ui-style="glass"] .pill,
+body[data-ui-style="glass"] .action.ghost {
+  backdrop-filter: blur(var(--style-shell-blur));
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+body[data-ui-style="glass"] .action:not(.ghost) {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+body[data-ui-style="glass"] .editor-tab {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+body[data-ui-style="glass"] .editor-tab.is-active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body[data-ui-style="glass"] .sidebar-open .side-drawer {
+  background: rgba(255, 255, 255, 0.06);
+}
