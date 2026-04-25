@@ -1,0 +1,42 @@
+/* Zen style focus on minimalism and focus. */
+
+body[data-ui-style="zen"] .workspace-shell {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+body[data-ui-style="zen"] .main-editor-card {
+  margin: 40px auto;
+  max-width: 900px;
+}
+
+body[data-ui-style="zen"] .editor-frame {
+  background: transparent;
+  border: 0;
+}
+
+body[data-ui-style="zen"] .side-drawer {
+  background: var(--bg);
+  border-left: 1px solid var(--style-card-border);
+}
+
+body[data-ui-style="zen"] .editor-tab {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+}
+
+body[data-ui-style="zen"] .editor-tab.is-active {
+  color: var(--text);
+  font-weight: 600;
+}
+
+body[data-ui-style="zen"] .editor-tab.is-active::after {
+  height: 2px;
+  background: var(--text);
+}
+
+body[data-ui-style="zen"] .code-text {
+  letter-spacing: 0.01em;
+}

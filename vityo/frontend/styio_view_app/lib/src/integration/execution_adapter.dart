@@ -74,6 +74,10 @@ abstract class ExecutionAdapter {
   });
 }
 
+typedef ExecutionAdapterFactory = Future<ExecutionAdapter> Function(
+  ProjectGraphSnapshot projectGraph,
+);
+
 Future<ExecutionAdapter> createExecutionAdapter({
   required PlatformTarget platformTarget,
   required ProjectGraphSnapshot projectGraph,

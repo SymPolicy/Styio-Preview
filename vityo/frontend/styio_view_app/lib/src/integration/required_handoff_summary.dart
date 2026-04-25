@@ -2,10 +2,7 @@ import '../platform/platform_target.dart';
 import 'adapter_contracts.dart';
 import 'project_graph_contract.dart';
 
-enum HandoffOwner {
-  styio,
-  spio,
-}
+enum HandoffOwner { styio, spio }
 
 extension HandoffOwnerX on HandoffOwner {
   String get label {
@@ -84,7 +81,18 @@ List<RequiredHandoff> summarizeRequiredHandoffs({
     );
   }
 
-  if (cli.projectGraph.level != AdapterCapabilityLevel.available) {
+  if (projectGraph.hasProjectGraphPayloadFailure) {
+    handoffs.add(
+      RequiredHandoff(
+        owner: HandoffOwner.spio,
+        title: 'Repair published project graph payload',
+        detail:
+            'spio already advertises a project graph contract, but styio-view could not consume it cleanly. ${projectGraph.projectGraphPayloadFailure!.detail}',
+        docPath: 'docs/for-spio/Spio-Project-Graph-Contract.md',
+        blocking: true,
+      ),
+    );
+  } else if (cli.projectGraph.level != AdapterCapabilityLevel.available) {
     handoffs.add(
       const RequiredHandoff(
         owner: HandoffOwner.spio,
@@ -97,8 +105,9 @@ List<RequiredHandoff> summarizeRequiredHandoffs({
     );
   }
 
-  if (projectGraph.lockState == ProjectLockState.unknown ||
-      projectGraph.vendorState == ProjectVendorState.unknown) {
+  if (!projectGraph.hasProjectGraphPayloadFailure &&
+      (projectGraph.lockState == ProjectLockState.unknown ||
+          projectGraph.vendorState == ProjectVendorState.unknown)) {
     handoffs.add(
       const RequiredHandoff(
         owner: HandoffOwner.spio,
@@ -110,14 +119,37 @@ List<RequiredHandoff> summarizeRequiredHandoffs({
     );
   }
 
-  if (projectGraph.toolchain.source == ToolchainResolutionSource.unknown ||
-      projectGraph.toolchain.source == ToolchainResolutionSource.unavailable) {
+  if (projectGraph.hasToolchainStatePayloadFailure) {
+    handoffs.add(
+      RequiredHandoff(
+        owner: HandoffOwner.spio,
+        title: 'Repair published toolchain and registry state',
+        detail:
+            'spio already advertises toolchain_state, but styio-view could not consume the published payload cleanly. ${projectGraph.toolchainStatePayloadFailure!.detail}',
+        docPath: 'docs/for-spio/Spio-Toolchain-And-Registry-State.md',
+      ),
+    );
+  } else if (!projectGraph.hasToolchainEnvironment) {
     handoffs.add(
       const RequiredHandoff(
         owner: HandoffOwner.spio,
         title: 'Publish toolchain and registry state',
         detail:
             'Toolchain resolution, managed installs, and registry readiness need a machine-readable spio contract instead of filesystem inference.',
+        docPath: 'docs/for-spio/Spio-Toolchain-And-Registry-State.md',
+      ),
+    );
+  }
+
+  if (!projectGraph.hasSourceState &&
+      projectGraph.hasManifest &&
+      !projectGraph.hasProjectGraphPayloadFailure) {
+    handoffs.add(
+      const RequiredHandoff(
+        owner: HandoffOwner.spio,
+        title: 'Publish dependency source and cache state',
+        detail:
+            'Vendored snapshots, git caches, and registry cache roots still need a machine-readable spio contract instead of filesystem inference.',
         docPath: 'docs/for-spio/Spio-Toolchain-And-Registry-State.md',
       ),
     );

@@ -2,9 +2,27 @@
 
 **Purpose:** 给出 `styio-view` 从产品合同冻结到跨端实现的实施顺序、工作流拆分、依赖链与阶段性门禁。
 
-**Last updated:** 2026-04-12
+**Last updated:** 2026-04-17
 
 **Status:** Active plan
+
+## 0. 与三仓统一总纲的关系
+
+`styio-view` 的跨仓里程碑以 [Styio-Ecosystem-Delivery-Master-Plan.md](./Styio-Ecosystem-Delivery-Master-Plan.md) 为镜像入口，权威副本位于 `styio-nightly`。
+
+本文件继续负责 `view` 自己的工作流拆分和实施顺序，但不得私自改写三仓共同的 milestone ID、repo exit 或 cutover 定义。
+
+当前映射关系固定为：
+
+| Ecosystem milestone | `styio-view` workstreams | 本仓含义 |
+|---------------------|--------------------------|----------|
+| `M0` | `W1` | 产品合同、文档策略、adapter 边界、团队协作入口锁定 |
+| `M1` | `W3` + `W5` compiler side consumption | 正式消费 `styio-nightly` 发布的 language/execution contract |
+| `M2` | `W3` + `W4` + `W5` package/environment consumption | 正式消费 `spio` 的 project graph/toolchain/source/registry state |
+| `M3` | `W2` + `W4` + `W5` | IDE core、project UI、execution shell、environment shell 闭合 |
+| `M4` | `W6` + `W7` + `W8` + `W10` | runtime surface、AI、theme、module runtime 闭合 |
+| `M5` | `W9` | Android、本地/云 iOS、Web hosted workspace 路线闭合 |
+| `M6` | hardening across `W1-W10` | 完整产品级 IDE 与样板项目矩阵闭合 |
 
 ## 1. 实施目标
 
@@ -63,6 +81,7 @@ flowchart LR
 3. `FFI Adapter` 是统一本地原生接入标识。
 4. `Cloud Adapter` 作为移动端和 hosted workspace 的补充。
 5. 上游缺能力时，写入 `../for-styio/` 或 `../for-spio/`，不牺牲产品语义。
+6. 三仓共同里程碑变化必须先回写镜像总纲，再调整本文件中的 workstream 顺序和出入口。
 
 ## 5. 当前项目级任务清单
 
@@ -95,13 +114,13 @@ flowchart LR
 
 1. 围绕 `spio.toml / spio.lock / spio-toolchain.toml / .spio / styio.toml` 建立项目 UI
 2. 项目树、workspace members、dependencies、targets、toolchain、lock/vendor/build 状态
-3. compile-plan preview 占位
+3. 正式消费 `project_graph / toolchain_state / source_state / package_distribution`，不再停留在 compile-plan preview 占位
 
 ### 5.5 W5 Execution Routing
 
 1. scratch single-file 路径
-2. 项目路径的 preview-only build/run/test
-3. capability gap 与 blocked status UI
+2. 项目路径的 live build/run/test / JIT / deploy preflight 路由
+3. capability gap 与 blocked status UI，仅用于尚未发布的上游路径
 4. `Cmd/Ctrl+Enter` 命令路由
 5. `Required Handoffs` UI，只陈述上游需要交付的 machine contract
 
@@ -153,3 +172,4 @@ flowchart LR
 2. 用已发布 CLI 能力补强 scratch execution 路线
 3. 并行向 `styio` 索要 language/execution/runtime handoff
 4. 并行向 `spio` 索要 project graph/workflow/toolchain/registry handoff
+5. 先修 W4/W5 当前缺陷：真实文件 staging 覆写窗口、跨文件 diagnostics 定位退化、published payload 解析失败后的静默 fallback

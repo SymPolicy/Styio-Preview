@@ -26,6 +26,7 @@ import {
   legacyInterfaceSizeKeyMap,
   legacyThemeColorKeyMap,
   legacyInterfaceFontKeyMap,
+  legacyEditorFontKeyMap,
   legacyEditorFontSizeKeyMap,
   legacyEditorTextHighlightKeyMap,
   legacyDefaultGlyphPaletteKeyMap,
@@ -1403,7 +1404,11 @@ function parseCustomPaletteConfig(rawText) {
         normalizeLegacyPresetValue(workbench?.["styio.interfaceFont"], legacyInterfaceFontKeyMap),
       )?.key ?? null,
     interfaceSizeKey: normalizeInterfaceSizeFromConfig(workbench?.["styio.interfaceSize"]),
-    editorFontKey: findPresetByKeyOrLabel(editorFontOptionsList, editorConfig?.fontFamily)?.key ?? null,
+    editorFontKey:
+      findPresetByKeyOrLabel(
+        editorFontOptionsList,
+        normalizeLegacyPresetValue(editorConfig?.fontFamily, legacyEditorFontKeyMap),
+      )?.key ?? null,
     editorFontSizeKey: normalizeEditorFontSizeFromConfig(editorConfig?.fontSize),
     tabSize: [2, 4].includes(editorConfig?.tabSize) ? editorConfig.tabSize : null,
     glyphComposition:
@@ -1720,8 +1725,9 @@ function loadEditorPreferences() {
     if ([2, 4].includes(parsed?.indentSize)) {
       indentSize = parsed.indentSize;
     }
-    if (editorFontOptionsList.some((option) => option.key === parsed?.editorFontKey)) {
-      activeEditorFontKey = parsed.editorFontKey;
+    const migratedEditorFontKey = legacyEditorFontKeyMap[parsed?.editorFontKey] ?? parsed?.editorFontKey;
+    if (editorFontOptionsList.some((option) => option.key === migratedEditorFontKey)) {
+      activeEditorFontKey = migratedEditorFontKey;
     }
     const migratedEditorFontSizeKey =
       legacyEditorFontSizeKeyMap[parsed?.editorFontSizeKey] ?? parsed?.editorFontSizeKey;

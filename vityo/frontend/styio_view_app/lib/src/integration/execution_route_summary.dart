@@ -28,20 +28,23 @@ ExecutionRouteSummary summarizeExecutionRoute({
   if (platformTarget == PlatformTarget.ios) {
     return ExecutionRouteSummary(
       title: 'Cloud-only by policy',
-      body:
-          'iOS keeps compile/run in the Cloud Adapter path. Local CLI and FFI execution stay disabled even when a compiler is installed elsewhere.',
+      body: cloud.execution.isAvailable
+          ? 'iOS keeps compile/run in the Cloud Adapter path, and the hosted control plane is live for project execution.'
+          : 'iOS keeps compile/run in the Cloud Adapter path. Local CLI and FFI execution stay disabled even when a compiler is installed elsewhere.',
       primaryAdapterKind: AdapterKind.cloud,
       previewOnly: !cloud.execution.isAvailable,
     );
   }
 
   if (platformTarget == PlatformTarget.web || projectGraph.isHosted) {
-    return const ExecutionRouteSummary(
+    return ExecutionRouteSummary(
       title: 'Hosted project route',
-      body:
-          'Hosted workspaces use Cloud Adapter project graph and execution routes. Local binaries are not part of the Web path.',
+      body: cloud.projectGraph.isAvailable && cloud.execution.isAvailable
+          ? 'Hosted workspaces use Cloud Adapter project graph and execution routes. Local binaries are not part of the hosted path.'
+          : 'Hosted workspaces reserve the Cloud Adapter route, but the hosted control plane has not published a live project workflow yet.',
       primaryAdapterKind: AdapterKind.cloud,
-      previewOnly: true,
+      previewOnly:
+          !(cloud.projectGraph.isAvailable && cloud.execution.isAvailable),
     );
   }
 
@@ -78,9 +81,9 @@ ExecutionRouteSummary summarizeExecutionRoute({
 
   if (projectGraph.compilePlanConsumerAdvertised) {
     return const ExecutionRouteSummary(
-      title: 'Project route ready for compile-plan handoff',
+      title: 'Project route live through spio',
       body:
-          'The active compiler advertises compile-plan support. The shell can keep its current UI and swap the preview path for a live adapter implementation.',
+          'The active compiler advertises compile-plan support, so project build/run/test can execute through spio with live compile-plan v1 handoff.',
       primaryAdapterKind: AdapterKind.cli,
       previewOnly: false,
     );
@@ -88,19 +91,22 @@ ExecutionRouteSummary summarizeExecutionRoute({
 
   if (platformTarget == PlatformTarget.android &&
       cloud.execution.level != AdapterCapabilityLevel.unavailable) {
-    return const ExecutionRouteSummary(
-      title: 'Project route preview-only',
-      body:
-          'Android keeps local-first intent, but current project build/run stays preview-only until styio publishes a live compile-plan consumer. Cloud remains the fallback route.',
+    return ExecutionRouteSummary(
+      title: cloud.execution.isAvailable
+          ? 'Project route live with cloud fallback'
+          : 'Project route preview-only',
+      body: cloud.execution.isAvailable
+          ? 'Android keeps local-first intent, while the hosted control plane remains available as a live fallback route.'
+          : 'Android keeps local-first intent, but current project execution still blocks until the active compiler advertises compile-plan support. Cloud remains the fallback route.',
       primaryAdapterKind: AdapterKind.cli,
-      previewOnly: true,
+      previewOnly: !cloud.execution.isAvailable,
     );
   }
 
   return const ExecutionRouteSummary(
     title: 'Project route preview-only',
     body:
-        'The shell can inspect spio projects today, but build/run/test stays preview-only until styio publishes a live compile-plan consumer.',
+        'The shell can inspect spio projects today, but build/run/test stays blocked until the active compiler advertises compile-plan support.',
     primaryAdapterKind: AdapterKind.cli,
     previewOnly: true,
   );
