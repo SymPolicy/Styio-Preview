@@ -22,11 +22,11 @@ jobs:
           fetch-depth: 0
           path: styio-view
 
-      - name: Checkout latest styio-audit policy
+      - name: Checkout released styio-audit policy
         uses: actions/checkout@v5
         with:
           repository: eBioRing/styio-audit
-          ref: ai-dev
+          ref: stable
           path: styio-audit
 
       - name: Set up standardized Python
@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: ${{ env.STYIO_PYTHON_VERSION }}
 
-      - name: Run latest styio-audit gate
+      - name: Run released styio-audit gate
         working-directory: styio-view
         run: |
           git -C ../styio-audit rev-parse HEAD
