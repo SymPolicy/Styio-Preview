@@ -325,15 +325,26 @@ export const themePalettePresets = [
   },
 ];
 export const interfaceFontOptionsList = [
-  { key: "defaultSans", label: "Default Sans", value: '"IBM Plex Sans", "Inter", "Noto Sans", sans-serif' },
-  { key: "inter", label: "Inter", value: '"Inter", "IBM Plex Sans", "Noto Sans", sans-serif' },
-  { key: "plexSans", label: "IBM Plex Sans", value: '"IBM Plex Sans", "Inter", "Noto Sans", sans-serif' },
-  { key: "recursiveSans", label: "Recursive Sans", value: '"Recursive", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "spaceGrotesk", label: "Space Grotesk", value: '"Space Grotesk", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "plusJakartaSans", label: "Plus Jakarta Sans", value: '"Plus Jakarta Sans", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "sora", label: "Sora", value: '"Sora", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "sourceSans3", label: "Source Sans 3", value: '"Source Sans 3", "Inter", "IBM Plex Sans", sans-serif' },
-  { key: "monaSans", label: "Mona Sans", value: '"Mona Sans", "Inter", "IBM Plex Sans", sans-serif' },
+  {
+    key: "defaultSans",
+    label: "IBM Plex Sans",
+    value: '"IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+  },
+  {
+    key: "spaceGrotesk",
+    label: "Space Grotesk",
+    value: '"Space Grotesk", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+  },
+  {
+    key: "atkinsonNext",
+    label: "Atkinson Hyperlegible",
+    value: '"Atkinson Hyperlegible Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+  },
+  {
+    key: "sora",
+    label: "Sora",
+    value: '"Sora", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+  },
 ];
 export const interfaceSizeOptionsList = [
   {
@@ -418,11 +429,31 @@ export const interfaceSizeOptionsList = [
   },
 ];
 export const editorFontOptionsList = [
-  { key: "jetbrainsMono", label: "JetBrains Mono", value: '"JetBrains Mono", "IBM Plex Mono", "Recursive", monospace' },
-  { key: "ibmPlexMono", label: "IBM Plex Mono", value: '"IBM Plex Mono", "JetBrains Mono", "Recursive", monospace' },
-  { key: "recursive", label: "Recursive", value: '"Recursive", "JetBrains Mono", "IBM Plex Mono", monospace' },
-  { key: "monaspace", label: "Monaspace Neon", value: '"Monaspace Neon", "JetBrains Mono", "Source Code Pro", monospace' },
-  { key: "sourceCodePro", label: "Source Code Pro", value: '"Source Code Pro", "JetBrains Mono", "IBM Plex Mono", monospace' },
+  {
+    key: "jetbrainsMono",
+    label: "JetBrains Mono",
+    value: '"JetBrains Mono", "IBM Plex Mono", "Source Code Pro", monospace',
+  },
+  {
+    key: "ibmPlexMono",
+    label: "IBM Plex Mono",
+    value: '"IBM Plex Mono", "JetBrains Mono", "Source Code Pro", monospace',
+  },
+  {
+    key: "sourceCodePro",
+    label: "Source Code Pro",
+    value: '"Source Code Pro", "JetBrains Mono", "IBM Plex Mono", monospace',
+  },
+  {
+    key: "fragmentMono",
+    label: "Fragment Mono",
+    value: '"Fragment Mono", "IBM Plex Mono", "JetBrains Mono", monospace',
+  },
+  {
+    key: "azeretMono",
+    label: "Azeret Mono",
+    value: '"Azeret Mono", "JetBrains Mono", "IBM Plex Mono", monospace',
+  },
 ];
 export const editorFontSizePresets = [
   { key: "13", size: 13, label: "13", vars: { "--editor-font-size": "13px", "--editor-line-height": "23px" } },
@@ -445,7 +476,26 @@ export const legacyThemeColorKeyMap = {
 };
 export const legacyInterfaceFontKeyMap = {
   styioSans: "defaultSans",
-  "Styio Sans": "Default Sans",
+  "Styio Sans": "defaultSans",
+  "Default Sans": "defaultSans",
+  inter: "defaultSans",
+  Inter: "defaultSans",
+  plexSans: "defaultSans",
+  "IBM Plex Sans": "defaultSans",
+  recursiveSans: "spaceGrotesk",
+  "Recursive Sans": "spaceGrotesk",
+  plusJakartaSans: "sora",
+  "Plus Jakarta Sans": "sora",
+  sourceSans3: "atkinsonNext",
+  "Source Sans 3": "atkinsonNext",
+  monaSans: "spaceGrotesk",
+  "Mona Sans": "spaceGrotesk",
+};
+export const legacyEditorFontKeyMap = {
+  recursive: "jetbrainsMono",
+  Recursive: "jetbrainsMono",
+  monaspace: "azeretMono",
+  "Monaspace Neon": "azeretMono",
 };
 export const legacyEditorFontSizeKeyMap = {
   "1": "13",

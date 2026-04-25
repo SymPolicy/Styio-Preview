@@ -1,643 +1,224 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>styio-view prototype</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body class="theme-oxide mode-desktop runtime-graph">
-    <div class="shell">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-mark">sv</div>
-          <div>
-            <p class="eyebrow">Styio Native Environment</p>
-            <h1>styio-view live shell</h1>
-          </div>
-        </div>
-        <div class="workspace-status">
-          <div class="status-card">
-            <span class="status-dot online"></span>
-            <span id="statusWorkspace">workspace: local-first / file graph warm</span>
-          </div>
-          <div class="status-card">
-            <span class="status-dot idle"></span>
-            <span id="statusRuntime">runtime: staged graph features loaded</span>
-          </div>
-          <div class="status-card">
-            <span class="status-dot queue"></span>
-            <span id="statusRetention">retention: no pending deletion</span>
-          </div>
-          <button class="action ghost" id="closeWorkspace">Close Cloud Workspace</button>
-        </div>
-      </header>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Styio | Design Gallery v8.0 [TRUE_PREVIEW]</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;800&family=Azeret+Mono:wght@200;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #030303;
+            --accent: #fff;
+            --card-border: rgba(255,255,255,0.05);
+            --panel-bg: #0a0a0a;
+        }
 
-      <section class="toolbar">
-        <div class="segmented">
-          <button class="segmented-btn is-active" data-mode="desktop">Desktop</button>
-          <button class="segmented-btn" data-mode="mobile">Mobile</button>
-        </div>
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        body, html { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; overflow-x: hidden; }
 
-        <div class="toolbar-group">
-          <button class="action" id="toggleSubstitution">Substitution: On</button>
-          <button class="action ghost" id="saveFileAction">Save</button>
-          <button class="action" id="runUnit">Ctrl+Enter</button>
-          <button class="action ghost" id="applyStagedUpdate">Staged: 1</button>
-          <button class="action ghost" id="cycleTheme">Theme: Oxide</button>
-        </div>
+        .gallery-container { 
+            max-width: 1600px; margin: 0 auto; padding: 100px 60px;
+            transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s;
+        }
 
-        <div class="module-strip">
-          <button class="module-pill is-installed" data-module="localCompile">Local Compile</button>
-          <button class="module-pill is-installed" data-module="graphRuntime">Graph Runtime</button>
-          <button class="module-pill is-installed" data-module="cloudAgent">Cloud Agent</button>
-          <button class="module-pill" data-module="localAgent">Local Agent</button>
-        </div>
-      </section>
+        header { margin-bottom: 100px; text-align: left; border-left: 2px solid #fff; padding-left: 40px; }
+        .gallery-title { font-size: 64px; font-weight: 800; letter-spacing: -3px; line-height: 0.9; margin: 0; }
 
-      <section class="restart-stage panel" id="restartBanner" hidden>
-        <div>
-          <p class="panel-label">Staged Runtime Update</p>
-          <h2>restart is required to mount graphRuntime v0.3.2</h2>
-          <p class="banner-copy" id="restartBannerText">current session keeps the previous graph runtime alive until the client restarts.</p>
-        </div>
-        <div class="banner-actions">
-          <span class="tag" id="platformRuntimeTag">platform: macOS desktop</span>
-          <button class="action ghost" id="dismissRestartBanner">Keep Current Session</button>
-        </div>
-      </section>
+        /* 1. 侧边拉环 */
+        .console-trigger {
+            position: fixed; left: 0; top: 0; bottom: 0; width: 10px;
+            background: transparent; cursor: pointer; z-index: 2000;
+            transition: width 0.3s;
+        }
+        .console-trigger:hover { width: 30px; background: rgba(255,255,255,0.1); }
 
-      <main class="workspace-layout">
-        <aside class="explorer-stage panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Workspace Explorer</p>
-              <h2>files + symbols</h2>
-            </div>
-          </div>
+        /* 2. 导演控制台 */
+        .director-console {
+            position: fixed; left: -380px; top: 0; bottom: 0; width: 360px;
+            background: var(--panel-bg); border-right: 1px solid var(--card-border);
+            z-index: 2100; padding: 60px 40px;
+            transition: left 0.6s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+        .is-open .director-console { left: 0; }
+        .is-open .gallery-container { transform: translateX(100px) scale(0.98); opacity: 0.2; pointer-events: none; }
 
-          <div class="tree-section">
-            <p class="subsection-title">workspace</p>
-            <button class="tree-file is-active" data-file="main.styio" data-diagnostics="1 warning / 0 errors">
-              <span>main.styio</span>
-              <span class="file-badge">active</span>
-            </button>
-            <button class="tree-file" data-file="render_flow.styio" data-diagnostics="0 warnings / 0 errors">
-              <span>render_flow.styio</span>
-              <span class="file-badge muted">clean</span>
-            </button>
-            <button class="tree-file" data-file="runtime_graph.styio" data-diagnostics="2 warnings / 0 errors">
-              <span>runtime_graph.styio</span>
-              <span class="file-badge warn">2</span>
-            </button>
-            <button class="tree-file" data-file="mobile_profile.styio" data-diagnostics="local-only profile">
-              <span>mobile_profile.styio</span>
-              <span class="file-badge">sync</span>
-            </button>
-          </div>
+        .sort-item {
+            background: #111; border: 1px solid #222;
+            padding: 15px 20px; margin-bottom: 10px;
+            cursor: grab; display: flex; align-items: center; justify-content: space-between;
+            font-family: 'Azeret Mono'; font-size: 11px;
+        }
+        .sort-item:active { cursor: grabbing; background: #fff; color: #000; }
 
-          <div class="tree-section">
-            <p class="subsection-title">symbols</p>
-            <div class="symbol-card">
-              <p class="symbol-name" id="symbolPrimaryName">pipeline feed</p>
-              <p class="symbol-meta" id="symbolPrimaryMeta">renderFlow / normalize -> render</p>
-            </div>
-            <div class="symbol-card">
-              <p class="symbol-name" id="symbolSecondaryName">fn bootGraph</p>
-              <p class="symbol-meta" id="symbolSecondaryMeta">minimal unit / semantic block surface</p>
-            </div>
-            <div class="symbol-card">
-              <p class="symbol-name" id="symbolTertiaryName">state idle</p>
-              <p class="symbol-meta" id="symbolTertiaryMeta">graph entry / transition origin</p>
-            </div>
-          </div>
+        /* 3. 画廊网格与卡片 */
+        .prototype-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 40px;
+        }
 
-          <div class="tree-section">
-            <p class="subsection-title">workspace notes</p>
-            <div class="symbol-card">
-              <p class="symbol-name">profile mode</p>
-              <p class="symbol-meta">local-only / cloud mirror adapter absent</p>
-            </div>
-            <div class="symbol-card">
-              <p class="symbol-name">mobile divergence</p>
-              <p class="symbol-meta">shared core / gesture-specific presentation</p>
-            </div>
-          </div>
-        </aside>
+        .proto-card {
+            position: relative; min-height: 520px;
+            border: 1px solid var(--card-border);
+            text-decoration: none; color: inherit;
+            display: flex; flex-direction: column;
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            background: rgba(255,255,255,0.01);
+            overflow: hidden;
+        }
+        .proto-card:hover { transform: translateY(-15px); border-color: #fff; background: rgba(255,255,255,0.03); }
 
-        <section class="editor-stage panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Editor Surface</p>
-              <h2>substitution + semantic block surface</h2>
-            </div>
-            <div class="panel-tags">
-              <span class="tag">minimal unit ready</span>
-              <span class="tag">jit on save</span>
-              <span class="tag">diagnostics live</span>
-            </div>
-          </div>
+        /* --- 真实风格预览引擎 --- */
+        .preview-pane {
+            height: 260px; width: 100%;
+            position: relative; overflow: hidden;
+            background: #000; border-bottom: 1px solid var(--card-border);
+            transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .proto-card:hover .preview-pane { transform: scale(1.05); }
 
-          <div class="editor-tabs">
-            <button class="editor-tab is-active" data-open-file="main.styio">
-              <span>main.styio</span>
-              <span class="tab-state dirty">dirty</span>
-            </button>
-            <button class="editor-tab" data-open-file="render_flow.styio">
-              <span>render_flow.styio</span>
-              <span class="tab-state">warm</span>
-            </button>
-            <button class="editor-tab" data-open-file="runtime_graph.styio">
-              <span>runtime_graph.styio</span>
-              <span class="tab-state warn">2</span>
-            </button>
-            <button class="editor-tab" data-open-file="mobile_profile.styio">
-              <span>mobile_profile.styio</span>
-              <span class="tab-state">sync</span>
-            </button>
-          </div>
+        /* 主题特定模拟：Xenon */
+        .style-xenon { background: #050505; }
+        .style-xenon::after { content: ""; position: absolute; left: 10px; top: 20%; bottom: 20%; width: 2px; background: #00f2ff; box-shadow: 0 0 15px #00f2ff; animation: xenon-drag 2s infinite alternate; }
+        @keyframes xenon-drag { 0% { top: 10%; } 100% { top: 60%; } }
 
-          <div class="code-toolbar">
-            <span class="chip primary" id="currentFileChip">main.styio</span>
-            <span class="chip" id="sourceModeChip">source fidelity locked</span>
-            <span class="chip" id="blockModeChip">block surface active</span>
-            <span class="chip" id="renderStatChip">selection + gutter simulated</span>
-            <span class="chip" id="saveStateChip">disk: loading</span>
-          </div>
+        /* 主题特定模拟：Zenith */
+        .style-zenith { background: #161616; }
+        .style-zenith::after { content: ""; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); width: 80px; height: 15px; background: #333; border-radius: 0 0 10px 10px; border: 1px solid #444; transition: 0.3s; }
+        .proto-card:hover .style-zenith::after { transform: translateX(-50%) translateY(20px); }
 
-          <div class="editor-grid">
-            <div class="editor-lab">
-              <section class="editor-shell">
-                <div class="buffer-header">
-                  <div>
-                    <p class="subsection-title">Raw Source Buffer</p>
-                    <p class="registry-meta">typed source remains exact. substitution only affects the render projection.</p>
-                  </div>
-                  <span class="entry-badge" id="bufferLineStat">8 lines</span>
-                </div>
+        /* 主题特定模拟：Synapse */
+        .style-synapse { background: #000814; }
+        .style-synapse::before { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 60px; height: 60px; background: rgba(0, 210, 255, 0.05); border: 1px solid #00d2ff; border-radius: 50% 50% 30% 30%; }
+        .style-synapse::after { content: ""; position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 120px; height: 2px; background: #ff0055; box-shadow: 0 0 15px #ff0055; }
 
-                <div class="source-pane">
-                  <div class="line-gutter" id="sourceLineGutter"></div>
-                  <textarea
-                    id="sourceBuffer"
-                    class="source-buffer"
-                    spellcheck="false"
-                    autocapitalize="off"
-                    autocomplete="off"
-                    autocorrect="off"
-                  ></textarea>
-                </div>
+        /* 主题特定模拟：Bauhaus */
+        .style-bauhaus { background: #e5e5e5; }
+        .style-bauhaus::before { content: ""; position: absolute; left: 0; width: 40px; height: 100%; background: #0044cc; }
+        .style-bauhaus::after { content: ""; position: absolute; bottom: 20px; right: 20px; width: 60px; height: 60px; background: #e02020; }
 
-                <div class="buffer-footer">
-                  <span class="entry-badge" id="bufferStateChip">raw buffer</span>
-                  <span class="entry-badge">selection model pending</span>
-                  <span class="entry-badge">Cmd/Ctrl+S saves to disk</span>
-                </div>
-              </section>
+        /* 主题特定模拟：Cinema */
+        .style-cinema { background: #111; }
+        .style-cinema::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 2px); animation: cinema-flicker 0.1s infinite; }
+        @keyframes cinema-flicker { 50% { opacity: 0.5; } }
 
-              <section class="editor-shell render-shell">
-                <div class="buffer-header">
-                  <div>
-                    <p class="subsection-title">Render Projection</p>
-                    <p class="registry-meta">symbols and semantic blocks are derived from the source buffer, not stored in source text.</p>
-                  </div>
-                  <span class="entry-badge" id="symbolStat">3 glyph candidates</span>
-                </div>
+        /* 主题特定模拟：Ivory */
+        .style-ivory { background: #f2efe9; }
+        .style-ivory::after { content: ""; position: absolute; inset: 40px; border-radius: 4px; box-shadow: inset 4px 4px 10px rgba(0,0,0,0.05), inset -4px -4px 10px #fff; }
 
-                <div class="render-pane" id="renderSurface"></div>
+        /* 信息排版 */
+        .card-body { padding: 40px; display: flex; flex-direction: column; flex: 1; position: relative; z-index: 10; background: inherit; }
+        .proto-index { font-family: 'Azeret Mono'; font-size: 11px; font-weight: 700; opacity: 0.2; margin-bottom: 20px; }
+        .proto-name { font-size: 32px; font-weight: 800; letter-spacing: -1px; margin-bottom: 15px; }
+        .proto-desc { font-size: 15px; opacity: 0.4; line-height: 1.6; }
+        .proto-tag { font-family: 'Azeret Mono'; font-size: 9px; letter-spacing: 3px; text-transform: uppercase; margin-top: auto; padding-top: 40px; opacity: 0.3; }
 
-                <div class="buffer-footer">
-                  <span class="entry-badge" id="blockStat">1 semantic block</span>
-                  <span class="entry-badge" id="compileUnitStat">minimal unit ready</span>
-                  <span class="entry-badge">copy = raw source</span>
-                </div>
-              </section>
-            </div>
+        .vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.7) 100%); z-index: 100; }
+        footer { margin-top: 150px; text-align: left; font-size: 10px; opacity: 0.1; letter-spacing: 10px; padding-bottom: 80px; }
+    </style>
+</head>
+<body>
+    <div class="vignette"></div>
 
-            <aside class="diagnostic-rail">
-              <div class="rail-card warning">
-                <p class="rail-title" id="diagPrimaryTitle">line 05 / state transition</p>
-                <p class="rail-body" id="diagPrimaryBody">transition target is valid, but no explicit join strategy is declared.</p>
-              </div>
-              <div class="rail-card info">
-                <p class="rail-title" id="diagSecondaryTitle">line 07 / parallel worker</p>
-                <p class="rail-body" id="diagSecondaryBody">worker.beta is visible in runtime graph and thread lane preview.</p>
-              </div>
-              <div class="rail-card success">
-                <p class="rail-title" id="diagTertiaryTitle">selection snapshot</p>
-                <p class="rail-body" id="diagTertiaryBody">current unit is compilable and can be sent to cloud agent context.</p>
-              </div>
-            </aside>
-          </div>
+    <div class="console-trigger" onclick="toggleConsole()"></div>
 
-          <div class="editor-footer">
-            <div class="meta-card">
-              <p class="meta-label">selection</p>
-              <p class="meta-value" id="selectionMeta">fn bootGraph / unit ready</p>
-            </div>
-            <div class="meta-card">
-              <p class="meta-label">diagnostics</p>
-              <p class="meta-value" id="diagnosticMeta">1 warning / 0 errors</p>
-            </div>
-            <div class="meta-card">
-              <p class="meta-label">projection</p>
-              <p class="meta-value" id="projectionMeta">raw source buffer preserved</p>
-            </div>
-          </div>
-        </section>
-
-        <aside class="control-stage panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Module + Surface Registry</p>
-              <h2>mounted entries</h2>
-            </div>
-          </div>
-
-          <div class="registry-group">
-            <div class="registry-card" data-card="localCompile">
-              <div>
-                <p class="registry-name">Local Compile Module</p>
-                <p class="registry-meta">desktop / android / self-hosted</p>
-              </div>
-              <span class="registry-state">mounted</span>
-            </div>
-            <div class="registry-card" data-card="graphRuntime">
-              <div>
-                <p class="registry-name">Runtime Graph Entry</p>
-                <p class="registry-meta">feature registry / staged update</p>
-              </div>
-              <span class="registry-state">mounted</span>
-            </div>
-            <div class="registry-card" data-card="cloudAgent">
-              <div>
-                <p class="registry-name">Cloud Agent Adapter</p>
-                <p class="registry-meta">openai-compatible / active</p>
-              </div>
-              <span class="registry-state">mounted</span>
-            </div>
-            <div class="registry-card is-muted" data-card="localAgent">
-              <div>
-                <p class="registry-name">Local Agent Bridge</p>
-                <p class="registry-meta">optional external component</p>
-              </div>
-              <span class="registry-state">not installed</span>
-            </div>
-          </div>
-
-          <div class="panel-subsection" id="runtimeEntryGroup">
-            <p class="subsection-title">Runtime Surface Entries</p>
-            <div class="entry-list">
-              <div class="entry-row">
-                <span class="entry-badge">thread lane</span>
-                <span>thread.spawned / thread.exited</span>
-              </div>
-              <div class="entry-row">
-                <span class="entry-badge">state graph</span>
-                <span>state.entered / transition.fired</span>
-              </div>
-              <div class="entry-row">
-                <span class="entry-badge">fallback</span>
-                <span>unknown event -> log surface</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel-subsection">
-            <p class="subsection-title">Staged Updates</p>
-            <div class="update-card" id="updateCard">
-              <div>
-                <p class="registry-name">graphRuntime v0.3.2</p>
-                <p class="registry-meta">downloaded / activates after restart</p>
-              </div>
-              <span class="registry-state" id="updateState">staged</span>
-            </div>
-            <div class="update-card">
-              <div>
-                <p class="registry-name">cloudAgent profile sync adapter</p>
-                <p class="registry-meta">not mounted / local-only fallback active</p>
-              </div>
-              <span class="registry-state">idle</span>
-            </div>
-          </div>
-        </aside>
-      </main>
-
-      <section class="distribution-stage panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-label">Distribution + Module Library</p>
-            <h2>platform capability matrix + installable runtime parts</h2>
-          </div>
-          <div class="panel-tags">
-            <span class="tag">hot update staged</span>
-            <span class="tag">platform-safe mount rules</span>
-          </div>
-        </div>
-
-        <div class="distribution-grid">
-          <div class="module-library">
-            <div class="library-card" data-library-card="localCompile">
-              <div class="library-copy">
-                <p class="registry-name">Local Compile Module</p>
-                <p class="registry-meta">desktop / android optional, blocked on iOS and hosted web. Android budget stays within 50 MB.</p>
-              </div>
-              <div class="library-controls">
-                <span class="entry-badge" data-library-state="localCompile">mounted</span>
-                <button class="action ghost library-action" data-library-action="localCompile">Unmount</button>
-              </div>
-            </div>
-
-            <div class="library-card" data-library-card="graphRuntime">
-              <div class="library-copy">
-                <p class="registry-name">Runtime Graph Entry</p>
-                <p class="registry-meta">feature registry backed, staged-update capable, console fallback remains available.</p>
-              </div>
-              <div class="library-controls">
-                <span class="entry-badge" data-library-state="graphRuntime">mounted</span>
-                <button class="action ghost library-action" data-library-action="graphRuntime">Unmount</button>
-              </div>
-            </div>
-
-            <div class="library-card" data-library-card="cloudAgent">
-              <div class="library-copy">
-                <p class="registry-name">Cloud Agent Adapter</p>
-                <p class="registry-meta">OpenAI-compatible endpoint, default cloud path for iOS and hosted web clients.</p>
-              </div>
-              <div class="library-controls">
-                <span class="entry-badge" data-library-state="cloudAgent">mounted</span>
-                <button class="action ghost library-action" data-library-action="cloudAgent">Unmount</button>
-              </div>
-            </div>
-
-            <div class="library-card" data-library-card="localAgent">
-              <div class="library-copy">
-                <p class="registry-name">Local Agent Bridge</p>
-                <p class="registry-meta">external component entry, user-installed only, optional on desktop and Android.</p>
-              </div>
-              <div class="library-controls">
-                <span class="entry-badge" data-library-state="localAgent">not installed</span>
-                <button class="action ghost library-action" data-library-action="localAgent">Install</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="platform-matrix">
-            <div class="platform-card is-active" data-platform="macos">
-              <div class="platform-card-header">
-                <div>
-                  <p class="registry-name">macOS Desktop</p>
-                  <p class="registry-meta">self-distributed / full local runtime</p>
-                </div>
-                <span class="tag">default</span>
-              </div>
-              <div class="policy-list">
-                <span class="policy-chip">local compile optional</span>
-                <span class="policy-chip">local agent optional</span>
-                <span class="policy-chip">graph runtime full</span>
-              </div>
-            </div>
-
-            <div class="platform-card" data-platform="android">
-              <div class="platform-card-header">
-                <div>
-                  <p class="registry-name">Android Mobile</p>
-                  <p class="registry-meta">self-distributed / local-first under size budget</p>
-                </div>
-                <span class="tag">50 MB target</span>
-              </div>
-              <div class="policy-list">
-                <span class="policy-chip">local compile optional</span>
-                <span class="policy-chip">cloud fallback allowed</span>
-                <span class="policy-chip">mobile gesture shell</span>
-              </div>
-            </div>
-
-            <div class="platform-card" data-platform="ios">
-              <div class="platform-card-header">
-                <div>
-                  <p class="registry-name">iOS Client</p>
-                  <p class="registry-meta">app-store constrained / cloud-safe runtime only</p>
-                </div>
-                <span class="tag">cloud only</span>
-              </div>
-              <div class="policy-list">
-                <span class="policy-chip blocked">local compile blocked</span>
-                <span class="policy-chip">cloud agent required</span>
-                <span class="policy-chip">store-safe capability set</span>
-              </div>
-            </div>
-
-            <div class="platform-card" data-platform="web">
-              <div class="platform-card-header">
-                <div>
-                  <p class="registry-name">Hosted Web</p>
-                  <p class="registry-meta">cloud workspace / session retention and export gate</p>
-                </div>
-                <span class="tag">hosted</span>
-              </div>
-              <div class="policy-list">
-                <span class="policy-chip blocked">no local compile</span>
-                <span class="policy-chip">workspace export link</span>
-                <span class="policy-chip">7 day retention</span>
-              </div>
-            </div>
-
-            <div class="platform-detail">
-              <p class="prompt-title">active platform policy</p>
-              <p class="prompt-text" id="platformPolicyText">macOS desktop keeps local compile available and can mount the local agent bridge on demand.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="runtime-stage panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-label">Runtime Surface</p>
-            <h2>thread lanes + tabbed runtime workspace</h2>
-          </div>
-          <div class="runtime-tabs segmented">
-            <button class="segmented-btn is-active" data-runtime-tab="graph">Graph</button>
-            <button class="segmented-btn" data-runtime-tab="console">Console</button>
-            <button class="segmented-btn" data-runtime-tab="debug">Debug</button>
-          </div>
-        </div>
-
-        <div class="runtime-grid">
-          <div class="thread-lanes">
-            <div class="lane lane-main">
-              <span class="lane-name">main</span>
-              <div class="lane-track">
-                <div class="pulse pulse-a"></div>
-                <div class="pulse pulse-b"></div>
-              </div>
-            </div>
-            <div class="lane">
-              <span class="lane-name">alpha</span>
-              <div class="lane-track">
-                <div class="pulse pulse-c"></div>
-              </div>
-            </div>
-            <div class="lane">
-              <span class="lane-name">beta</span>
-              <div class="lane-track">
-                <div class="pulse pulse-d"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="runtime-panel-stack">
-            <div class="runtime-tab-panel is-active" id="runtimePanelGraph">
-              <div class="graph-surface">
-                <div class="graph-node active">idle</div>
-                <div class="graph-link"></div>
-                <div class="graph-node">running</div>
-                <div class="graph-link"></div>
-                <div class="graph-node ghost">join</div>
-              </div>
-            </div>
-
-            <div class="runtime-tab-panel" id="runtimePanelConsole">
-              <div class="console-surface" id="eventConsole">
-                <div class="console-line"><span>001</span><span>compile.ready / minimal unit resolved</span></div>
-                <div class="console-line"><span>002</span><span>thread.spawned / alpha</span></div>
-                <div class="console-line"><span>003</span><span>thread.spawned / beta</span></div>
-                <div class="console-line"><span>004</span><span>transition.fired / idle -> running</span></div>
-              </div>
-            </div>
-
-            <div class="runtime-tab-panel" id="runtimePanelDebug">
-              <div class="debug-surface">
-                <div class="debug-card">
-                  <p class="prompt-title">runtime session</p>
-                  <p class="prompt-text">session-bootGraph / sequence monotonic / source fidelity preserved</p>
-                </div>
-                <div class="debug-card">
-                  <p class="prompt-title">active adapters</p>
-                  <p class="prompt-text" id="debugAdaptersText">graphRuntime mounted / cloudAgent mounted / localAgent absent</p>
-                </div>
-                <div class="debug-card">
-                  <p class="prompt-title">degradation rule</p>
-                  <p class="prompt-text">when graphRuntime unmounts, runtime view falls back to console-only mode.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="runtime-footer">
-          <div class="runtime-status" id="runtimeStatus">ready for run</div>
-        </div>
-      </section>
-
-      <section class="agent-stage panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-label">Agent Surface</p>
-            <h2>prompt profile + patch suggestion</h2>
-          </div>
-          <span class="tag">openai-compatible adapter</span>
-        </div>
-
-        <div class="agent-grid">
-          <div class="prompt-stack">
-            <div class="prompt-card active">
-              <p class="prompt-title">system preset</p>
-              <p class="prompt-text">Prioritize Styio syntax fidelity, runtime graph truthfulness, and module-safe suggestions.</p>
-            </div>
-            <div class="prompt-card">
-              <p class="prompt-title">workspace injection</p>
-              <p class="prompt-text">current file + diagnostics + runtime session + installed modules</p>
-            </div>
-            <div class="prompt-card" id="providerCard">
-              <p class="prompt-title">provider state</p>
-              <p class="prompt-text">cloud adapter active / local bridge absent / profile sync local-only</p>
-            </div>
-          </div>
-
-          <div class="chat-composer">
-            <div class="chat-log">
-              <p><span class="chat-role">agent</span> current unit can compile. graph runtime is mounted.</p>
-              <p><span class="chat-role">you</span> suggest a safer pipeline transition and a mobile gesture variant.</p>
-            </div>
-            <div class="composer-row">
-              <input type="text" value="Refactor the current unit without changing source fidelity." readonly />
-              <button class="action" id="previewPatch">Preview Patch</button>
-            </div>
-          </div>
-
-          <div class="patch-stage">
-            <div class="patch-header">
-              <p class="panel-label">Patch Preview</p>
-              <span class="tag" id="patchState">idle</span>
-            </div>
-            <div class="patch-diff" id="patchDiff">
-              <div class="diff-line remove">- spawn worker.beta</div>
-              <div class="diff-line add">+ spawn worker.beta.joined("renderFlow")</div>
-              <div class="diff-line add">+ state join_wait</div>
-            </div>
-            <div class="patch-actions">
-              <button class="action ghost" id="inspectPatch">Inspect</button>
-              <button class="action" id="applyPatchAction">Apply Preview</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="mobile-stage panel">
-        <div class="panel-header">
-          <div>
-            <p class="panel-label">Mobile Surface Preview</p>
-            <h2>vertical flow + long press pipeline selector</h2>
-          </div>
-          <span class="tag">shared core / diverged interaction</span>
-        </div>
-
-        <div class="mobile-preview">
-          <div class="phone-frame">
-            <div class="phone-screen">
-              <div class="mobile-card active">compose minimal unit</div>
-              <div class="mobile-card">hold pipeline name</div>
-              <div class="pipeline-wheel">
-                <span class="wheel-chip">feed</span>
-                <span class="wheel-chip active">normalize</span>
-                <span class="wheel-chip">render</span>
-                <span class="wheel-chip">commit</span>
-              </div>
-              <div class="mobile-card">agent predict next token</div>
-              <div class="mobile-footer">swipe down for runtime / swipe up for agent</div>
-            </div>
-          </div>
-
-          <div class="mobile-notes">
-            <div class="note-card">
-              <p class="prompt-title">interaction note</p>
-              <p class="prompt-text">桌面端的横向信息密度被拆成纵向卡片流，保留同一份 language/runtime/module 核心数据。</p>
-            </div>
-            <div class="note-card">
-              <p class="prompt-title">module note</p>
-              <p class="prompt-text">Android 可以保留 local compile，iOS 只展示 cloud-safe 入口。</p>
-            </div>
-            <div class="note-card">
-              <p class="prompt-title">agent note</p>
-              <p class="prompt-text">local agent bridge 若未挂载，手机端仍能用 cloud adapter 和 local-only profile。</p>
-            </div>
-          </div>
-        </div>
-      </section>
+    <div class="director-console" id="console">
+        <div style="font-size: 10px; letter-spacing: 8px; opacity: 0.3; margin-bottom: 40px;">DIRECTOR_CONTROL</div>
+        <div id="sortList"></div>
+        <button style="margin-top: auto; background: transparent; border: 1px solid #444; color: #666; padding: 15px; font-size: 10px; letter-spacing: 4px; cursor:pointer;" onclick="toggleConsole()">CLOSE_CONSOLE</button>
     </div>
 
-    <dialog id="workspaceDialog" class="workspace-dialog">
-      <h3>Close hosted workspace?</h3>
-      <p>All hosted state will enter pending deletion. Core files remain downloadable until <span id="workspaceDeadline"></span>.</p>
-      <a href="#" class="download-link">download core files</a>
-      <div class="dialog-actions">
-        <button class="action ghost" id="cancelWorkspaceClose">Cancel</button>
-        <button class="action danger" id="confirmWorkspaceClose">Confirm Close</button>
-      </div>
-    </dialog>
+    <div class="gallery-container" id="main">
+        <header>
+            <h1>Design Repository</h1>
+            <div class="gallery-title">Styio<br/>Prototype<br/>Nexus</div>
+        </header>
+        <div class="prototype-grid" id="protoGrid"></div>
+        <footer>BEYOND CONVENTIONAL INTERFACES // STYIO AI PROJECT 2026</footer>
+    </div>
 
-    <script src="./app.js"></script>
-  </body>
+    <script>
+        const prototypes = [
+            { id: 'zenith', name: 'Zenith', styleClass: 'style-zenith', url: 'styio-zenith.html', desc: '垂直权威。顶部拉幕全景菜单，哑光石墨美学，极致掌控感。', tag: 'Vertical_Authority' },
+            { id: 'xenon', name: 'Xenon', styleClass: 'style-xenon', url: 'styio-xenon.html', desc: '氙气实验室。边框光纤实时跟随光标高度，高对比度护眼设计。', tag: 'Lab_Precision' },
+            { id: 'vis', name: 'HyperVis', styleClass: 'style-xenon', url: 'styio-hyper-vis.html', desc: '战术 HUD。60FPS 实时逻辑脉冲，磁吸式书签变标题交互。', tag: 'Tactical_HUD' },
+            { id: 'bauhaus', name: 'Bauhaus', styleClass: 'style-bauhaus', url: 'styio-bauhaus.html', desc: '绝对几何。包豪斯风格非对称网格系统，模块化推移交互。', tag: 'Functional_Fashion' },
+            { id: 'synapse-v2', name: 'Synapse v2', styleClass: 'style-synapse', url: 'styio-synapse-v2.html', desc: '触控板专业版。双指横向轻扫切换，发光缩进导轨支持。', tag: 'Pro_Enhanced' },
+            { id: 'ivory', name: 'Ivory', styleClass: 'style-ivory', url: 'styio-glace.html', desc: '象牙神庙。拟物陶瓷质感，内凹阴影建筑学，温润大地色系。', tag: 'Tactile_Light' },
+            { id: 'obsidian', name: 'Obsidian', styleClass: 'style-xenon', url: 'styio-obsidian.html', desc: '黑曜石精密。绝对直角，数据层级叠加，工业级实用主义工具。', tag: 'Precision_Pro' },
+            { id: 'synapse', name: 'Neural', styleClass: 'style-synapse', url: 'styio-synapse.html', desc: '神经元。横向生物光纤导轨，底部升起式节点，莱洛核心进化。', tag: 'Bio_Organic' },
+            { id: 'monolith', name: 'Monolith', styleClass: 'style-xenon', url: 'styio-monolith.html', desc: '黑色方碑。垂直崇高美学，发光几何底座生长，3D 视差。', tag: 'Void_Study' },
+            { id: 'lumina', name: 'Lumina', styleClass: 'style-xenon', url: 'styio-lumina.html', desc: '光学棱镜。超折射玻璃材质，RGB 棱镜色散，极光背景。', tag: 'Optical_Art' },
+            { id: 'parchment', name: 'Parchment', styleClass: 'style-ivory', url: 'styio-parchment.html', desc: '手稿。羊皮纸纹理，红色蜡封火漆章交互，墨水洇散排版。', tag: 'Vintage_Art' },
+            { id: 'cinema', name: 'Cinema', styleClass: 'style-cinema', url: 'styio-cinema.html', desc: '电影放映机。黑白映画，动态卷轴与光束，导演剪辑版 v2。', tag: 'Noir_Steady' }
+        ];
+
+        let currentOrder = [];
+        function loadOrder() {
+            const saved = JSON.parse(localStorage.getItem('styio_nexus_order') || '[]');
+            if(saved.length > 0) {
+                currentOrder = saved.map(id => prototypes.find(p => p.id === id)).filter(Boolean);
+                prototypes.forEach(p => { if(!saved.includes(p.id)) currentOrder.push(p); });
+            } else { currentOrder = [...prototypes]; }
+        }
+
+        function saveOrder() {
+            const ids = Array.from(document.querySelectorAll('.sort-item')).map(item => item.dataset.id);
+            localStorage.setItem('styio_nexus_order', JSON.stringify(ids));
+            loadOrder(); renderMain();
+        }
+
+        function toggleConsole() { document.body.classList.toggle('is-open'); }
+
+        function renderConsole() {
+            const list = document.getElementById('sortList');
+            list.innerHTML = currentOrder.map(p => `<div class="sort-item" draggable="true" data-id="${p.id}"><span>${p.name}</span><span style="opacity:0.1;">:::</span></div>`).join('');
+            addDragListeners();
+        }
+
+        function renderMain() {
+            const grid = document.getElementById('protoGrid');
+            grid.innerHTML = currentOrder.map((p, idx) => `
+                <a href="${p.url}" class="proto-card" data-id="${p.id}">
+                    <div class="preview-pane ${p.styleClass}"></div>
+                    <div class="card-body">
+                        <span class="proto-index">${String(idx + 1).padStart(2, '0')}</span>
+                        <div class="proto-name">${p.name}</div>
+                        <div class="proto-desc">${p.desc}</div>
+                        <div class="proto-tag">${p.tag}</div>
+                    </div>
+                </a>
+            `).join('');
+        }
+
+        function addDragListeners() {
+            const container = document.getElementById('sortList');
+            document.querySelectorAll('.sort-item').forEach(item => {
+                item.addEventListener('dragstart', () => item.classList.add('dragging-item'));
+                item.addEventListener('dragend', () => { item.classList.remove('dragging-item'); saveOrder(); });
+            });
+            container.addEventListener('dragover', e => {
+                e.preventDefault();
+                const afterElement = getDragAfterElement(container, e.clientY);
+                const dragging = document.querySelector('.dragging-item');
+                if (afterElement == null) container.appendChild(dragging); else container.insertBefore(dragging, afterElement);
+            });
+        }
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.sort-item:not(.dragging-item)')];
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                else return closest;
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        loadOrder(); renderConsole(); renderMain();
+
+        document.addEventListener('mousedown', (e) => {
+            const con = document.getElementById('console');
+            if (document.body.classList.contains('is-open') && !con.contains(e.target) && e.target.className !== 'console-trigger') toggleConsole();
+        });
+    </script>
+</body>
 </html>

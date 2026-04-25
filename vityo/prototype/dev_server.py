@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_WORKSPACE = ROOT / "workspace"
 WORKSPACE_CONFIG = ROOT / ".workspace-root"
 HOST = "127.0.0.1"
-PORT = 4173
+PORT = 4180
 IGNORED_NAMES = {
     ".DS_Store",
     ".git",
