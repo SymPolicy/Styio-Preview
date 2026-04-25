@@ -19,6 +19,7 @@ jobs:
       - name: Checkout styio-view
         uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           path: styio-view
 
       - name: Checkout latest styio-audit policy
@@ -37,4 +38,7 @@ jobs:
         working-directory: styio-view
         run: |
           git -C ../styio-audit rev-parse HEAD
+          for branch in stable nightly ai-dev; do
+            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
+          done
           python3 ../styio-audit/bin/styio-audit gate --repo . --project styio-view
