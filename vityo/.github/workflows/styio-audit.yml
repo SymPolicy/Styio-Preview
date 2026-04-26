@@ -3,6 +3,7 @@ name: styio-audit
 on:
   pull_request:
   push:
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -10,6 +11,7 @@ permissions:
 
 jobs:
   audit:
+    name: styio-audit
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -34,11 +36,15 @@ jobs:
         with:
           python-version: ${{ env.STYIO_PYTHON_VERSION }}
 
+      - name: Fetch managed branch evidence
+        working-directory: styio-view
+        run: |
+          for branch in stable nightly ai-dev; do
+            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
+          done
+
       - name: Run released styio-audit gate
         working-directory: styio-view
         run: |
           git -C ../styio-audit rev-parse HEAD
-          for branch in stable nightly ai-dev; do
-            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
-          done
           python3 ../styio-audit/bin/styio-audit gate --repo . --project styio-view
