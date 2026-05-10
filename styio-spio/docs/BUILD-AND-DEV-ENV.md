@@ -97,7 +97,7 @@ Source-build mode may fetch the official `styio` source tree when needed:
 ./scripts/spio build minimal --manifest-path path/to/spio.toml --yes
 ```
 
-The default source-build origin is `https://github.com/eBioRing/Styio.git`, and the project channel selects the matching source branch:
+The default source-build origin is `https://github.com/eBioRing/styio-all-in-one.git`, and the project channel selects the matching source branch:
 
 1. `stable` -> `stable`
 2. `nightly` -> `nightly`

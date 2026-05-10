@@ -374,7 +374,7 @@ Optional keys:
 - prebuilt install accepts legacy `tools/styio/...` channel and release paths only as a compatibility fallback
 - `install-spio.sh` writes a `styio` wrapper that delegates to the managed compiler under `SPIO_HOME/tools/styio/current/bin/styio`; the compiler itself must answer `styio --version`
 - `--source` forces source-build mode and `--prebuilt-only` fails instead of falling back to source-build
-- source fallback fetches from `SPIO_STYIO_SOURCE_ORIGIN` when set, otherwise from `https://github.com/eBioRing/styio.git`
+- source fallback fetches from `SPIO_STYIO_SOURCE_ORIGIN` when set, otherwise from `https://github.com/eBioRing/styio-all-in-one.git`
 - source fallback uses `SPIO_STYIO_SOURCE_REF` when set, otherwise `main` for `latest`; explicit `styio@<ref>` maps to that source revision when prebuilt install is skipped or unavailable
 - source fallback defaults to non-interactive fetch approval so fresh machines can bootstrap with one command
 - both prebuilt and source installs validate the resulting compiler through the same compatibility matrix as `spio tool install` before promoting it to `SPIO_HOME/tools/styio/current/`
@@ -402,9 +402,9 @@ Optional keys:
 - `spio build --dry-run` must not require compiler probing
 - `spio build minimal` uses the selected project toolchain mode:
   - `binary` continues through published compiler discovery and compatibility gating
-  - `build` resolves or fetches the official `styio` source tree from `https://github.com/eBioRing/Styio.git`, maps `stable` and `nightly` to the same-named source branches, builds a local compiler under `SPIO_HOME/toolchains/source/`, and then runs the compile-plan through that source-built compiler
+  - `build` resolves or fetches the official `styio` source tree from `https://github.com/eBioRing/styio-all-in-one.git`, maps `stable` and `nightly` to the same-named source branches, builds a local compiler under `SPIO_HOME/toolchains/source/`, and then runs the compile-plan through that source-built compiler
 - Source-build alignment requirements for `spio build minimal`:
-  - official source origin is `https://github.com/eBioRing/Styio.git`
+  - official source origin is `https://github.com/eBioRing/styio-all-in-one.git`
   - channel mapping is `stable` and `nightly` to the same-named source branches
   - project-local workflow state remains in `spio-toolchain.lock`
   - source-build mode bypasses the published binary compatibility matrix

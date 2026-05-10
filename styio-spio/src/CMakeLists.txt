@@ -1,11 +1,11 @@
 add_library(spio_build_config INTERFACE)
-target_include_directories(spio_build_config INTERFACE "${CMAKE_SOURCE_DIR}/src")
-if(EXISTS "${CMAKE_SOURCE_DIR}/src-private")
-  target_include_directories(spio_build_config INTERFACE "${CMAKE_SOURCE_DIR}/src-private")
+target_include_directories(spio_build_config INTERFACE "${SPIO_SOURCE_DIR}/src")
+if(EXISTS "${SPIO_SOURCE_DIR}/src-private")
+  target_include_directories(spio_build_config INTERFACE "${SPIO_SOURCE_DIR}/src-private")
 endif()
 set(SPIO_VERSION_SUFFIX "-dev" CACHE STRING "Suffix appended to the spio project version, for example -dev or -alpha.")
 target_compile_definitions(spio_build_config INTERFACE
-  "SPIO_PROJECT_ROOT=\"${CMAKE_SOURCE_DIR}\""
+  "SPIO_PROJECT_ROOT=\"${SPIO_SOURCE_DIR}\""
   "SPIO_PROJECT_VERSION=\"${PROJECT_VERSION}${SPIO_VERSION_SUFFIX}\""
 )
 target_link_libraries(spio_build_config INTERFACE tomlplusplus::tomlplusplus nlohmann_json::nlohmann_json)
@@ -75,7 +75,7 @@ set(SPIO_CLI_SHELL_SOURCES
     SpioCLI/CLI.cpp
 )
 
-file(GLOB_RECURSE SPIO_PRIVATE_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src-private/*.cpp")
+file(GLOB_RECURSE SPIO_PRIVATE_SOURCES CONFIGURE_DEPENDS "${SPIO_SOURCE_DIR}/src-private/*.cpp")
 
 spio_add_internal_static_library(spio_foundation ${SPIO_FOUNDATION_SOURCES})
 

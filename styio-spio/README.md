@@ -40,7 +40,7 @@ The source-level ownership summary lives in
 - `spio` must not include or link against `styio` implementation headers or libraries.
 - `spio` must not depend on files under `../src`, `../tests`, or any other compiler-internal path.
 - `spio` may depend on a published external `styio` executable only through the documented binary-mode discovery path such as `--styio-bin` or `SPIO_STYIO_BIN`.
-- `spio` source-build mode may fetch the official `styio` source tree from `https://github.com/eBioRing/Styio.git`, using the `stable` and `nightly` branches as the channel roots, through the documented source-build contract and cache layout.
+- `spio` source-build mode may fetch the official `styio` source tree from `https://github.com/eBioRing/styio-all-in-one.git`, using the `stable` and `nightly` branches as the channel roots, through the documented source-build contract and cache layout.
 - `spio/contracts/` is the source of truth for package-manager-side machine contracts. Hosted workspace, registry control-plane server, and cloud-service contracts are downstream in `styio-platform`.
 - Local package import/export is a client-side contract. It must not require
   `styio-platform`; platform mirrors only improve discovery and distribution.
@@ -48,7 +48,7 @@ The source-level ownership summary lives in
 ## Tree
 
 ```text
-spio/
+styio-spio/
   frontend/
     console/
   src/
@@ -60,9 +60,9 @@ spio/
   scripts/
 ```
 
-## Transitional Note
+## Monorepo Note
 
-The current repository root still hosts the existing `styio` compiler project directly. This `spio/` subtree is being prepared so it can later be moved wholesale into `/Users/unka/DevSpace/Unka-Malloc/styio-spio` without dragging compiler source code along with it.
+`styio-spio/` is imported as a sibling module in `styio-all-in-one`. It remains source-independent from `styio/`: shared behavior crosses process and contract boundaries instead of C++ include or link boundaries.
 
 ## Implementation Stack Note
 
@@ -80,13 +80,13 @@ Python remains in-tree only where it owns repository automation, contract gates,
 
 ## Developer Context Pack
 
-Before moving this subtree into `/Users/unka/DevSpace/Unka-Malloc/styio-spio`, `spio` developers should read:
+When working on `spio` against the sibling `styio/` compiler module, developers should read:
 
 - `docs/external/for-styio/Styio-for-Spio-Developers.md`
 - `docs/external/for-styio/Styio-Public-Interface-Roadmap.md`
 - `docs/governance/Spio-Version-Decoupling-Constraints.md`
 
-Those documents are the migration knowledge pack for working against `styio` without creating hidden source-level dependencies.
+Those documents are the knowledge pack for working against `styio` without creating hidden source-level dependencies.
 
 ## Developer Entry Points
 
@@ -139,7 +139,7 @@ Project-local workflow mode selection now uses:
 
 Current source-build and platform boundary:
 
-- `build` mode is implemented as a local source-build workflow rooted in the official `https://github.com/eBioRing/Styio.git` source tree.
+- `build` mode is implemented as a local source-build workflow rooted in the official `https://github.com/eBioRing/styio-all-in-one.git` source tree, with the `styio` compiler built through the monorepo root CMake target.
 - `cloud status` and `cloud plan` remain local machine-readable compatibility surfaces for package-manager clients.
 - the remote async control plane, queue, worker pools, hosted workspace APIs, registry server control planes, and extensible cloud-service runbooks belong to `styio-platform`.
 - offline package use, local package import/export, local cache warm-up, vendor snapshots, and project-local compiler environment tuning belong to `styio-spio`.
@@ -161,7 +161,7 @@ For the full implementation and migration plan, start with:
 - `docs/operations/Spio-Repo-Split-Runbook.md`
 - `docs/governance/Spio-Local-Offline-Package-Contract.md`
 
-Recommended preflight before moving this subtree:
+Recommended local preflight:
 
 ```text
 ./scripts/bootstrap-dev-env.sh

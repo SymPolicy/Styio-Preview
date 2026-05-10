@@ -119,17 +119,17 @@ add_test(
 
 add_test(
   NAME spio_installer_bootstrap_smoke
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/spio-installer-bootstrap-smoke.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/spio-installer-bootstrap-smoke.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_installer_channel_smoke
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/spio-installer-channel-smoke.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/spio-installer-channel-smoke.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_installer_adapter_smoke
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/spio-installer-adapter-smoke.sh"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/spio-installer-adapter-smoke.sh"
 )
 
 add_test(
@@ -169,104 +169,104 @@ add_test(
 
 add_test(
   NAME spio_styio_interface_gate_handshake
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/styio-interface-gate-handshake.sh"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/styio-interface-gate-handshake.sh"
 )
 
 add_test(
   NAME spio_styio_interface_gate_compile_plan
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/styio-interface-gate-compile-plan.sh"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/styio-interface-gate-compile-plan.sh"
 )
 
 add_test(
   NAME spio_registry_http_fetch
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-http-fetch.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-http-fetch.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_http_publish
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-http-publish.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-http-publish.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_server_gate
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-server-gate.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-server-gate.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_split_origin_promotion
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-split-origin-promotion.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-split-origin-promotion.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_split_origin_http
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-split-origin-http.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-split-origin-http.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_v2_unit
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/unit/test_registry_v2.py"
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/unit/test_registry_v2.py"
 )
 
 add_test(
   NAME spio_cloud_compile_stress_unit
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/unit/test_cloud_compile_stress.py"
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/unit/test_cloud_compile_stress.py"
 )
 
 add_test(
   NAME spio_registry_v2_contract
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/registry-v2-contract-gate.py"
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/registry-v2-contract-gate.py"
 )
 
 add_test(
   NAME spio_registry_v2_publish
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-v2-publish.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-v2-publish.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_v2_http_read
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-v2-http-read.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-v2-http-read.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_registry_control_plane_contract
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/registry-control-plane-contract-gate.py"
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/registry-control-plane-contract-gate.py"
 )
 
 add_test(
   NAME spio_registry_v2_control_plane_http
-  COMMAND bash "${CMAKE_SOURCE_DIR}/tests/interop/registry-v2-control-plane-http.sh" "$<TARGET_FILE:spio>"
+  COMMAND bash "${SPIO_SOURCE_DIR}/tests/interop/registry-v2-control-plane-http.sh" "$<TARGET_FILE:spio>"
 )
 
 add_test(
   NAME spio_native_contract_source_gate
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/native-contract-source-gate.py"
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/native-contract-source-gate.py"
 )
 
 add_test(
   NAME spio_hosted_api_contract_unit
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode unit
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode unit
 )
 
 add_test(
   NAME spio_hosted_api_contract_integration
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode integration
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode integration
 )
 
 add_test(
   NAME spio_hosted_api_contract_regression
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode regression
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode regression
 )
 
 add_test(
   NAME spio_hosted_api_contract_smoke
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode smoke
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode smoke
 )
 
 add_test(
   NAME spio_hosted_api_contract_fuzz
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode fuzz
+  COMMAND python3 "${SPIO_SOURCE_DIR}/tests/interop/hosted-control-plane-contract-gate.py" --mode fuzz
 )
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/tests-private/CMakeLists.txt")
-  add_subdirectory("${CMAKE_SOURCE_DIR}/tests-private" "${CMAKE_BINARY_DIR}/tests-private")
+if(EXISTS "${SPIO_SOURCE_DIR}/tests-private/CMakeLists.txt")
+  add_subdirectory("${SPIO_SOURCE_DIR}/tests-private" "${SPIO_BINARY_DIR}/tests-private")
 endif()

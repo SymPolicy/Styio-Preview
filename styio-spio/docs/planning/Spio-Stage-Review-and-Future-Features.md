@@ -197,7 +197,7 @@ Implemented:
 - project-local `binary` and `build` workflow modes through `spio-toolchain.lock`
 - project-local `stable` and `nightly` channels
 - project-local `build_mode = minimal`
-- local source-build checkout and compiler build cache rooted in the official `https://github.com/eBioRing/Styio.git` source origin
+- local source-build checkout and compiler build cache rooted in the official `https://github.com/eBioRing/styio-all-in-one.git` source origin
 
 Important boundary:
 
