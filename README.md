@@ -8,7 +8,7 @@ This repository is the monorepo home for Styio and its client-side modules.
 | --- | --- |
 | [`styio/`](styio/) | Styio language, compiler, runtime, tests, docs, and benchmarks |
 | [`styio-spio/`](styio-spio/) | Local-first package manager and project workflow client |
-| `styio-view/` | Planned visual client module |
+| [`vityo/`](vityo/) | Vityo IDE, editor, and runtime window |
 
 The root CMake project builds `styio/` and includes sibling modules when they provide their own `CMakeLists.txt`.
 
