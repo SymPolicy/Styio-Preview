@@ -1,0 +1,16 @@
+{
+  "moduleId": "agent.surface.basic",
+  "displayName": "Agent Surface",
+  "version": "0.1.0",
+  "kind": "optional",
+  "slot": "agentSurface",
+  "description": "First-class AI panel host with provider adapter slots.",
+  "enabledByDefault": true,
+  "entrypoint": "lib/src/agent/agent_surface.dart",
+  "distributionPolicyRef": "cross-platform-ui",
+  "capabilityFlags": {
+    "agentPanel": true,
+    "providerAdapters": true,
+    "profileInjection": true
+  }
+}

@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>styio</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;600&family=Fragment+Mono&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Code+Pro:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap"
+    />
+    <link rel="stylesheet" href="./editor.css?v=20260416-grid-fonts-v22" />
+    <link rel="stylesheet" href="./editor-styles/common.css?v=20260416-grid-fonts-v22" />
+    <link rel="stylesheet" href="./editor-styles/grid-style.css?v=20260416-grid-fonts-v22" />
+    <link rel="stylesheet" href="./editor-styles/editorial-style.css?v=20260416-grid-fonts-v22" />
+  </head>
+  <body>
+    <div class="grid-main-head" id="gridMainHead">
+      <div>
+        <h1 id="gridCurrentFileTitle">styio</h1>
+      </div>
+    </div>
+
+    <div class="workspace-shell" id="workspaceShell">
+      <section class="main-editor-card">
+        <div class="grid-main-toolbar" id="gridMainToolbar">
+          <div class="grid-editor-tabs" id="gridFileTabs"></div>
+          <button
+            class="icon-button"
+            id="gridToggleSidebar"
+            data-shell-sidebar-toggle="true"
+            aria-expanded="false"
+            aria-controls="gridSideDrawer"
+            aria-label="Open sidebar"
+            title="Open sidebar"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="14 6 8 12 14 18"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="grid-main-toolbar-spacer" id="gridMainToolbarSpacer" aria-hidden="true"></div>
+
+        <div class="editorial-main-title">
+          <h1 id="editorBrandTitle">styio</h1>
+          <span class="editorial-main-title-rule"></span>
+        </div>
+
+        <div class="grid-editor-pane" id="gridEditorPane">
+          <div class="editor-frame">
+            <div class="editor-gutter" id="lineGutter"></div>
+
+            <div class="code-stage" id="codeStage">
+              <div class="block-layer" id="blockLayer"></div>
+              <div class="render-layer" id="renderLayer"></div>
+              <div class="caret-layer" id="caretLayer">
+                <div class="caret-indicator" id="caretIndicator"></div>
+              </div>
+              <textarea
+                id="editorInput"
+                class="editor-input"
+                spellcheck="false"
+                autocapitalize="none"
+                autocomplete="off"
+                autocorrect="off"
+                wrap="off"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-drawer grid-side-drawer" id="gridSideDrawer">
+        <div class="grid-drawer-header" id="gridDrawerHeader">
+          <div class="grid-drawer-tabs-dock" id="gridDrawerTabsDock"></div>
+          <button
+            class="icon-button icon-button-vertical-flip"
+            id="gridCloseSidebar"
+            aria-label="Close sidebar"
+            title="Close sidebar"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="14 6 8 12 14 18"></polyline>
+            </svg>
+          </button>
+        </div>
+        <div class="grid-drawer-header-spacer" id="gridDrawerHeaderSpacer" aria-hidden="true"></div>
+        <div class="grid-drawer-content" id="gridDrawerContent">
+          <div class="grid-drawer-mount" id="gridDrawerMount"></div>
+        </div>
+      </aside>
+
+      <aside class="editorial-side-drawer" id="editorialSideDrawer" aria-hidden="true">
+        <div class="editorial-drawer-header">
+          <div class="editorial-drawer-title">
+            <h1 id="editorialSidebarTitle">Workspace</h1>
+          </div>
+        </div>
+        <div class="editorial-drawer-mount" id="editorialDrawerMount"></div>
+      </aside>
+
+      <div class="shared-drawer-content" id="sharedDrawerContent">
+        <div class="drawer-list-shell" id="sharedDrawerListShell">
+          <div class="drawer-tabs" id="sharedDrawerTabs">
+            <button class="drawer-tab is-active drawer-tab-icon-only" data-drawer-tab="files" aria-label="File tree" title="File tree">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"></path>
+                <path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"></path>
+                <path d="M3 5a2 2 0 0 0 2 2h3"></path>
+                <path d="M3 3v13a2 2 0 0 0 2 2h3"></path>
+              </svg>
+            </button>
+            <button class="drawer-tab drawer-tab-icon-only" data-drawer-tab="settings" aria-label="Settings" title="Settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 17H5"></path>
+                <path d="M19 7h-9"></path>
+                <circle cx="17" cy="17" r="3"></circle>
+                <circle cx="7" cy="7" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+
+          <div class="drawer-panel is-active" id="drawerPanelFiles">
+            <div class="workspace-tools">
+              <div class="workspace-tool-card">
+                <div>
+                  <p class="setting-title" id="workspaceTitle">Workspace</p>
+                  <p class="setting-copy" id="workspacePathHint" hidden></p>
+                </div>
+                <div class="workspace-tool-row">
+                  <div class="workspace-path-stack">
+                    <div class="workspace-path-display" id="workspacePathDisplay" aria-label="Workspace path" tabindex="0">
+                      <div class="workspace-path-viewport" id="workspacePathViewport">
+                        <div class="workspace-path-track" id="workspacePathTrack">
+                          <span class="workspace-path-text" id="workspacePathText"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="workspace-path-scroll-shell">
+                      <div class="workspace-path-scroll-visual" id="workspacePathScrollVisual" aria-hidden="true">
+                        <div class="workspace-path-scroll-thumb" id="workspacePathScrollThumb"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="workspace-tool-button workspace-tool-icon-button" id="workspacePathApply" type="button" aria-label="Open workspace" title="Open workspace">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="4.5" cy="12" r="2.2" fill="currentColor" stroke="none"></circle>
+                      <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"></circle>
+                      <circle cx="19.5" cy="12" r="2.2" fill="currentColor" stroke="none"></circle>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="workspace-action-row" aria-label="Workspace actions">
+                <button class="workspace-action-button" id="createFolderButton" type="button" aria-label="Create folder" title="Create folder">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 10v6"></path>
+                    <path d="M9 13h6"></path>
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+                  </svg>
+                </button>
+                <button class="workspace-action-button" id="quickCreateFileButton" type="button" aria-label="Create file" title="Create file">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
+                    <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
+                    <path d="M9 15h6"></path>
+                    <path d="M12 18v-6"></path>
+                  </svg>
+                </button>
+                <button class="workspace-action-button workspace-action-button-delete" id="bulkDeleteButton" type="button" aria-label="Select files to delete" title="Select files to delete">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                    <path d="M3 6h18"></path>
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+                <button class="workspace-action-button" id="refreshWorkspaceButton" type="button" aria-label="Refresh workspace" title="Refresh workspace">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                    <path d="M21 3v5h-5"></path>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                    <path d="M8 16H3v5"></path>
+                  </svg>
+                </button>
+                <button class="workspace-action-button" id="workspaceMoreButton" type="button" aria-label="More workspace actions" title="More workspace actions">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="1"></circle>
+                    <circle cx="19" cy="12" r="1"></circle>
+                    <circle cx="5" cy="12" r="1"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="file-tree" id="fileTree"></div>
+          </div>
+
+          <div class="drawer-panel" id="drawerPanelSettings">
+            <div class="setting-group settings-factory-root" id="settingsFactoryRoot"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="editorial-sidebar-rail" id="editorialSidebarRail" aria-label="Sidebar quick actions">
+        <button
+          class="editorial-rail-button"
+          id="editorialRailOpen"
+          data-shell-sidebar-toggle="true"
+          type="button"
+          aria-label="Open sidebar"
+          title="Open sidebar"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <polyline points="10 6 16 12 10 18"></polyline>
+          </svg>
+        </button>
+        <button class="editorial-rail-button" id="editorialRailFiles" type="button" aria-label="File tree" title="File tree">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"></path>
+            <path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"></path>
+            <path d="M3 5a2 2 0 0 0 2 2h3"></path>
+            <path d="M3 3v13a2 2 0 0 0 2 2h3"></path>
+          </svg>
+        </button>
+        <button class="editorial-rail-button" id="editorialRailSettings" type="button" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 17H5"></path>
+            <path d="M19 7h-9"></path>
+            <circle cx="17" cy="17" r="3"></circle>
+            <circle cx="7" cy="7" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="workspace-callout" id="workspaceCallout" hidden>
+      <div class="workspace-callout-copy">
+        <p class="setting-title" id="workspaceCalloutTitle">Using Browser Storage</p>
+        <p class="setting-copy" id="workspaceCalloutBody">
+          Files and editor settings are currently staying in browser cache until you choose a real workspace folder.
+        </p>
+      </div>
+      <button class="action" id="workspaceCalloutOpen" type="button">Open Workspace</button>
+    </div>
+
+    <div class="app-dialog-overlay" id="appDialogOverlay" hidden>
+      <div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+        <div class="app-dialog-head">
+          <div>
+            <p class="setting-title" id="appDialogTitle">Dialog</p>
+            <p class="setting-copy app-dialog-message" id="appDialogMessage"></p>
+          </div>
+          <button class="icon-button subtle" id="appDialogClose" aria-label="Close dialog" title="Close dialog" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <label class="glyph-color-field app-dialog-input-field" id="appDialogInputField" hidden>
+          <input class="glyph-color-value app-dialog-input" id="appDialogInput" type="text" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off" />
+        </label>
+
+        <label class="app-dialog-textarea-field" id="appDialogTextareaField" hidden>
+          <textarea class="app-dialog-textarea" id="appDialogTextarea" spellcheck="false" autocapitalize="none" autocomplete="off" autocorrect="off"></textarea>
+        </label>
+
+        <div class="app-dialog-list" id="appDialogList" hidden></div>
+
+        <div class="app-dialog-actions">
+          <button class="action ghost" id="appDialogCancel" type="button">Cancel</button>
+          <button class="action" id="appDialogConfirm" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="workspace-picker-overlay" id="workspacePickerOverlay" hidden>
+      <div class="workspace-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="workspacePickerTitle">
+        <div class="workspace-picker-head">
+          <div>
+            <p class="setting-title" id="workspacePickerTitle">Open Workspace</p>
+            <p class="setting-copy" id="workspacePickerCaption">Choose a local folder to use as the current workspace root.</p>
+          </div>
+          <button class="icon-button subtle" id="workspacePickerClose" aria-label="Close workspace picker" title="Close workspace picker">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 7l10 10"></path>
+              <path d="M17 7L7 17"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="workspace-picker-toolbar">
+          <button class="icon-button subtle workspace-picker-up" id="workspacePickerUp" type="button" aria-label="Go to parent folder" title="Go to parent folder">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 6v12"></path>
+              <path d="M7 11l5-5 5 5"></path>
+            </svg>
+          </button>
+          <input
+            class="workspace-picker-current"
+            id="workspacePickerCurrent"
+            type="text"
+            spellcheck="false"
+            autocapitalize="none"
+            autocomplete="off"
+            autocorrect="off"
+            aria-label="Workspace path"
+          />
+        </div>
+
+        <div class="workspace-picker-breadcrumbs" id="workspacePickerBreadcrumbs"></div>
+        <div class="workspace-picker-list" id="workspacePickerList"></div>
+
+        <div class="workspace-picker-actions">
+          <button class="action" id="workspacePickerConfirm" type="button">Use This Folder</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-toast" id="appToast" hidden role="status" aria-live="polite">
+      <span class="app-toast-text" id="appToastText"></span>
+    </div>
+
+    <script type="module" src="./editor.js?v=20260416-grid-fonts-v22"></script>
+  </body>
+</html>

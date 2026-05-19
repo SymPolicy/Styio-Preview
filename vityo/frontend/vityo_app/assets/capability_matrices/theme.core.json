@@ -1,0 +1,11 @@
+{
+  "moduleId": "theme.core",
+  "platforms": {
+    "web": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "hosted-web", "note": "Theme layer is always available." },
+    "windows": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Theme layer is always available." },
+    "linux": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Theme layer is always available." },
+    "android": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Theme layer is always available." },
+    "macos": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Theme layer is always available." },
+    "ios": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "app-store", "note": "Theme layer is always available." }
+  }
+}

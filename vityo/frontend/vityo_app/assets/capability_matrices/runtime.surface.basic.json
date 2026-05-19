@@ -1,0 +1,11 @@
+{
+  "moduleId": "runtime.surface.basic",
+  "platforms": {
+    "web": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "hosted-web", "note": "Runtime surface connects to hosted workspace." },
+    "windows": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Runtime surface is mounted by default." },
+    "linux": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Runtime surface is mounted by default." },
+    "android": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Runtime surface is mounted by default." },
+    "macos": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Runtime surface is mounted by default." },
+    "ios": { "supported": true, "visible": true, "installable": true, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "app-store", "note": "Runtime surface stays available on iOS." }
+  }
+}

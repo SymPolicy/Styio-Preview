@@ -1,0 +1,16 @@
+{
+  "moduleId": "cloud.runtime.shared",
+  "displayName": "Cloud Runtime",
+  "version": "0.1.0",
+  "kind": "optional",
+  "slot": "cloudRuntime",
+  "description": "Hosted workspace and remote compile/run path for iOS and Web.",
+  "enabledByDefault": true,
+  "entrypoint": "lib/src/platform/native_module_loader.dart",
+  "distributionPolicyRef": "cloud-runtime",
+  "capabilityFlags": {
+    "hostedWorkspace": true,
+    "remoteCompile": true,
+    "remoteRun": true
+  }
+}

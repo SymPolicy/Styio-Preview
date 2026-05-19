@@ -1,0 +1,11 @@
+{
+  "moduleId": "core.shell",
+  "platforms": {
+    "web": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "hosted-web", "note": "Core shell is always mounted." },
+    "windows": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Core shell is always mounted." },
+    "linux": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Core shell is always mounted." },
+    "android": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Core shell is always mounted." },
+    "macos": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "self-hosted", "note": "Core shell is always mounted." },
+    "ios": { "supported": true, "visible": true, "installable": false, "mountedByDefault": true, "iosSafe": true, "distributionChannel": "app-store", "note": "Core shell is always mounted." }
+  }
+}

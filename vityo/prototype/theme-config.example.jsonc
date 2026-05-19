@@ -1,0 +1,75 @@
+{
+  // VS Code-inspired customizations for the current prototype.
+  "$schema": "https://styio.dev/schemas/theme-customizations.json",
+  "name": "Custom Palette",
+
+  "workbench.colorCustomizations": {
+    "styio.themePalette": "graphiteGold",
+    "styio.themeColor": "defaultGold",
+    "styio.themeText": "mist",
+    "styio.background": "graphite",
+    "styio.themeLines": "soft",
+    "styio.interfaceFont": "defaultSans",
+    "styio.interfaceSize": 15,
+  },
+
+  "editor": {
+    "tabSize": 2,
+    "fontFamily": "jetbrainsMono",
+    "fontSize": 15,
+  },
+
+  "styioView": {
+    // Supported styles: grid, editorial
+    "style": "grid",
+    "language": "zhCn",
+    "glyphComposition": true,
+    "themeMode": "dark",
+    "editorMode": "dark",
+    "visualTokens": {
+      "title": {
+        "color": "#F4C76A",
+        "glow": "rgba(244, 199, 106, 0.10)",
+        "fontSize": "24px"
+      },
+      "radius": {
+        "ui": "12px",
+        "toggle": "10px",
+        "pill": "10px"
+      },
+      "border": {
+        "width": "1px",
+        "color": "rgba(255, 255, 255, 0.07)",
+        "strongColor": "rgba(255, 255, 255, 0.12)"
+      },
+      "shadow": {
+        "card": "0 22px 58px rgba(0, 0, 0, 0.24)"
+      },
+      "settings": {
+        "titleSize": "15px"
+      }
+    }
+  },
+
+  "editor.tokenColorCustomizations": {
+    "styio.palette": "default",
+    "styio.editorBackground": "graphite",
+    "styio.textColor": "mist",
+    "styio.textHighlight": "defaultGold",
+    "styio.block": "graphite",
+    "styio.line": "graphite",
+    "styio.selection": "graphite",
+    "styio.symbolColors": {
+      "#": "#F4C76A",
+      "@": "#F4C76A",
+      ">_": "#F4C76A",
+      "|>": "#F4C76A",
+      "<|": "#F4C76A",
+      "->": "#F4C76A",
+      "<-": "#F4C76A",
+      "=>": "#F4C76A",
+      "<=": "#F4C76A",
+      ":=": "#F4C76A",
+    },
+  },
+}
