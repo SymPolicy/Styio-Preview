@@ -4,14 +4,14 @@
 
 **Last updated:** 2026-04-14
 
-这个文件只保留导航职责。性能/基准的权威说明已经统一收口到根目录 [`benchmark/`](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/README.md:1)，后续不要在这里重复维护细节。
+这个文件只保留导航职责。性能/基准的权威说明已经统一收口到根目录 [`benchmark/`](<styio-workspace>/benchmark/README.md:1)，后续不要在这里重复维护细节。
 
 主入口：
 
-- 路线说明：[benchmark/README.md](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/README.md:1)
-- 一键脚本：[benchmark/perf-route.sh](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/perf-route.sh:1)
-- 二分最小化：[benchmark/soak-minimize.sh](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/soak-minimize.sh:1)
-- shadow gate：[benchmark/parser-shadow-suite-gate.sh](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/parser-shadow-suite-gate.sh:1)
+- 路线说明：[benchmark/README.md](<styio-workspace>/benchmark/README.md:1)
+- 一键脚本：[benchmark/perf-route.sh](<styio-workspace>/benchmark/perf-route.sh:1)
+- 二分最小化：[benchmark/soak-minimize.sh](<styio-workspace>/benchmark/soak-minimize.sh:1)
+- shadow gate：[benchmark/parser-shadow-suite-gate.sh](<styio-workspace>/benchmark/parser-shadow-suite-gate.sh:1)
 
 推荐直接使用：
 
@@ -21,5 +21,5 @@
 
 该脚本会把结构化结果落到 `benchmark/reports/<timestamp>/`，摘要和覆盖说明见：
 
-- [benchmark/README.md](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/README.md:1)
-- [benchmark/COVERAGE-MATRIX.md](/Users/unka/DevSpace/Unka-Malloc/styio/benchmark/COVERAGE-MATRIX.md:1)
+- [benchmark/README.md](<styio-workspace>/benchmark/README.md:1)
+- [benchmark/COVERAGE-MATRIX.md](<styio-workspace>/benchmark/COVERAGE-MATRIX.md:1)

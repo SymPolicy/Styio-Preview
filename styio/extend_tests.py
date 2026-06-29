@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 
 def pad_with_zeros(n: int):
   return '{:0>8}'.format(n)
@@ -12,6 +13,7 @@ def create_file(filename, content=""):
     print(f"Exception while creating '{filename}': {e}")
 
 def extend_tests(dir_path, n=10):
+  styio_bin = os.environ.get("STYIO_BIN", "styio")
   files = list(filter(
     lambda x: os.path.isfile(f"{dir_path}/{x}") & x.endswith(".styio"), 
     sorted(os.listdir(dir_path), reverse=True)
@@ -24,11 +26,11 @@ def extend_tests(dir_path, n=10):
     fnames = [f'{dir_path}/{pad_with_zeros(i)}.styio' for i in range(latest+1, latest+n+1)]
     for fn in fnames:
       if "parsing" in fn:
-        create_file(fn, r"// RUN: /home/Styio/styio --styio-ast --file %s | /usr/bin/FileCheck %s")
+        create_file(fn, f"// RUN: {styio_bin} --styio-ast --file %s | /usr/bin/FileCheck %s")
       elif "lowering" in fn:
-        create_file(fn, r"// RUN: /home/Styio/styio --styio-ir --file %s | /usr/bin/FileCheck %s")
+        create_file(fn, f"// RUN: {styio_bin} --styio-ir --file %s | /usr/bin/FileCheck %s")
       elif "codegen" in fn:
-        create_file(fn, r"// RUN: /home/Styio/styio --llvm-ir --file %s | /usr/bin/FileCheck %s")
+        create_file(fn, f"// RUN: {styio_bin} --llvm-ir --file %s | /usr/bin/FileCheck %s")
       else:
         create_file(fn, r"")
   else:
@@ -41,4 +43,5 @@ if __name__ == "__main__":
   # for dir_name in os.listdir(tests_path):
   #   print(f"{file_path}/{dir_name}")
   #   print(os.path.isdir(f"{file_path}/{dir_name}"))
-  extend_tests("/home/Styio/tests/parsing/forward", 5)
+  default_tests = os.path.join("tests", "parsing", "forward")
+  extend_tests(sys.argv[1] if len(sys.argv) > 1 else default_tests, 5)
