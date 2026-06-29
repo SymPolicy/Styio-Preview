@@ -11,7 +11,7 @@
   name = "Bob"
 }
 
-@(server = "172.163.8.102:50600")
+@(server = "example.invalid:50600")
   >> (i: json) => {
   ? (i.name == "Alice") => {
 
