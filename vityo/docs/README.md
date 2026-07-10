@@ -17,7 +17,7 @@
 9. 已归档 provenance 与 lifecycle 元数据放在 `docs/archive/`。
 10. `Vityo` 产品拥有的 adapter 合同放在 `docs/contracts/`。
 11. 与上游 `styio` 的对接边界、接口合同和阻塞项放在 `docs/external/for-styio/`。
-12. 与上游 `spio` 的项目图、toolchain 与 workflow handoff 放在 `docs/external/for-spio/`。
+12. 与上游 `pafio` 的项目图、toolchain 与 workflow handoff 放在 `docs/external/for-pafio/`。
 13. 团队 ownership、review routing、handoff 和 checkpoint 入口放在 `docs/teams/`。
 
 ## Entry Points
@@ -34,7 +34,7 @@
 10. ADR 入口：[adr/INDEX.md](./adr/INDEX.md)
 11. 产品合同入口：[contracts/INDEX.md](./contracts/INDEX.md)
 12. `styio` 对接入口：[external/for-styio/INDEX.md](./external/for-styio/INDEX.md)
-13. `spio` 对接入口：[external/for-spio/INDEX.md](./external/for-spio/INDEX.md)
+13. `pafio` 对接入口：[external/for-pafio/INDEX.md](./external/for-pafio/INDEX.md)
 14. 手写 Web IDE 工程手册：[specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md](./specs/HANDWRITTEN-WEB-IDE-ENGINEERING-HANDBOOK.md)
 15. 团队协作入口：[teams/COORDINATION-RUNBOOK.md](./teams/COORDINATION-RUNBOOK.md)
 
@@ -47,6 +47,6 @@
 5. 用 `python3 scripts/docs-audit.py` 校验 docs 结构与元数据。
 6. 产品语义变化时，同批更新 `design/`、相关 ADR、对应里程碑和测试目录。
 7. `Vityo` 的产品合同由本仓拥有；上游实现需适配这些合同，而不是反过来驱动前端退化。
-8. 若实现边界与上游仓库当前实现冲突，先把 required handoff 记录到 `external/for-styio/` 或 `external/for-spio/`，再在本仓 ADR 中记录适配决策。
+8. 若实现边界与上游仓库当前实现冲突，先把 required handoff 记录到 `external/for-styio/` 或 `external/for-pafio/`，再在本仓 ADR 中记录适配决策。
 9. 若一次变更改变了团队 owned surface、review 路由或 handoff 路径，同批更新受影响的 `teams/*.md` 和 `teams/COORDINATION-RUNBOOK.md`。
 10. 新增文档必须使用当前产品名 `Vityo`；下游仓库名称使用 `vityo-nightly`，不能再引入旧产品名、旧仓库名或旧路径。

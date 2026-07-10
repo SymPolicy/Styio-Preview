@@ -13,7 +13,7 @@ void main() {
       const ToolchainStatusSnapshot(
         source: ToolchainResolutionSource.projectPin,
         detail: 'Project toolchain pin resolved.',
-        pinPath: '/workspace/demo/spio-toolchain.toml',
+        pinPath: '/workspace/demo/pafio-toolchain.toml',
         channel: 'stable',
         version: '0.0.5',
       ),
@@ -26,7 +26,7 @@ void main() {
     expect(surface.channel, 'stable');
     expect(surface.actionable, isFalse);
     expect(surface.recoveryActions, isEmpty);
-    expect(surface.toJson()['pinPath'], '/workspace/demo/spio-toolchain.toml');
+    expect(surface.toJson()['pinPath'], '/workspace/demo/pafio-toolchain.toml');
   });
 
   test('toolchain status surface projects failed command recovery', () {
@@ -40,7 +40,7 @@ void main() {
       lastCommand: const ToolchainCommandResult(
         command: 'tool use',
         status: ToolchainCommandStatus.failed,
-        statusMessage: 'spio tool use failed with exit code 64.',
+        statusMessage: 'pafio tool use failed with exit code 64.',
         stdout: '',
         stderr: 'exit 64',
       ),
@@ -48,7 +48,7 @@ void main() {
 
     expect(surface.severity, ToolchainStatusSeverity.failed);
     expect(surface.title, 'Toolchain command failed');
-    expect(surface.message, 'spio tool use failed with exit code 64.');
+    expect(surface.message, 'pafio tool use failed with exit code 64.');
     expect(surface.lastCommand, 'tool use');
     expect(surface.actionable, isTrue);
     expect(

@@ -32,7 +32,7 @@
 | 三仓文件治理对齐 | 上游 `styio-nightly` canonical governance plan | 本仓不再保留本地 plan 镜像 |
 | 第三方依赖清单 | `THIRD-PARTY.md` | 与实现同步更新 |
 | `styio` 对接边界与接口合同 | `../external/for-styio/` | 链接 |
-| `spio` 对接边界与接口合同 | `../external/for-spio/` | 链接 |
+| `pafio` 对接边界与接口合同 | `../external/for-pafio/` | 链接 |
 | 冻结里程碑与任务清单 | `../milestones/<YYYY-MM-DD>/00-Milestone-Index.md` | 链接 |
 | 测试与验收映射 | `../assets/workflow/TEST-CATALOG.md` | 链接 |
 | 架构裁决 | `../adr/` | 只保留决策摘要 |
@@ -62,7 +62,7 @@
 | `docs/history/` | 按日记录与恢复信息 |
 | `docs/archive/` | 已归档 provenance 与 lifecycle 元数据 |
 | `docs/external/for-styio/` | 与上游 `styio` 的接口、责任边界与对接清单 |
-| `docs/external/for-spio/` | 与上游 `spio` 的接口、责任边界与对接清单 |
+| `docs/external/for-pafio/` | 与上游 `pafio` 的接口、责任边界与对接清单 |
 | `docs/teams/` | 团队 runbook、ownership 路由与 handoff 入口 |
 
 ## 2. 联动更新规则

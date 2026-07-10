@@ -39,7 +39,7 @@ jobs:
 
           for ref in "$requested" nightly; do
             if git ls-remote --exit-code --heads https://github.com/Unka-Malloc/styio-nightly.git "$ref" >/dev/null 2>&1 \
-              && git ls-remote --exit-code --heads https://github.com/Unka-Malloc/styio-spio.git "$ref" >/dev/null 2>&1; then
+              && git ls-remote --exit-code --heads https://github.com/Unka-Malloc/styio-pafio.git "$ref" >/dev/null 2>&1; then
               echo "ref=$ref" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -55,12 +55,12 @@ jobs:
           ref: ${{ steps.sibling-ref.outputs.ref }}
           path: styio-nightly
 
-      - name: Checkout styio-spio sibling repository
+      - name: Checkout styio-pafio sibling repository
         uses: actions/checkout@v5
         with:
-          repository: Unka-Malloc/styio-spio
+          repository: Unka-Malloc/styio-pafio
           ref: ${{ steps.sibling-ref.outputs.ref }}
-          path: styio-spio
+          path: styio-pafio
 
       - name: Set up standardized Python
         uses: actions/setup-python@v6

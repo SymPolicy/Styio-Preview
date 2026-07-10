@@ -61,7 +61,7 @@ If `gh` is unavailable or unauthenticated, the agent must state that GitHub Acti
 
 ## Cross-Repository Work
 
-When one delivery touches `styio-nightly`, `styio-spio`, and `Vityo`, post-push verification applies to every pushed repository. The agent should check each repository's GitHub Actions status, not only the repository that received the last commit.
+When one delivery touches `styio-nightly`, `styio-pafio`, and `Vityo`, post-push verification applies to every pushed repository. The agent should check each repository's GitHub Actions status, not only the repository that received the last commit.
 
 Cross-repository gates must use the same workspace checkout set that will be visible to CI. If a gate consumes another repository's branch, push that repository first or report that remote CI may still be using an older sibling checkout.
 

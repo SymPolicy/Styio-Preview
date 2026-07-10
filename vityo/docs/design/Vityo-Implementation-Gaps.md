@@ -17,7 +17,7 @@ Status values:
 | Status | Meaning |
 |---|---|
 | Open | Work is not complete. |
-| Upstream blocked | Vityo needs a Styio or Spio machine contract before final closure. |
+| Upstream blocked | Vityo needs a Styio or Pafio machine contract before final closure. |
 | Implementation needed | Design exists, but repo-local implementation is missing or incomplete. |
 | Partially implemented | Repo-local anchors exist, but the full product or integration path is not complete. |
 | Validation needed | Code or design anchors exist, but product-level gates are not proven. |
@@ -85,7 +85,7 @@ Status values:
 | Install/use/pin result envelopes | Partially implemented | Vityo | Registration, selection, clear-active, runtime, health, install plan, external install execution, staged managed download, tar extraction, extracted executable registration, archive manifest registration, direct/archive install registration envelopes with rollback status, platform failure envelopes, recovery action hints, UI-facing command recovery projection, and retry/log route invocation exist. Remaining closure: partial install state plus selector/installer recovery action flows. |
 | Toolchain backend handoff examples | Implementation needed | Vityo | Keep examples non-authoritative and aligned with contracts. |
 | Build/run/test product gate | Validation needed | Vityo | Product-level gate proving route behavior and structured failures beyond unit anchors. |
-| Package/workflow payload maturity | Upstream blocked | styio-spio | Published project graph, toolchain state, registry/package state, dependency, and workflow success payloads. |
+| Package/workflow payload maturity | Upstream blocked | styio-pafio | Published project graph, toolchain state, registry/package state, dependency, and workflow success payloads. |
 
 ## 7. AI, Theme, Module, And Mobile Gaps
 
@@ -97,7 +97,7 @@ Status values:
 | Theme editor UI | Implementation needed | Vityo | Visual theme editing panel and live preview. |
 | Theme profile store | Implementation needed | Vityo | Persist user theme overrides and cross-session restore. |
 | Module package staging | Implementation needed | Vityo | Real package download/staging/activation path. |
-| Platform file deletion and resource reclaim | Implementation needed | Vityo | Platform-specific package/cache/data cleanup with user-visible recovery behavior. |
+| Platform file deletion and resource reclaim | Implementation needed | Vityo | Pafio-specific package/cache/data cleanup with user-visible recovery behavior. |
 | Android local-first execution | Implementation needed | Vityo | Real local-first execution path and fallback behavior. |
 | Mobile interaction matrix | Validation needed | Vityo | Android/iOS input, viewport, commands, editor, runtime, and recovery behavior. |
 | Device/simulator platform gates | Validation needed | Vityo | Android device/emulator and iOS simulator/cloud-route gates. |
@@ -123,7 +123,7 @@ Use these destinations instead:
 | Stable product/system truth | `docs/design/` |
 | Active implementation or integration gap | `docs/design/Vityo-Implementation-Gaps.md` |
 | Upstream Styio handoff | `docs/external/for-styio/` |
-| Upstream Spio handoff | `docs/external/for-spio/` |
+| Upstream Pafio handoff | `docs/external/for-pafio/` |
 | Frozen milestone batch | `docs/milestones/` |
 | Open risk or conflict before decision | `docs/review/` |
 | Final architecture decision | `docs/adr/` |

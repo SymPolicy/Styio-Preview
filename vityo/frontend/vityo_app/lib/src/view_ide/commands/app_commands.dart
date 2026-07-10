@@ -74,7 +74,7 @@ class StyioCommandRegistry {
       id: AppCommandId.fetchDependencies,
       label: 'Fetch',
       shortcutHint: 'Cmd/Ctrl+Shift+F',
-      description: 'Materialize dependency sources into the local spio cache.',
+      description: 'Materialize dependency sources into the local pafio cache.',
       primary: true,
       shortcuts: <AppCommandShortcutSpec>[
         AppCommandShortcutSpec('keyF', control: true, shift: true),
@@ -97,14 +97,14 @@ class StyioCommandRegistry {
       label: 'Use Compiler',
       shortcutHint: 'Route',
       description:
-          'Use the currently resolved compiler version as the managed spio compiler.',
+          'Use the currently resolved compiler version as the managed pafio compiler.',
     ),
     AppCommandDescriptor(
       id: AppCommandId.pinActiveCompiler,
       label: 'Pin Compiler',
       shortcutHint: 'Route',
       description:
-          'Pin the currently resolved compiler version into spio-toolchain.toml.',
+          'Pin the currently resolved compiler version into pafio-toolchain.toml.',
     ),
     AppCommandDescriptor(
       id: AppCommandId.clearPinnedCompiler,

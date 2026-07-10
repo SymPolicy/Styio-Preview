@@ -244,12 +244,12 @@ class _RecordingHostedControlPlaneClient implements HostedControlPlaneClient {
 
 ProjectGraphSnapshot _hostedProjectGraph() {
   return ProjectGraphSnapshot(
-    id: '/workspace/demo/spio.toml',
+    id: '/workspace/demo/pafio.toml',
     title: 'demo/app',
     kind: ProjectKind.hosted,
     workspaceRoot: '/workspace/demo',
     workspaceMembers: const <String>[],
-    manifestPath: '/workspace/demo/spio.toml',
+    manifestPath: '/workspace/demo/pafio.toml',
     packages: const <ProjectPackageSnapshot>[],
     dependencies: const <ProjectDependencySnapshot>[],
     targets: const <ProjectTargetDescriptor>[],

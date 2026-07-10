@@ -1,4 +1,4 @@
-name: styio-ci
+name: platform-adaptation
 
 on:
   pull_request:
@@ -11,6 +11,7 @@ on:
 
 jobs:
   build-and-test:
+    name: platform-adaptation / linux-ci-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
@@ -82,3 +83,77 @@ jobs:
 
       - name: Fuzz smoke
         run: ctest --test-dir build -L fuzz_smoke --output-on-failure
+
+  test-smoke:
+    name: test / smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install smoke dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang-18 lld-18 llvm-18-dev libicu-dev python3
+
+      - name: Configure smoke build
+        run: >
+          cmake -S . -B build/smoke -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+          -DSTYIO_ENABLE_FUZZ=ON
+
+      - name: Build smoke targets
+        run: cmake --build build/smoke --target styio styio_test
+
+      - name: Run smoke tests
+        run: ctest --test-dir build/smoke -R '^m1_t01_int_arith$|^m2_t01_simple_func$' --output-on-failure
+
+  test-golden-standard:
+    name: test / golden-standard
+    needs: [build-and-test, test-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install golden-standard dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            clang-18 \
+            lld-18 \
+            llvm-18-dev \
+            libicu-dev \
+            python3
+
+      - name: Configure golden-standard build
+        run: >
+          cmake -S . -B build/golden -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+
+      - name: Build golden-standard targets
+        run: >
+          cmake --build build/golden --target
+          styio styio_test styio_security_test styio_soak_test
+
+      - name: Run milestone and pipeline goldens
+        run: |
+          ctest --test-dir build/golden -L milestone --output-on-failure
+          ctest --test-dir build/golden -L styio_pipeline --output-on-failure
+
+      - name: Run security and soak evidence
+        run: |
+          ctest --test-dir build/golden -L security --output-on-failure
+          ctest --test-dir build/golden -L soak_smoke --output-on-failure

@@ -43,9 +43,9 @@ RUN apt update \
     && apt update \
     && apt install gh -y \
     # [Styio]
-    && git clone https://github.com/eBioRing/styio.git \
+    && git clone https://github.com/SymPolicy/styio.git \
     # [Extra]
-    && git clone https://github.com/eBioRing/styio-dev-env.git \
+    && git clone https://github.com/SymPolicy/styio-dev-env.git \
     && rsync -a styio-dev-env/docker/extra/.vscode ${WORK_SPACE} \
     && rm -rf styio-dev-env
 

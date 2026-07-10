@@ -52,7 +52,7 @@ Device verification stays host-driven:
 
 ## Standardized Baseline
 
-`Vityo` now follows the same shared project-level version discipline used by `styio-nightly` and `styio-spio` where the tool overlaps:
+`Vityo` now follows the same shared project-level version discipline used by `styio-nightly` and `styio-pafio` where the tool overlaps:
 
 1. Development host standard: Debian `13` (`trixie`).
 2. Compiler helper toolchain standard: LLVM / Clang `18.1.x` and CMake / CTest `3.31.6`.

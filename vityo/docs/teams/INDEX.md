@@ -10,7 +10,7 @@
 
 | Path | Entry | Summary |
 |------|-------|---------|
-| `ADAPTER-CONTRACTS-RUNBOOK.md` | [Adapter / Contracts Runbook](./ADAPTER-CONTRACTS-RUNBOOK.md) | 提供 adapter 合同、integration 层以及上游 styio / spio handoff 文档的日常维护入口。 |
+| `ADAPTER-CONTRACTS-RUNBOOK.md` | [Adapter / Contracts Runbook](./ADAPTER-CONTRACTS-RUNBOOK.md) | 提供 adapter 合同、integration 层以及上游 styio / pafio handoff 文档的日常维护入口。 |
 | `COORDINATION-RUNBOOK.md` | [Coordination Runbook](./COORDINATION-RUNBOOK.md) | 提供 Vityo 的日常协调入口；显式维护团队 ownership、review routing、升级路径和 checkpoint 纪律，但不替代产品规格、系统架构或 adapter 合同 SSOT。 |
 | `DOC-STATS.md` | [Team Runbook Document Stats](./DOC-STATS.md) | Record the current size of each docs/teams/ runbook using the repository-local docs audit counting rules; this is a maintenance snapshot, not a quality target. |
 | `DOCS-DELIVERY-RUNBOOK.md` | [Docs / Delivery Runbook](./DOCS-DELIVERY-RUNBOOK.md) | 提供 Vityo 文档树、里程碑、history、repo hygiene 与交付文档的日常维护入口。 |

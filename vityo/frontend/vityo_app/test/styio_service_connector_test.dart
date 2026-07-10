@@ -4254,7 +4254,7 @@ void main() {
     'platform Styio service analysis driver uses provided toolchain manager',
     () async {
       final tempRoot = await Directory.systemTemp.createTemp(
-        'vityo_styio_platform_driver_manager_test_',
+        'vityo_pafio_driver_manager_test_',
       );
       addTearDown(() => tempRoot.delete(recursive: true));
       final configurationStore = await createConfigurationStore(tempRoot);

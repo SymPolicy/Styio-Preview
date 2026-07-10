@@ -119,23 +119,23 @@ void main() {
     ];
 
     return ProjectGraphSnapshot(
-      id: '$root/spio.toml',
+      id: '$root/pafio.toml',
       title: title,
       kind: ProjectKind.combinedRoot,
       workspaceRoot: root,
       workspaceMembers: const <String>['packages/render-kit'],
-      manifestPath: '$root/spio.toml',
-      lockfilePath: '$root/spio.lock',
-      toolchainPinPath: '$root/spio-toolchain.toml',
+      manifestPath: '$root/pafio.toml',
+      lockfilePath: '$root/pafio.lock',
+      toolchainPinPath: '$root/pafio-toolchain.toml',
       styioConfigPath: '$root/styio.toml',
-      vendorRoot: '$root/.spio/vendor',
-      buildRoot: '$root/.spio/build',
+      vendorRoot: '$root/.pafio/vendor',
+      buildRoot: '$root/.pafio/build',
       packages: <ProjectPackageSnapshot>[
         ProjectPackageSnapshot(
           packageName: packageName,
           version: '0.0.1',
           rootPath: root,
-          manifestPath: '$root/spio.toml',
+          manifestPath: '$root/pafio.toml',
           dependencies: const <ProjectDependencySnapshot>[
             ProjectDependencySnapshot(
               sourcePackageName: 'demo/app',
@@ -178,7 +178,7 @@ void main() {
       toolchain: const ToolchainStatusSnapshot(
         source: ToolchainResolutionSource.projectPin,
         detail: 'Project toolchain pin discovered for the smoke test fixture.',
-        pinPath: '/workspace/demo/spio-toolchain.toml',
+        pinPath: '/workspace/demo/pafio-toolchain.toml',
         channel: 'stable',
         version: '0.0.1',
       ),
@@ -202,7 +202,7 @@ void main() {
         integrationPhase: 'bootstrap-single-file',
       ),
       notes: const <String>[
-        'Smoke test fixture mirrors a canonical spio project.',
+        'Smoke test fixture mirrors a canonical pafio project.',
       ],
     );
   }
@@ -224,7 +224,7 @@ void main() {
               id: 'smoke-language-service',
               kind: ToolchainKind.languageService,
               displayName: 'Smoke StyioService',
-              executablePath: '/workspace/demo/.spio/bin/styio',
+              executablePath: '/workspace/demo/.pafio/bin/styio',
               active: true,
               version: '0.0.9',
               channel: 'smoke',
@@ -241,7 +241,7 @@ void main() {
             id: 'smoke-language-service',
             kind: ToolchainKind.languageService,
             displayName: 'Smoke StyioService',
-            executablePath: '/workspace/demo/.spio/bin/styio',
+            executablePath: '/workspace/demo/.pafio/bin/styio',
             version: '0.0.9',
             channel: 'smoke',
           ),
@@ -324,7 +324,7 @@ void main() {
         toolchain: ToolchainStatusSnapshot(
           source: ToolchainResolutionSource.projectPin,
           detail: 'Live workflow fixture resolves a pinned managed compiler.',
-          pinPath: '/workspace/demo/spio-toolchain.toml',
+          pinPath: '/workspace/demo/pafio-toolchain.toml',
           channel: 'stable',
           version: '0.0.5',
         ),
@@ -377,18 +377,18 @@ void main() {
           },
         ),
         managedToolchains: ManagedToolchainStateSnapshot(
-          spioHome: '/workspace/demo/.spio',
-          currentBinaryPath: '/workspace/demo/.spio/bin/styio',
-          currentMetadataPath: '/workspace/demo/.spio/current.json',
+          pafioHome: '/workspace/demo/.pafio',
+          currentBinaryPath: '/workspace/demo/.pafio/bin/styio',
+          currentMetadataPath: '/workspace/demo/.pafio/current.json',
           installed: <ManagedToolchainInstallSnapshot>[
             ManagedToolchainInstallSnapshot(
               channel: 'stable',
               compilerVersion: '0.0.5',
-              installRoot: '/workspace/demo/.spio/toolchains/stable-0.0.5',
+              installRoot: '/workspace/demo/.pafio/toolchains/stable-0.0.5',
               installBinaryPath:
-                  '/workspace/demo/.spio/toolchains/stable-0.0.5/bin/styio',
+                  '/workspace/demo/.pafio/toolchains/stable-0.0.5/bin/styio',
               installMetadataPath:
-                  '/workspace/demo/.spio/toolchains/stable-0.0.5/install.json',
+                  '/workspace/demo/.pafio/toolchains/stable-0.0.5/install.json',
             ),
           ],
         ),
@@ -403,7 +403,7 @@ void main() {
         packages: <PackageDistributionPackageSnapshot>[
           PackageDistributionPackageSnapshot(
             packageName: 'demo/app',
-            manifestPath: '/workspace/demo/spio.toml',
+            manifestPath: '/workspace/demo/pafio.toml',
             publishEnabled: true,
             publishReady: true,
             runtimeRegistryDependencies: 1,
@@ -420,12 +420,12 @@ void main() {
       ),
       sourceState: const ProjectSourceStateSnapshot(
         schemaVersion: 1,
-        spioHome: '/workspace/demo/.spio',
+        pafioHome: '/workspace/demo/.pafio',
         declaredGitDependencies: 0,
         declaredRegistryDependencies: 1,
         vendor: VendorSourceStateSnapshot(
-          vendorRoot: '/workspace/demo/.spio/vendor',
-          metadataPath: '/workspace/demo/.spio/vendor/spio-vendor.json',
+          vendorRoot: '/workspace/demo/.pafio/vendor',
+          metadataPath: '/workspace/demo/.pafio/vendor/pafio-vendor.json',
           vendorPresent: true,
           metadataPresent: true,
           gitSnapshots: 0,
@@ -3834,8 +3834,8 @@ class _LiveDependencySourceAdapter implements DependencySourceAdapter {
       stderr: '',
       payload: <String, dynamic>{
         'packages': 2,
-        'vendor_root': '/workspace/demo/.spio/vendor',
-        'metadata_path': '/workspace/demo/.spio/vendor/spio-vendor.json',
+        'vendor_root': '/workspace/demo/.pafio/vendor',
+        'metadata_path': '/workspace/demo/.pafio/vendor/pafio-vendor.json',
       },
     );
   }
