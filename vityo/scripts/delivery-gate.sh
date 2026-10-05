@@ -126,10 +126,11 @@ if [[ "$RUN_AUDIT" -eq 1 ]]; then
     echo 'General-Auditor root must contain action_entry.py and the exact repository profile.' >&2
     exit 2
   fi
+  audit_directory="$(git -C "$ROOT" rev-parse --show-toplevel)"
   report="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path general-auditor)"
   audit_status=0
-  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json" || audit_status=$?
-  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json" || audit_status=$?
+  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json" || audit_status=$?
+  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json" || audit_status=$?
 else
   log "General-Auditor skipped"
 fi
