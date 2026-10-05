@@ -114,7 +114,17 @@ run_cmd "${REPO_CMD[@]}"
 run_cmd "${DOCS_GATE_CMD[@]}"
 
 if [[ "$RUN_AUDIT" -eq 1 ]]; then
-  : "${AUDIT_BIN:?Set GENERAL_AUDITOR_ROOT or pass --audit-root}"
+  if [ -z "${AUDIT_BIN:-}" ]; then
+    AUDIT_BIN="$(git -C "$ROOT" config --local --get generalAuditor.root || true)"
+  fi
+  case "$AUDIT_BIN" in
+    /*) ;;
+    *) echo 'General-Auditor requires an absolute trusted root; use GENERAL_AUDITOR_ROOT or local git config generalAuditor.root.' >&2; exit 2 ;;
+  esac
+  if [ ! -f "$AUDIT_BIN/action_entry.py" ] || [ ! -f "$AUDIT_BIN/profiles/SymPolicy/Styio-Preview.json" ]; then
+    echo 'General-Auditor root must contain action_entry.py and the exact repository profile.' >&2
+    exit 2
+  fi
   report="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path general-auditor)"
   run_cmd python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json"
   run_cmd python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json"
