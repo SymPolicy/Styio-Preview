@@ -1,6 +1,6 @@
 # Styio All-in-One License Policy
 
-**Purpose:** Record the source-license boundary enforced by `styio-audit`.
+**Purpose:** Record the source-license boundary enforced by `General-Auditor`.
 
 **Last updated:** 2026-06-29
 
