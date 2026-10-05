@@ -113,6 +113,7 @@ esac
 run_cmd "${REPO_CMD[@]}"
 run_cmd "${DOCS_GATE_CMD[@]}"
 
+audit_status=0
 if [[ "$RUN_AUDIT" -eq 1 ]]; then
   if [ -z "${AUDIT_BIN:-}" ]; then
     AUDIT_BIN="$(git -C "$ROOT" config --local --get generalAuditor.root || true)"
@@ -126,8 +127,9 @@ if [[ "$RUN_AUDIT" -eq 1 ]]; then
     exit 2
   fi
   report="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path general-auditor)"
-  run_cmd python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json"
-  run_cmd python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json"
+  audit_status=0
+  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json" || audit_status=$?
+  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json" || audit_status=$?
 else
   log "General-Auditor skipped"
 fi
@@ -138,4 +140,5 @@ else
   log "checkpoint-health skipped"
 fi
 
-log "all checks passed"
+if [[ "$audit_status" -eq 0 ]]; then log "all checks passed"; fi
+exit "$audit_status"
