@@ -12,7 +12,7 @@ Generated inventory: [INDEX.md](./INDEX.md).
 
 External audit writeups for a specific date can be stored alongside the queue as `docs/audit/EXTERNAL-AUDIT-YYYY-MM-DD.md`.
 
-External `styio-audit` runs outside this repository and enforces this rule when an audit is performed:
+External `General-Auditor` runs outside this repository and enforces this rule when an audit is performed:
 
 1. Missing or empty `docs/audit/defects/` passes.
 2. Every markdown record in `docs/audit/defects/` must declare `**Status:** Closed`, `Resolved`, or `Cleared`.

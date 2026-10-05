@@ -13,8 +13,8 @@ Options:
   --base <ref>              Base ref for team-docs-gate branch checks
   --range <rev-range>       Explicit revision range for repo-hygiene push mode
   --skip-health             Skip checkpoint-health (docs/process-only deliveries)
-  --skip-audit              Skip external styio-audit gate
-  --audit-bin <path>        Explicit styio-audit executable
+  --skip-audit              Skip external General-Auditor gate
+  --audit-root <path>        Trusted General-Auditor checkout
   -h, --help                Show this help
 USAGE
 }
@@ -40,7 +40,7 @@ BASE_REF=""
 REV_RANGE=""
 RUN_HEALTH=1
 RUN_AUDIT=1
-AUDIT_BIN="${STYIO_AUDIT_BIN:-}"
+AUDIT_BIN="${GENERAL_AUDITOR_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       RUN_AUDIT=0
       shift
       ;;
-    --audit-bin)
+    --audit-root)
       AUDIT_BIN="$2"
       shift 2
       ;;
@@ -114,28 +114,12 @@ run_cmd "${REPO_CMD[@]}"
 run_cmd "${DOCS_GATE_CMD[@]}"
 
 if [[ "$RUN_AUDIT" -eq 1 ]]; then
-  if [[ -z "$AUDIT_BIN" ]]; then
-    if [[ -x "$ROOT/../styio-audit/bin/styio-audit" ]]; then
-      AUDIT_BIN="$ROOT/../styio-audit/bin/styio-audit"
-    elif [[ -x "$ROOT/../../SymPolicy/styio-audit/bin/styio-audit" ]]; then
-      AUDIT_BIN="$ROOT/../../SymPolicy/styio-audit/bin/styio-audit"
-    elif [[ -x "/home/unka/styio-audit/bin/styio-audit" ]]; then
-      AUDIT_BIN="/home/unka/styio-audit/bin/styio-audit"
-    elif command -v styio-audit >/dev/null 2>&1; then
-      AUDIT_BIN="$(command -v styio-audit)"
-    fi
-  fi
-  if [[ -z "$AUDIT_BIN" || ! -x "$AUDIT_BIN" ]]; then
-    echo "styio-audit executable not found; set STYIO_AUDIT_BIN or pass --audit-bin" >&2
-    exit 2
-  fi
-  AUDIT_ROOT="$(cd "$(dirname "$AUDIT_BIN")/.." && pwd)"
-  if git -C "$AUDIT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    log "styio-audit commit: $(git -C "$AUDIT_ROOT" rev-parse HEAD)"
-  fi
-  run_cmd "$AUDIT_BIN" gate --repo "$ROOT" --project Vityo
+  : "${AUDIT_BIN:?Set GENERAL_AUDITOR_ROOT or pass --audit-root}"
+  report="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path general-auditor)"
+  run_cmd python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json"
+  run_cmd python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$ROOT" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json"
 else
-  log "styio-audit skipped"
+  log "General-Auditor skipped"
 fi
 
 if [[ "$RUN_HEALTH" -eq 1 ]]; then
