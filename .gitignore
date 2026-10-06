@@ -56,3 +56,6 @@ cmake_install.cmake
 
 # MacOS Cache
 .DS_Store
+
+# Private General-Auditor source evidence and local reports.
+/.general-auditor/local/
