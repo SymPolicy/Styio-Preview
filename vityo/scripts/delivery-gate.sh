@@ -113,6 +113,13 @@ esac
 run_cmd "${REPO_CMD[@]}"
 run_cmd "${DOCS_GATE_CMD[@]}"
 
+audit_command=scan
+for ci_flag in "${CI:-}" "${GITHUB_ACTIONS:-}"; do
+  case "$ci_flag" in
+    ""|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]) ;;
+    *) audit_command=check ;;
+  esac
+done
 audit_status=0
 if [[ "$RUN_AUDIT" -eq 1 ]]; then
   if [ -z "${AUDIT_BIN:-}" ]; then
@@ -128,8 +135,8 @@ if [[ "$RUN_AUDIT" -eq 1 ]]; then
   fi
   audit_directory="$(git -C "$ROOT" rev-parse --show-toplevel)"
   audit_status=0
-  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history || audit_status=$?
-  python3 -I "$AUDIT_BIN/action_entry.py" scan --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree || audit_status=$?
+  python3 -I "$AUDIT_BIN/action_entry.py" "$audit_command" --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history || audit_status=$?
+  python3 -I "$AUDIT_BIN/action_entry.py" "$audit_command" --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree || audit_status=$?
 else
   log "General-Auditor skipped"
 fi

@@ -21,9 +21,16 @@ if [ ! -f "$AUDITOR_ROOT/action_entry.py" ] || [ ! -f "$AUDITOR_ROOT/profiles/Sy
   exit 2
 fi
 audit_directory="$(git -C "$ROOT" rev-parse --show-toplevel)"
+audit_command=scan
+for ci_flag in "${CI:-}" "${GITHUB_ACTIONS:-}"; do
+  case "$ci_flag" in
+    ""|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]) ;;
+    *) audit_command=check ;;
+  esac
+done
 audit_status=0
-python3 -I "$AUDITOR_ROOT/action_entry.py" scan --policy-root "$AUDITOR_ROOT" \
+python3 -I "$AUDITOR_ROOT/action_entry.py" "$audit_command" --policy-root "$AUDITOR_ROOT" \
   --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history || audit_status=$?
-python3 -I "$AUDITOR_ROOT/action_entry.py" scan --policy-root "$AUDITOR_ROOT" \
+python3 -I "$AUDITOR_ROOT/action_entry.py" "$audit_command" --policy-root "$AUDITOR_ROOT" \
   --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree || audit_status=$?
 exit "$audit_status"
