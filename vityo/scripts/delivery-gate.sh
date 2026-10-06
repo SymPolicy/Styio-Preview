@@ -13,8 +13,8 @@ Options:
   --base <ref>              Base ref for team-docs-gate branch checks
   --range <rev-range>       Explicit revision range for repo-hygiene push mode
   --skip-health             Skip checkpoint-health (docs/process-only deliveries)
-  --skip-audit              Skip external styio-audit gate
-  --audit-bin <path>        Explicit styio-audit executable
+  --skip-audit              Skip external General-Auditor gate
+  --audit-root <path>        Trusted General-Auditor checkout
   -h, --help                Show this help
 USAGE
 }
@@ -40,7 +40,7 @@ BASE_REF=""
 REV_RANGE=""
 RUN_HEALTH=1
 RUN_AUDIT=1
-AUDIT_BIN="${STYIO_AUDIT_BIN:-}"
+AUDIT_BIN="${GENERAL_AUDITOR_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       RUN_AUDIT=0
       shift
       ;;
-    --audit-bin)
+    --audit-root)
       AUDIT_BIN="$2"
       shift 2
       ;;
@@ -113,29 +113,32 @@ esac
 run_cmd "${REPO_CMD[@]}"
 run_cmd "${DOCS_GATE_CMD[@]}"
 
+audit_command=scan
+for ci_flag in "${CI:-}" "${GITHUB_ACTIONS:-}"; do
+  case "$ci_flag" in
+    ""|0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]) ;;
+    *) audit_command=check ;;
+  esac
+done
+audit_status=0
 if [[ "$RUN_AUDIT" -eq 1 ]]; then
-  if [[ -z "$AUDIT_BIN" ]]; then
-    if [[ -x "$ROOT/../styio-audit/bin/styio-audit" ]]; then
-      AUDIT_BIN="$ROOT/../styio-audit/bin/styio-audit"
-    elif [[ -x "$ROOT/../../SymPolicy/styio-audit/bin/styio-audit" ]]; then
-      AUDIT_BIN="$ROOT/../../SymPolicy/styio-audit/bin/styio-audit"
-    elif [[ -x "/home/unka/styio-audit/bin/styio-audit" ]]; then
-      AUDIT_BIN="/home/unka/styio-audit/bin/styio-audit"
-    elif command -v styio-audit >/dev/null 2>&1; then
-      AUDIT_BIN="$(command -v styio-audit)"
-    fi
+  if [ -z "${AUDIT_BIN:-}" ]; then
+    AUDIT_BIN="$(git -C "$ROOT" config --local --get generalAuditor.root || true)"
   fi
-  if [[ -z "$AUDIT_BIN" || ! -x "$AUDIT_BIN" ]]; then
-    echo "styio-audit executable not found; set STYIO_AUDIT_BIN or pass --audit-bin" >&2
+  case "$AUDIT_BIN" in
+    /*) ;;
+    *) echo 'General-Auditor requires an absolute trusted root; use GENERAL_AUDITOR_ROOT or local git config generalAuditor.root.' >&2; exit 2 ;;
+  esac
+  if [ ! -f "$AUDIT_BIN/action_entry.py" ] || [ ! -f "$AUDIT_BIN/profiles/SymPolicy/Styio-Preview.json" ]; then
+    echo 'General-Auditor root must contain action_entry.py and the exact repository profile.' >&2
     exit 2
   fi
-  AUDIT_ROOT="$(cd "$(dirname "$AUDIT_BIN")/.." && pwd)"
-  if git -C "$AUDIT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    log "styio-audit commit: $(git -C "$AUDIT_ROOT" rev-parse HEAD)"
-  fi
-  run_cmd "$AUDIT_BIN" gate --repo "$ROOT" --project Vityo
+  audit_directory="$(git -C "$ROOT" rev-parse --show-toplevel)"
+  audit_status=0
+  python3 -I "$AUDIT_BIN/action_entry.py" "$audit_command" --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history || audit_status=$?
+  python3 -I "$AUDIT_BIN/action_entry.py" "$audit_command" --policy-root "$AUDIT_BIN" --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree || audit_status=$?
 else
-  log "styio-audit skipped"
+  log "General-Auditor skipped"
 fi
 
 if [[ "$RUN_HEALTH" -eq 1 ]]; then
@@ -144,4 +147,5 @@ else
   log "checkpoint-health skipped"
 fi
 
-log "all checks passed"
+if [[ "$audit_status" -eq 0 ]]; then log "all checks passed"; fi
+exit "$audit_status"

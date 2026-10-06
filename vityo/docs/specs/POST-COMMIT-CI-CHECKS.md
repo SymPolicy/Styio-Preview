@@ -67,7 +67,7 @@ Cross-repository gates must use the same workspace checkout set that will be vis
 
 ## Delivery Ruleset Governance
 
-Required GitHub merge gates are maintained through GitHub Rulesets, not legacy classic branch protection. Downstream `nightly` must require pull requests and the `audit`, `styio-audit`, and `local-ci-gate` checks before merge.
+Required GitHub merge gates are maintained through GitHub Rulesets, not legacy classic branch protection. Downstream `nightly` must require pull requests and the `audit`, `General-Auditor`, and `local-ci-gate` checks before merge.
 
 Gate audits must inspect effective branch rules, for example:
 
