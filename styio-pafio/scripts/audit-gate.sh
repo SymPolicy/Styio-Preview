@@ -21,10 +21,9 @@ if [ ! -f "$AUDITOR_ROOT/action_entry.py" ] || [ ! -f "$AUDITOR_ROOT/profiles/Sy
   exit 2
 fi
 audit_directory="$(git -C "$ROOT" rev-parse --show-toplevel)"
-report="$(git -C "$ROOT" rev-parse --path-format=absolute --git-path general-auditor)"
 audit_status=0
 python3 -I "$AUDITOR_ROOT/action_entry.py" scan --policy-root "$AUDITOR_ROOT" \
-  --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history --output "$report/history.json" || audit_status=$?
+  --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope history || audit_status=$?
 python3 -I "$AUDITOR_ROOT/action_entry.py" scan --policy-root "$AUDITOR_ROOT" \
-  --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree --output "$report/worktree.json" || audit_status=$?
+  --directory "$audit_directory" --repository "SymPolicy/Styio-Preview" --scope worktree || audit_status=$?
 exit "$audit_status"
